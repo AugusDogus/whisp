@@ -23,12 +23,13 @@
     "dev": "tsc",
     "format": "prettier --check . --ignore-path ../../.gitignore",
     "lint": "eslint",
-    "push": "pnpm with-env drizzle-kit push",
-    "studio": "pnpm with-env drizzle-kit studio",
+    "push": "bun with-env drizzle-kit push",
+    "studio": "bun with-env drizzle-kit studio",
     "typecheck": "tsc --noEmit --emitDeclarationOnly false",
     "with-env": "dotenv -e ../../.env --"
   },
   "dependencies": {
+    "@libsql/client": "^0.15.15",
     "@vercel/postgres": "^0.10.0",
     "drizzle-orm": "^0.44.5",
     "drizzle-zod": "^0.8.3",

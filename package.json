@@ -2,15 +2,14 @@
   "name": "create-t3-turbo",
   "private": true,
   "engines": {
-    "node": ">=22.19.0",
-    "pnpm": ">=10.15.1"
+    "node": ">=22.19.0"
   },
-  "packageManager": "pnpm@10.15.1",
+  "packageManager": "bun@1.2.23",
   "scripts": {
     "build": "turbo run build",
     "clean": "git clean -xdf node_modules",
     "clean:workspaces": "turbo run clean",
-    "auth:generate": "pnpm -F @acme/auth generate",
+    "auth:generate": "bun -F @acme/auth generate",
     "db:push": "turbo -F @acme/db push",
     "db:studio": "turbo -F @acme/db studio",
     "dev": "turbo watch dev --continue",
@@ -19,8 +18,8 @@
     "format:fix": "turbo run format --continue -- --write --cache --cache-location .cache/.prettiercache",
     "lint": "turbo run lint --continue -- --cache --cache-location .cache/.eslintcache",
     "lint:fix": "turbo run lint --continue -- --fix --cache --cache-location .cache/.eslintcache",
-    "lint:ws": "pnpm dlx sherif@latest",
-    "postinstall": "pnpm lint:ws",
+    "lint:ws": "bunx sherif@latest",
+    "postinstall": "bun lint:ws",
     "typecheck": "turbo run typecheck",
     "ui-add": "turbo run ui-add",
     "android": "expo run:android",
@@ -33,5 +32,34 @@
     "turbo": "^2.5.6",
     "typescript": "catalog:"
   },
-  "prettier": "@acme/prettier-config"
+  "prettier": "@acme/prettier-config",
+  "workspaces": {
+    "packages": [
+      "apps/*",
+      "packages/*",
+      "tooling/*"
+    ],
+    "catalog": {
+      "@tanstack/react-query": "^5.87.1",
+      "@trpc/client": "^11.5.1",
+      "@trpc/server": "^11.5.1",
+      "@trpc/tanstack-react-query": "^11.5.1",
+      "eslint": "^9.35.0",
+      "prettier": "^3.6.2",
+      "tailwindcss": "^3.4.17",
+      "typescript": "^5.9.2",
+      "zod": "^4.1.5"
+    },
+    "catalogs": {
+      "react19": {
+        "@types/react": "^19.1.12",
+        "@types/react-dom": "^19.1.9",
+        "react": "19.1.1",
+        "react-dom": "19.1.1"
+      }
+    }
+  },
+  "overrides": {
+    "@types/minimatch": "5.1.2"
+  }
 }
