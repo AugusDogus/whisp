@@ -6,18 +6,22 @@ import Constants from "expo-constants";
  */
 export const getBaseUrl = () => {
   /**
-   * Gets the IP address of your host-machine. If it cannot automatically find it,
-   * you'll have to manually set it. NOTE: Port 3000 should work for most but confirm
-   * you don't have anything else running on it, or you'd have to change it.
-   *
-   * **NOTE**: This is only for development. In production, you'll want to set the
-   * baseUrl to your production API URL.
+   * EXPO_PUBLIC_API_URL: Optional override
+   * - For local dev with OAuth: Set to a publicly accessible URL (e.g., via Cloudflare Tunnel, ngrok, etc.)
+   * - Leave unset to auto-detect local IP
    */
-  const debuggerHost = Constants.expoConfig?.hostUri;
-  const localhost = debuggerHost?.split(":")[0];
+  if (process.env.EXPO_PUBLIC_API_URL) {
+    return process.env.EXPO_PUBLIC_API_URL;
+  }
+
+  // Auto-detect based on environment
+  const localhost = Constants.expoConfig?.hostUri?.split(":")[0];
 
   if (!localhost) {
+    // No debugger host = production build
     return "https://whisp.chat";
   }
+
+  // Development: auto-detect localhost IP (add to trustedOrigins in auth config for OAuth to work)
   return `http://${localhost}:3000`;
 };
