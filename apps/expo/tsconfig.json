@@ -3,7 +3,6 @@
   "compilerOptions": {
     "jsx": "react-native",
     "checkJs": false,
-    "moduleSuffixes": [".ios", ".android", ".native", ""],
     "paths": {
       "~/*": ["./src/*"]
     }

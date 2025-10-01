@@ -18,7 +18,6 @@ export const getBaseUrl = () => {
 
   if (!localhost) {
     return "https://whisp.chat";
-
   }
   return `http://${localhost}:3000`;
 };
