@@ -1,11 +1,22 @@
 import { useState } from "react";
-import { Button, Pressable, Text, TextInput, View } from "react-native";
+import { Pressable, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Link, Stack } from "expo-router";
 import { LegendList } from "@legendapp/list";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import type { RouterOutputs } from "~/utils/api";
+import { Button } from "~/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "~/components/ui/card";
+import { Input } from "~/components/ui/input";
+import { Text } from "~/components/ui/text";
 import { trpc } from "~/utils/api";
 import { authClient } from "~/utils/auth";
 
@@ -14,27 +25,29 @@ function PostCard(props: {
   onDelete: () => void;
 }) {
   return (
-    <View className="flex flex-row rounded-lg bg-muted p-4">
-      <View className="flex-grow">
-        <Link
-          asChild
-          href={{
-            pathname: "/post/[id]",
-            params: { id: props.post.id },
-          }}
-        >
-          <Pressable className="">
-            <Text className="text-xl font-semibold text-primary">
-              {props.post.title}
-            </Text>
-            <Text className="mt-2 text-foreground">{props.post.content}</Text>
-          </Pressable>
-        </Link>
-      </View>
-      <Pressable onPress={props.onDelete}>
-        <Text className="font-bold uppercase text-primary">Delete</Text>
-      </Pressable>
-    </View>
+    <Card>
+      <Link
+        asChild
+        href={{
+          pathname: "/post/[id]",
+          params: { id: props.post.id },
+        }}
+      >
+        <Pressable>
+          <CardHeader>
+            <CardTitle>{props.post.title}</CardTitle>
+            <CardDescription className="mt-2">
+              {props.post.content}
+            </CardDescription>
+          </CardHeader>
+        </Pressable>
+      </Link>
+      <CardFooter>
+        <Button variant="destructive" size="sm" onPress={props.onDelete}>
+          <Text>Delete</Text>
+        </Button>
+      </CardFooter>
+    </Card>
   );
 }
 
@@ -55,46 +68,59 @@ function CreatePost() {
   );
 
   return (
-    <View className="mt-4 flex gap-2">
-      <TextInput
-        className="items-center rounded-md border border-input bg-background px-3 text-lg leading-[1.25] text-foreground"
-        value={title}
-        onChangeText={setTitle}
-        placeholder="Title"
-      />
-      {error?.data?.zodError?.fieldErrors.title && (
-        <Text className="mb-2 text-destructive">
-          {error.data.zodError.fieldErrors.title}
-        </Text>
-      )}
-      <TextInput
-        className="items-center rounded-md border border-input bg-background px-3 text-lg leading-[1.25] text-foreground"
-        value={content}
-        onChangeText={setContent}
-        placeholder="Content"
-      />
-      {error?.data?.zodError?.fieldErrors.content && (
-        <Text className="mb-2 text-destructive">
-          {error.data.zodError.fieldErrors.content}
-        </Text>
-      )}
-      <Pressable
-        className="flex items-center rounded bg-primary p-2"
-        onPress={() => {
-          mutate({
-            title,
-            content,
-          });
-        }}
-      >
-        <Text className="text-foreground">Create</Text>
-      </Pressable>
-      {error?.data?.code === "UNAUTHORIZED" && (
-        <Text className="mt-2 text-destructive">
-          You need to be logged in to create a post
-        </Text>
-      )}
-    </View>
+    <Card className="mt-4">
+      <CardHeader>
+        <CardTitle>Create Post</CardTitle>
+        <CardDescription>Share your thoughts with the world</CardDescription>
+      </CardHeader>
+      <CardContent className="gap-4">
+        <View className="gap-2">
+          <Input
+            value={title}
+            onChangeText={setTitle}
+            placeholder="Title"
+            aria-label="Post title"
+          />
+          {error?.data?.zodError?.fieldErrors.title && (
+            <Text className="text-sm text-destructive">
+              {error.data.zodError.fieldErrors.title}
+            </Text>
+          )}
+        </View>
+        <View className="gap-2">
+          <Input
+            value={content}
+            onChangeText={setContent}
+            placeholder="Content"
+            multiline
+            numberOfLines={4}
+            aria-label="Post content"
+          />
+          {error?.data?.zodError?.fieldErrors.content && (
+            <Text className="text-sm text-destructive">
+              {error.data.zodError.fieldErrors.content}
+            </Text>
+          )}
+        </View>
+        {error?.data?.code === "UNAUTHORIZED" && (
+          <Text className="text-sm text-destructive">
+            You need to be logged in to create a post
+          </Text>
+        )}
+      </CardContent>
+      <CardFooter>
+        <Button
+          onPress={() => {
+            mutate({
+              title,
+              content,
+            });
+          }}
+        >
+          <Text>Create Post</Text>
+        </Button>
+      </CardFooter>
+    </Card>
   );
 }
 
@@ -102,23 +128,28 @@ function MobileAuth() {
   const { data: session } = authClient.useSession();
 
   return (
-    <>
-      <Text className="pb-2 text-center text-xl font-semibold text-zinc-900">
-        {session?.user.name ? `Hello, ${session.user.name}` : "Not logged in"}
-      </Text>
-      <Button
-        onPress={() =>
-          session
-            ? authClient.signOut()
-            : authClient.signIn.social({
-                provider: "discord",
-                callbackURL: "/",
-              })
-        }
-        title={session ? "Sign Out" : "Sign In With Discord"}
-        color={"#5B65E9"}
-      />
-    </>
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-center">
+          {session?.user.name ? `Hello, ${session.user.name}` : "Not logged in"}
+        </CardTitle>
+      </CardHeader>
+      <CardFooter className="justify-center">
+        <Button
+          variant="secondary"
+          onPress={() =>
+            session
+              ? authClient.signOut()
+              : authClient.signIn.social({
+                  provider: "discord",
+                  callbackURL: "/",
+                })
+          }
+        >
+          <Text>{session ? "Sign Out" : "Sign In With Discord"}</Text>
+        </Button>
+      </CardFooter>
+    </Card>
   );
 }
 
@@ -139,15 +170,15 @@ export default function Index() {
       {/* Changes page title visible on the header */}
       <Stack.Screen options={{ title: "Home Page" }} />
       <View className="h-full w-full bg-background p-4">
-        <Text className="pb-2 text-center text-5xl font-bold text-foreground">
+        <Text variant="h1" className="pb-4">
           Create <Text className="text-primary">T3</Text> Turbo
         </Text>
 
         <MobileAuth />
 
-        <View className="py-2">
-          <Text className="font-semibold italic text-primary">
-            Press on a post
+        <View className="py-4">
+          <Text variant="muted" className="italic">
+            Press on a post to view details
           </Text>
         </View>
 
