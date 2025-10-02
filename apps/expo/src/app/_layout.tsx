@@ -1,3 +1,8 @@
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+import {
+  initialWindowMetrics,
+  SafeAreaProvider,
+} from "react-native-safe-area-context";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { PortalHost } from "@rn-primitives/portal";
@@ -14,23 +19,27 @@ export default function RootLayout() {
   const { colorScheme } = useColorScheme();
 
   return (
-    <QueryClientProvider client={queryClient}>
-      {/*
-          The Stack component displays the current page.
-          It also allows you to configure your screens 
-        */}
-      <Stack
-        screenOptions={{
-          headerStyle: {
-            backgroundColor: "#f472b6",
-          },
-          contentStyle: {
-            backgroundColor: colorScheme == "dark" ? "#09090B" : "#FFFFFF",
-          },
-        }}
-      />
-      <StatusBar />
-      <PortalHost />
-    </QueryClientProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider initialMetrics={initialWindowMetrics}>
+        <QueryClientProvider client={queryClient}>
+          {/*
+            The Stack component displays the current page.
+            It also allows you to configure your screens 
+          */}
+          <Stack
+            screenOptions={{
+              headerStyle: {
+                backgroundColor: "#f472b6",
+              },
+              contentStyle: {
+                backgroundColor: colorScheme == "dark" ? "#09090B" : "#FFFFFF",
+              },
+            }}
+          />
+          <StatusBar />
+          <PortalHost />
+        </QueryClientProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }

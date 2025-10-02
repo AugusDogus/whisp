@@ -15,11 +15,13 @@ const globalForDb = globalThis as unknown as {
 const client =
   globalForDb.client ??
   createClient({
-    url: process.env.DATABASE_URL || "",
-    authToken: process.env.DATABASE_TOKEN,
+    url: process.env.DATABASE_URL ?? "",
+    authToken: process.env.DATABASE_TOKEN ?? "",
   });
 
-if (process.env.NODE_ENV !== "production") globalForDb.client = client;
+if (process.env.NODE_ENV !== "production") {
+  globalForDb.client = client;
+}
 
 export const db = drizzle({
   client,

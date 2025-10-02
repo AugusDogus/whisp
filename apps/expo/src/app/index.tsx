@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Pressable, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Link, Stack } from "expo-router";
+import { Link, Stack, useRouter } from "expo-router";
 import { LegendList } from "@legendapp/list";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -126,6 +126,7 @@ function CreatePost() {
 
 function MobileAuth() {
   const { data: session } = authClient.useSession();
+  const router = useRouter();
 
   return (
     <Card>
@@ -147,6 +148,9 @@ function MobileAuth() {
           }
         >
           <Text>{session ? "Sign Out" : "Sign In With Discord"}</Text>
+        </Button>
+        <Button variant="secondary" onPress={() => router.push("/camera")}>
+          <Text>Camera</Text>
         </Button>
       </CardFooter>
     </Card>
