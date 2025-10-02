@@ -174,8 +174,8 @@ export default function Index() {
       {/* Changes page title visible on the header */}
       <Stack.Screen options={{ title: "Home Page" }} />
       <View className="h-full w-full bg-background p-4">
-        <Text variant="h1" className="pb-4">
-          Create <Text className="text-primary">T3</Text> Turbo
+        <Text variant="h1" className="pb-4 text-primary">
+          whisp
         </Text>
 
         <MobileAuth />

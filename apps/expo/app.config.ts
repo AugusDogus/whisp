@@ -7,7 +7,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   scheme: "whisp",
   version: "0.1.0",
   orientation: "portrait",
-  icon: "./assets/icon-light.png",
+  icon: "./assets/icon.png",
   userInterfaceStyle: "automatic",
   updates: {
     fallbackToCacheTimeout: 0,
@@ -17,16 +17,15 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   ios: {
     bundleIdentifier: "whisp.chat",
     supportsTablet: true,
-    icon: {
-      light: "./assets/icon-light.png",
-      dark: "./assets/icon-dark.png",
-    },
+    icon: "./assets/icon.png",
   },
   android: {
     package: "whisp.chat",
     adaptiveIcon: {
-      foregroundImage: "./assets/icon-light.png",
-      backgroundColor: "#1F104A",
+      foregroundImage: "./assets/adaptive-icon-foreground.png",
+      backgroundImage: "./assets/adaptive-icon-background.png",
+      monochromeImage: "./assets/adaptive-icon-monochrome.png",
+      backgroundColor: "#171717",
     },
     edgeToEdgeEnabled: true,
   },
@@ -47,11 +46,11 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     [
       "expo-splash-screen",
       {
-        backgroundColor: "#E4E4E7",
-        image: "./assets/icon-light.png",
+        backgroundColor: "#fafafa",
+        image: "./assets/splash-icon.png",
         dark: {
-          backgroundColor: "#18181B",
-          image: "./assets/icon-dark.png",
+          backgroundColor: "#171717",
+          image: "./assets/splash-icon-dark.png",
         },
       },
     ],

@@ -16,18 +16,30 @@ export const metadata: Metadata = {
       ? "https://whisp.chat"
       : "http://localhost:3000",
   ),
-  title: "Create T3 Turbo",
-  description: "Simple monorepo with shared backend for web & mobile apps",
+  title: "whisp",
+  description: "Ephemeral messages and photos",
+  icons: [
+    {
+      media: "(prefers-color-scheme: light)",
+      url: "/icon-dark.png",
+    },
+    {
+      media: "(prefers-color-scheme: dark)",
+      url: "/icon-light.png",
+    },
+  ],
   openGraph: {
-    title: "Create T3 Turbo",
-    description: "Simple monorepo with shared backend for web & mobile apps",
-    url: "https://create-t3-turbo.vercel.app",
-    siteName: "Create T3 Turbo",
+    title: "whisp",
+    description: "Ephemeral messages and photos",
+    url: "https://whisp.chat",
+    siteName: "whisp",
+    images: ["/icon-dark.png"],
   },
   twitter: {
     card: "summary_large_image",
-    site: "@jullerino",
-    creator: "@jullerino",
+    images: ["/icon-dark.png"],
+    site: "@AugusDogus",
+    creator: "@AugusDogus",
   },
 };
 
