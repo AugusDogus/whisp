@@ -24,10 +24,12 @@ import {
   useMicrophonePermission,
 } from "react-native-vision-camera";
 import { VolumeManager } from "react-native-volume-manager";
+import { useRouter } from "expo-router";
 // Gesture handler types no longer needed with new Gesture API
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 
 import type { CaptureButtonRef } from "../components/capture-button";
+import { authClient } from "~/utils/auth";
 import { CaptureButton } from "../components/capture-button";
 import { StatusBarBlurBackground } from "../components/status-bar-blur-background";
 import { useIsForeground } from "../hooks/useIsForeground";
@@ -49,6 +51,8 @@ Reanimated.addWhitelistedNativeProps({
 const SCALE_FULL_ZOOM = 3;
 
 export default function CameraPage(): React.ReactElement {
+  const router = useRouter();
+  const { data: session, isPending } = authClient.useSession();
   const camera = useRef<Camera>(null);
   const captureButtonRef = useRef<CaptureButtonRef>(null);
   const [isCameraInitialized, setIsCameraInitialized] = useState(false);
@@ -57,6 +61,13 @@ export default function CameraPage(): React.ReactElement {
   const location = useLocationPermission();
   const zoom = useSharedValue(1);
   const isPressingButton = useSharedValue(false);
+
+  // Validate session and redirect if invalid
+  useEffect(() => {
+    if (!isPending && !session) {
+      router.replace("/");
+    }
+  }, [session, isPending, router]);
 
   // Safe area and screen dimensions
   const safeAreaPadding = useSafeAreaPadding();
