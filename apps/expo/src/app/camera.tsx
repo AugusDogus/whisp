@@ -1,3 +1,4 @@
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type * as React from "react";
 import type { GestureResponderEvent } from "react-native";
 import type {
@@ -7,7 +8,13 @@ import type {
   VideoFile,
 } from "react-native-vision-camera";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  InteractionManager,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Reanimated, {
   Extrapolate,
@@ -24,16 +31,32 @@ import {
   useMicrophonePermission,
 } from "react-native-vision-camera";
 import { VolumeManager } from "react-native-volume-manager";
-import { useRouter } from "expo-router";
+import { Image } from "expo-image";
+import * as SecureStore from "expo-secure-store";
 // Gesture handler types no longer needed with new Gesture API
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
+import { useFocusEffect, useNavigation } from "@react-navigation/native";
+import { useQuery } from "@tanstack/react-query";
 
-import type { CaptureButtonRef } from "../components/capture-button";
+import type { CaptureButtonRef } from "~/components/capture-button";
+import type { RootStackParamList } from "~/navigation/types";
+import { CaptureButton } from "~/components/capture-button";
+import { StatusBarBlurBackground } from "~/components/status-bar-blur-background";
+import { Button } from "~/components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "~/components/ui/dialog";
+import { Text as UIText } from "~/components/ui/text";
+import { useIsForeground } from "~/hooks/useIsForeground";
+import { usePreferredCameraDevice } from "~/hooks/usePreferredCameraDevice";
+import { useCookieStore } from "~/stores/cookie-store";
 import { authClient } from "~/utils/auth";
-import { CaptureButton } from "../components/capture-button";
-import { StatusBarBlurBackground } from "../components/status-bar-blur-background";
-import { useIsForeground } from "../hooks/useIsForeground";
-import { usePreferredCameraDevice } from "../hooks/usePreferredCameraDevice";
 import {
   CONTENT_SPACING,
   CONTROL_BUTTON_SIZE,
@@ -41,7 +64,7 @@ import {
   SCREEN_WIDTH,
   useSafeAreaPadding,
   useScreenHeight,
-} from "../utils/constants";
+} from "~/utils/constants";
 
 const ReanimatedCamera = Reanimated.createAnimatedComponent(Camera);
 Reanimated.addWhitelistedNativeProps({
@@ -50,9 +73,21 @@ Reanimated.addWhitelistedNativeProps({
 
 const SCALE_FULL_ZOOM = 3;
 
+export function useWhispCookie() {
+  return useQuery({
+    queryKey: ["whisp_cookie"],
+    queryFn: async () => {
+      const cookieRaw = await SecureStore.getItemAsync("whisp_cookie");
+      return cookieRaw;
+    },
+  });
+}
+
 export default function CameraPage(): React.ReactElement {
-  const router = useRouter();
-  const { data: session, isPending } = authClient.useSession();
+  const navigation =
+    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { data: session, isPending, refetch } = authClient.useSession();
+  const { checkCookie: _checkCookie } = useCookieStore();
   const camera = useRef<Camera>(null);
   const captureButtonRef = useRef<CaptureButtonRef>(null);
   const [isCameraInitialized, setIsCameraInitialized] = useState(false);
@@ -62,20 +97,13 @@ export default function CameraPage(): React.ReactElement {
   const zoom = useSharedValue(1);
   const isPressingButton = useSharedValue(false);
 
-  // Validate session and redirect if invalid
-  useEffect(() => {
-    if (!isPending && !session) {
-      router.replace("/");
-    }
-  }, [session, isPending, router]);
-
   // Safe area and screen dimensions
   const safeAreaPadding = useSafeAreaPadding();
   const screenHeight = useScreenHeight();
 
   // check if camera page is active
   const isForeground = useIsForeground();
-  const isActive = isForeground; // In Expo Router, the component only renders when the route is active
+  const isActive = isForeground;
 
   const [cameraPosition, setCameraPosition] = useState<"front" | "back">(
     "back",
@@ -196,6 +224,32 @@ export default function CameraPage(): React.ReactElement {
   //#endregion
 
   //#region Effects
+  // On focus, revalidate the session in case cookie exists but session expired
+  useFocusEffect(
+    useCallback(() => {
+      void refetch();
+    }, [refetch]),
+  );
+
+  // Guard: if we have no session after refetch completes, clear cookie and go to Login
+  const navigationResetScheduledRef = useRef(false);
+  useEffect(() => {
+    if (!isPending && !session && !navigationResetScheduledRef.current) {
+      navigationResetScheduledRef.current = true;
+      void (async () => {
+        try {
+          await authClient.signOut();
+        } catch (err) {
+          console.debug("[CameraPage] signOut on invalid session failed", err);
+        }
+        InteractionManager.runAfterInteractions(() => {
+          setTimeout(() => {
+            navigation.reset({ index: 0, routes: [{ name: "Login" }] });
+          }, 300);
+        });
+      })();
+    }
+  }, [isPending, session, navigation]);
   useEffect(() => {
     // Reset zoom to it's default everytime the `device` changes.
     zoom.value = device?.neutralZoom ?? 1;
@@ -396,6 +450,12 @@ export default function CameraPage(): React.ReactElement {
   // Create styles with current safe area padding
   const styles = createStyles(safeAreaPadding);
 
+  const {
+    data: _cookie,
+    isLoading: _isLoading,
+    error: _cookieError,
+  } = useWhispCookie();
+
   return (
     <View style={styles.container}>
       {device != null ? (
@@ -468,6 +528,58 @@ export default function CameraPage(): React.ReactElement {
       />
 
       <StatusBarBlurBackground />
+
+      <View style={styles.leftButtonRow}>
+        <Dialog>
+          <DialogTrigger asChild>
+            <Pressable style={styles.button}>
+              <Ionicons name="person" color="white" size={24} />
+            </Pressable>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Profile</DialogTitle>
+            </DialogHeader>
+            <View className="items-center gap-4 py-4">
+              <View className="h-20 w-20 items-center justify-center overflow-hidden rounded-full bg-secondary">
+                {session?.user.image ? (
+                  <Image
+                    source={{ uri: session.user.image }}
+                    style={{ width: 80, height: 80 }}
+                    contentFit="cover"
+                  />
+                ) : (
+                  <Ionicons name="person" size={40} color="#666" />
+                )}
+              </View>
+              <View className="items-center">
+                <UIText className="text-lg font-semibold">
+                  {session?.user.name ?? "User"}
+                </UIText>
+                {session?.user.email && (
+                  <UIText variant="muted" className="text-sm">
+                    {session.user.email}
+                  </UIText>
+                )}
+              </View>
+            </View>
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button
+                  variant="destructive"
+                  onPress={async () => {
+                    console.log("[CameraPage] Signing out");
+                    await authClient.signOut();
+                  }}
+                  className="w-full"
+                >
+                  <UIText>Sign Out</UIText>
+                </Button>
+              </DialogClose>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </View>
 
       <View style={styles.rightButtonRow}>
         <Pressable style={styles.button} onPress={onFlipCameraPressed}>
@@ -543,6 +655,11 @@ function createStyles(safeAreaPadding: ReturnType<typeof useSafeAreaPadding>) {
     rightButtonRow: {
       position: "absolute",
       right: safeAreaPadding.paddingRight,
+      top: safeAreaPadding.paddingTop,
+    },
+    leftButtonRow: {
+      position: "absolute",
+      left: safeAreaPadding.paddingLeft,
       top: safeAreaPadding.paddingTop,
     },
     text: {

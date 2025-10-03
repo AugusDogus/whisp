@@ -1,202 +1,67 @@
-import { useState } from "react";
-import { Pressable, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { Link, Stack } from "expo-router";
-import { LegendList } from "@legendapp/list";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { useEffect } from "react";
+import { ActivityIndicator, View } from "react-native";
+import * as SecureStore from "expo-secure-store";
+import { useNavigation } from "@react-navigation/native";
 
-import type { RouterOutputs } from "~/utils/api";
-import { Button } from "~/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "~/components/ui/card";
-import { Input } from "~/components/ui/input";
-import { Text } from "~/components/ui/text";
-import { trpc } from "~/utils/api";
+import type { RootStackParamList } from "~/navigation/types";
 import { authClient } from "~/utils/auth";
 
-function PostCard(props: {
-  post: RouterOutputs["post"]["all"][number];
-  onDelete: () => void;
-}) {
-  return (
-    <Card>
-      <Link
-        asChild
-        href={{
-          pathname: "/post/[id]",
-          params: { id: props.post.id },
-        }}
-      >
-        <Pressable>
-          <CardHeader>
-            <CardTitle>{props.post.title}</CardTitle>
-            <CardDescription className="mt-2">
-              {props.post.content}
-            </CardDescription>
-          </CardHeader>
-        </Pressable>
-      </Link>
-      <CardFooter>
-        <Button variant="destructive" size="sm" onPress={props.onDelete}>
-          <Text>Delete</Text>
-        </Button>
-      </CardFooter>
-    </Card>
-  );
-}
+export default function SplashScreen() {
+  const navigation =
+    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { data: session, isPending } = authClient.useSession();
 
-function CreatePost() {
-  const queryClient = useQueryClient();
-
-  const [title, setTitle] = useState("");
-  const [content, setContent] = useState("");
-
-  const { mutate, error } = useMutation(
-    trpc.post.create.mutationOptions({
-      async onSuccess() {
-        setTitle("");
-        setContent("");
-        await queryClient.invalidateQueries(trpc.post.all.queryFilter());
-      },
-    }),
-  );
-
-  return (
-    <Card className="mt-4">
-      <CardHeader>
-        <CardTitle>Create Post</CardTitle>
-        <CardDescription>Share your thoughts with the world</CardDescription>
-      </CardHeader>
-      <CardContent className="gap-4">
-        <View className="gap-2">
-          <Input
-            value={title}
-            onChangeText={setTitle}
-            placeholder="Title"
-            aria-label="Post title"
-          />
-          {error?.data?.zodError?.fieldErrors.title && (
-            <Text className="text-sm text-destructive">
-              {error.data.zodError.fieldErrors.title}
-            </Text>
-          )}
-        </View>
-        <View className="gap-2">
-          <Input
-            value={content}
-            onChangeText={setContent}
-            placeholder="Content"
-            multiline
-            numberOfLines={4}
-            aria-label="Post content"
-          />
-          {error?.data?.zodError?.fieldErrors.content && (
-            <Text className="text-sm text-destructive">
-              {error.data.zodError.fieldErrors.content}
-            </Text>
-          )}
-        </View>
-        {error?.data?.code === "UNAUTHORIZED" && (
-          <Text className="text-sm text-destructive">
-            You need to be logged in to create a post
-          </Text>
-        )}
-      </CardContent>
-      <CardFooter>
-        <Button
-          onPress={() => {
-            mutate({
-              title,
-              content,
-            });
-          }}
-        >
-          <Text>Create Post</Text>
-        </Button>
-      </CardFooter>
-    </Card>
-  );
-}
-
-function MobileAuth() {
-  const { data: session } = authClient.useSession();
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-center">
-          {session?.user.name ? `Hello, ${session.user.name}` : "Not logged in"}
-        </CardTitle>
-      </CardHeader>
-      <CardFooter className="justify-center">
-        <Button
-          variant="secondary"
-          onPress={() =>
-            session
-              ? authClient.signOut()
-              : authClient.signIn.social({
-                  provider: "discord",
-                  callbackURL: "/camera",
-                })
+  useEffect(() => {
+    async function checkAuth() {
+      // First check if we have a cookie (optimistic)
+      const cookieRaw = await SecureStore.getItemAsync("whisp_cookie");
+      let cookieExists = false;
+      if (cookieRaw) {
+        try {
+          const parsed: unknown = JSON.parse(cookieRaw);
+          if (
+            parsed &&
+            typeof parsed === "object" &&
+            "__Secure-better-auth.session_token" in parsed
+          ) {
+            const tokenObj = (parsed as Record<string, unknown>)[
+              "__Secure-better-auth.session_token"
+            ];
+            if (tokenObj && typeof tokenObj === "object") {
+              const rec = tokenObj as Record<string, unknown>;
+              const value = typeof rec.value === "string" ? rec.value : "";
+              const expiresIso =
+                typeof rec.expires === "string" ? rec.expires : undefined;
+              const notExpired =
+                !expiresIso || new Date(expiresIso).getTime() > Date.now();
+              cookieExists = value.length > 0 && notExpired;
+            }
           }
-        >
-          <Text>{session ? "Sign Out" : "Sign In With Discord"}</Text>
-        </Button>
-      </CardFooter>
-    </Card>
-  );
-}
+        } catch {
+          cookieExists = false;
+        }
+      }
 
-export default function Index() {
-  const queryClient = useQueryClient();
+      if (cookieExists) {
+        console.log("[Splash] Cookie found, redirecting to camera");
+        navigation.replace("Camera");
+        return;
+      }
 
-  const postQuery = useQuery(trpc.post.all.queryOptions());
+      // No cookie, wait for session check
+      if (!isPending && !session) {
+        console.log("[Splash] No session, redirecting to login");
+        navigation.replace("Login");
+      }
+    }
 
-  const deletePostMutation = useMutation(
-    trpc.post.delete.mutationOptions({
-      onSettled: () =>
-        queryClient.invalidateQueries(trpc.post.all.queryFilter()),
-    }),
-  );
+    void checkAuth();
+  }, [isPending, session, navigation]);
 
   return (
-    <SafeAreaView className="bg-background">
-      {/* Changes page title visible on the header */}
-      <Stack.Screen options={{ title: "Home Page" }} />
-      <View className="h-full w-full bg-background p-4">
-        <Text variant="h1" className="pb-4 text-primary">
-          whisp
-        </Text>
-
-        <MobileAuth />
-
-        <View className="py-4">
-          <Text variant="muted" className="italic">
-            Press on a post to view details
-          </Text>
-        </View>
-
-        <LegendList
-          data={postQuery.data ?? []}
-          estimatedItemSize={20}
-          keyExtractor={(item) => item.id}
-          ItemSeparatorComponent={() => <View className="h-2" />}
-          renderItem={(p) => (
-            <PostCard
-              post={p.item}
-              onDelete={() => deletePostMutation.mutate(p.item.id)}
-            />
-          )}
-        />
-
-        <CreatePost />
-      </View>
-    </SafeAreaView>
+    <View className="flex-1 items-center justify-center bg-background">
+      <ActivityIndicator size="large" color="#0ea5e9" />
+    </View>
   );
 }
