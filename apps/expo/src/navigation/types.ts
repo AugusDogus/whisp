@@ -8,5 +8,3 @@ export interface RootStackParamList extends ParamListBase {
 }
 
 export type AppScreenName = keyof RootStackParamList;
-
-

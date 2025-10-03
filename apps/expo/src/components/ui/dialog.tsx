@@ -116,10 +116,7 @@ function DialogFooter({ className, ...props }: ViewProps) {
   );
 }
 
-function DialogTitle({
-  className,
-  ...props
-}: DialogPrimitive.TitleProps) {
+function DialogTitle({ className, ...props }: DialogPrimitive.TitleProps) {
   return (
     <DialogPrimitive.Title
       className={cn(
