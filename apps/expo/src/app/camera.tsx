@@ -35,7 +35,11 @@ import { Image } from "expo-image";
 import * as SecureStore from "expo-secure-store";
 // Gesture handler types no longer needed with new Gesture API
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
-import { useFocusEffect, useNavigation } from "@react-navigation/native";
+import {
+  useFocusEffect,
+  useIsFocused,
+  useNavigation,
+} from "@react-navigation/native";
 import { useQuery } from "@tanstack/react-query";
 
 import type { CaptureButtonRef } from "~/components/capture-button";
@@ -101,9 +105,10 @@ export default function CameraPage(): React.ReactElement {
   const safeAreaPadding = useSafeAreaPadding();
   const screenHeight = useScreenHeight();
 
-  // check if camera page is active
+  // check if camera page is active (only when app is foreground AND screen is focused)
   const isForeground = useIsForeground();
-  const isActive = isForeground;
+  const isFocused = useIsFocused();
+  const isActive = isForeground && isFocused;
 
   const [cameraPosition, setCameraPosition] = useState<"front" | "back">(
     "back",
@@ -142,7 +147,6 @@ export default function CameraPage(): React.ReactElement {
   );
   const canToggleNightMode = device?.supportsLowLightBoost ?? false;
 
-  //#region Animated Zoom
   const minZoom = device?.minZoom ?? 1;
   const maxZoom = Math.min(device?.maxZoom ?? 1, MAX_ZOOM_FACTOR);
 
@@ -152,9 +156,7 @@ export default function CameraPage(): React.ReactElement {
       zoom: z,
     };
   }, [maxZoom, minZoom, zoom]);
-  //#endregion
 
-  //#region Callbacks
   const setIsPressingButton = useCallback(
     (_isPressingButton: boolean) => {
       isPressingButton.value = _isPressingButton;
@@ -170,11 +172,20 @@ export default function CameraPage(): React.ReactElement {
   }, []);
   const onMediaCaptured = useCallback(
     (media: PhotoFile | VideoFile, type: "photo" | "video") => {
-      console.log(`Media captured! ${JSON.stringify(media)}, type: ${type}`);
-      // TODO: Implement media page navigation
-      // router.push(`/media?path=${media.path}&type=${type}`)
+      try {
+        // Hint the preview image cache to reduce first render delay
+        if (type === "photo") {
+          // expo-image respects file:// URIs; fire-and-forget prefetch
+          void Image.prefetch(`file://${media.path}`).catch((err) => {
+            console.debug("[Media] image prefetch failed", err);
+          });
+        }
+        navigation.navigate("Media", { path: media.path, type });
+      } catch (err) {
+        console.error("Failed to navigate to Media screen", err);
+      }
     },
-    [],
+    [navigation],
   );
   const onFlipCameraPressed = useCallback(() => {
     setCameraPosition((p) => (p === "back" ? "front" : "back"));
@@ -182,9 +193,7 @@ export default function CameraPage(): React.ReactElement {
   const onFlashPressed = useCallback(() => {
     setFlash((f) => (f === "off" ? "on" : "off"));
   }, []);
-  //#endregion
 
-  //#region Tap Gesture
   const focusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const onFocusTap = useCallback(
@@ -221,9 +230,7 @@ export default function CameraPage(): React.ReactElement {
   const onDoubleTap = useCallback(() => {
     onFlipCameraPressed();
   }, [onFlipCameraPressed]);
-  //#endregion
 
-  //#region Effects
   // On focus, revalidate the session in case cookie exists but session expired
   useFocusEffect(
     useCallback(() => {
@@ -399,9 +406,7 @@ export default function CameraPage(): React.ReactElement {
       void VolumeManager.showNativeVolumeUI({ enabled: true });
     };
   }, [isActive, isCameraInitialized]);
-  //#endregion
 
-  //#region Pinch to Zoom Gesture
   // The gesture handler maps the linear pinch gesture (0 - 1) to an exponential curve since a camera's zoom
   // function does not appear linear to the user. (aka zoom 0.1 -> 0.2 does not look equal in difference as 0.8 -> 0.9)
   const startZoom = useSharedValue(1);
@@ -428,7 +433,6 @@ export default function CameraPage(): React.ReactElement {
         Extrapolate.CLAMP,
       );
     });
-  //#endregion
 
   useEffect(() => {
     const f =
@@ -494,7 +498,7 @@ export default function CameraPage(): React.ReactElement {
                 fps={fps}
                 photoHdr={photoHdr}
                 videoHdr={videoHdr}
-                photoQualityBalance="quality"
+                photoQualityBalance="speed"
                 lowLightBoost={device.supportsLowLightBoost && enableNightMode}
                 enableZoomGesture={false}
                 animatedProps={cameraAnimatedProps}

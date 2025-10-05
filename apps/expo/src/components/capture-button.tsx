@@ -73,7 +73,6 @@ const CaptureButtonComponent = React.forwardRef<CaptureButtonRef, Props>(
       setIsPressingButton,
     });
 
-    //#region Unified gesture handler
     const panStartY = useSharedValue(0);
     const panOffsetY = useSharedValue(0);
     const initialTouchY = useSharedValue(0);
@@ -259,7 +258,6 @@ const CaptureButtonComponent = React.forwardRef<CaptureButtonRef, Props>(
           }, 150);
         }
       });
-    //#endregion
 
     const shadowStyle = useAnimatedStyle(
       () => ({

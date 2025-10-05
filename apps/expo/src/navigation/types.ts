@@ -5,6 +5,8 @@ export interface RootStackParamList extends ParamListBase {
   Login: undefined;
   Camera: undefined;
   Post: { id: string };
+  Media: { path: string; type: "photo" | "video" };
+  Friends: { path: string; type: "photo" | "video" };
 }
 
 export type AppScreenName = keyof RootStackParamList;
