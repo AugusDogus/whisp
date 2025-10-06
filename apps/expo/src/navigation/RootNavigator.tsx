@@ -1,6 +1,6 @@
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
-import { Toaster } from 'sonner-native';
+import { Toaster } from "sonner-native";
 
 // import type { RootStackParamList } from "./types";
 import CameraScreen from "~/app/camera";
