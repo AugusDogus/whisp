@@ -453,10 +453,17 @@ export default function CameraPage(): React.ReactElement {
   }, [device?.name, format, fps]);
 
   useEffect(() => {
-    if (!cameraPermission.hasPermission)
+    if (!cameraPermission.hasPermission) {
       void cameraPermission.requestPermission();
-    if (!microphone.hasPermission) void microphone.requestPermission();
-    if (!location.hasPermission) void location.requestPermission();
+    }
+    if (!microphone.hasPermission) {
+      void microphone.requestPermission();
+    }
+    if (!location.hasPermission) {
+      void location.requestPermission();
+    }
+    // we intentionally only track booleans to avoid effect identity churn
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     cameraPermission.hasPermission,
     microphone.hasPermission,

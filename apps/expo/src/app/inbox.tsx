@@ -19,6 +19,7 @@ import { trpc } from "~/utils/api";
 interface FriendRow {
   id: string;
   name: string;
+  image: string | null;
   hasUnread: boolean;
   unreadCount: number;
 }
@@ -71,6 +72,7 @@ export default function InboxScreen() {
     return friends.map((f) => ({
       id: f.id,
       name: f.name,
+      image: (f as unknown as { image?: string | null }).image ?? null,
       hasUnread: (senderToMessages.get(f.id) ?? 0) > 0,
       unreadCount: senderToMessages.get(f.id) ?? 0,
     }));
@@ -99,10 +101,29 @@ export default function InboxScreen() {
               }}
             >
               <View className="flex-row items-center gap-3">
-                <View className="h-10 w-10 items-center justify-center rounded-full bg-secondary">
-                  <Text className="text-base font-semibold">
-                    {item.name.slice(0, 1).toUpperCase()}
-                  </Text>
+                <View className="h-10 w-10 overflow-hidden rounded-full bg-secondary">
+                  {item.image ? (
+                    <Image
+                      source={{ uri: item.image }}
+                      style={{ width: 40, height: 40 }}
+                      contentFit="cover"
+                    />
+                  ) : (
+                    <View className="h-full w-full items-center justify-center">
+                      <Text className="text-base font-semibold">
+                        {(() => {
+                          const n = item.name.trim();
+                          if (n.length === 0) return "?";
+                          const cp = n.codePointAt(0);
+                          if (cp == null) return "?";
+                          const first = String.fromCodePoint(cp);
+                          return /^[a-z]$/i.test(first)
+                            ? first.toUpperCase()
+                            : first;
+                        })()}
+                      </Text>
+                    </View>
+                  )}
                 </View>
                 <Text className="text-base">{item.name}</Text>
               </View>

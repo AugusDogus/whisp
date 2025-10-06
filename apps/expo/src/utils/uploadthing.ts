@@ -35,6 +35,19 @@ export const {
   },
 });
 
+// Temporary wrapper to allow passing `input` until types catch up
+type UploadFilesRoute = Parameters<typeof uploadFiles>[0];
+type UploadFilesBaseParams = Parameters<typeof uploadFiles>[1];
+type UploadFilesResult = ReturnType<typeof uploadFiles>;
+
+export function uploadFilesWithInput<I = unknown>(
+  route: UploadFilesRoute,
+  params: UploadFilesBaseParams & { input: I },
+): UploadFilesResult {
+  // Cast params back to the base type; runtime still forwards `input`
+  return uploadFiles(route, params as UploadFilesBaseParams);
+}
+
 type ExpoFileWithLastModified = ExpoFile & {
   lastModified: number;
 };

@@ -13,7 +13,7 @@ import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { Text } from "~/components/ui/text";
 import { trpc } from "~/utils/api";
-import { createFile, useUploadThing } from "~/utils/uploadthing";
+import { createFile, uploadFilesWithInput } from "~/utils/uploadthing";
 
 interface FriendItem {
   id: string;
@@ -60,15 +60,6 @@ export default function FriendsScreen() {
       })),
     );
   }, [friendList, defaultRecipientId]);
-
-  const { startUpload } = useUploadThing("imageUploader", {
-    /**
-     * Any props here are forwarded to the underlying `useUploadThing` hook.
-     * Refer to the React API reference for more info.
-     */
-    onClientUploadComplete: () => void toast.success("whisper sent"),
-    onUploadError: (error) => void toast.error(error.message),
-  });
 
   return (
     <SafeAreaView className="bg-background">
@@ -134,11 +125,16 @@ export default function FriendsScreen() {
               const recipients = friends
                 .filter((f) => f.isSelected)
                 .map((f) => f.id);
-              void startUpload([file], {
-                input: {
-                  recipients,
-                },
-              });
+              void uploadFilesWithInput("imageUploader", {
+                files: [file],
+                input: { recipients },
+              })
+                .then(() => toast.success("whisper sent"))
+                .catch((err: unknown) =>
+                  toast.error(
+                    err instanceof Error ? err.message : "Upload failed",
+                  ),
+                );
               // After send, reset to Main (tabbed root)
               navigation.reset({ index: 0, routes: [{ name: "Main" }] });
             }}

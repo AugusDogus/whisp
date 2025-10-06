@@ -26,6 +26,7 @@ export const friendsRouter = {
         return [] as {
           id: string;
           name: string;
+          image: string | null;
           isFriend: boolean;
           hasPendingRequest: boolean;
         }[];
@@ -77,7 +78,13 @@ export const friendsRouter = {
               r.fromUserId === u.id &&
               r.status === "pending"),
         );
-        return { id: u.id, name: u.name, isFriend, hasPendingRequest };
+        return {
+          id: u.id,
+          name: u.name,
+          image: u.image ?? null,
+          isFriend,
+          hasPendingRequest,
+        };
       });
     }),
 
@@ -91,12 +98,17 @@ export const friendsRouter = {
     const friendIds = rows.map((r) =>
       r.userIdA === me ? r.userIdB : r.userIdA,
     );
-    if (friendIds.length === 0) return [] as { id: string; name: string }[];
+    if (friendIds.length === 0)
+      return [] as { id: string; name: string; image: string | null }[];
     const friends = await ctx.db
       .select()
       .from(User)
       .where(or(...friendIds.map((id) => eq(User.id, id))));
-    return friends.map((u) => ({ id: u.id, name: u.name }));
+    return friends.map((u) => ({
+      id: u.id,
+      name: u.name,
+      image: u.image ?? null,
+    }));
   }),
 
   incomingRequests: protectedProcedure.query(async ({ ctx }) => {
