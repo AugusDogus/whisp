@@ -139,8 +139,8 @@ export default function FriendsScreen() {
                   recipients,
                 },
               });
-              // After send, reset stack to prevent navigating back
-              navigation.reset({ index: 0, routes: [{ name: "Camera" }] });
+              // After send, reset to Main (tabbed root)
+              navigation.reset({ index: 0, routes: [{ name: "Main" }] });
             }}
           >
             <Text>{numSelected > 0 ? `Send (${numSelected})` : "Send"}</Text>

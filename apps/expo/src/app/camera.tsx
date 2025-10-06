@@ -45,7 +45,7 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import type { CaptureButtonRef } from "~/components/capture-button";
-import type { RootStackParamList } from "~/navigation/types";
+import type { MainTabParamList, RootStackParamList } from "~/navigation/types";
 import { CaptureButton } from "~/components/capture-button";
 import { StatusBarBlurBackground } from "~/components/status-bar-blur-background";
 import { Button } from "~/components/ui/button";
@@ -94,7 +94,7 @@ export function useWhispCookie() {
 export default function CameraPage(): React.ReactElement {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const cameraRoute = useRoute<RouteProp<RootStackParamList, "Camera">>();
+  const cameraRoute = useRoute<RouteProp<MainTabParamList, "Camera">>();
   const defaultRecipientId = cameraRoute.params?.defaultRecipientId;
   const { data: session, isPending, refetch } = authClient.useSession();
   const { checkCookie: _checkCookie } = useCookieStore();
@@ -453,10 +453,15 @@ export default function CameraPage(): React.ReactElement {
   }, [device?.name, format, fps]);
 
   useEffect(() => {
-    void cameraPermission.requestPermission();
-    void microphone.requestPermission();
-    void location.requestPermission();
-  }, [cameraPermission, microphone, location]);
+    if (!cameraPermission.hasPermission)
+      void cameraPermission.requestPermission();
+    if (!microphone.hasPermission) void microphone.requestPermission();
+    if (!location.hasPermission) void location.requestPermission();
+  }, [
+    cameraPermission.hasPermission,
+    microphone.hasPermission,
+    location.hasPermission,
+  ]);
 
   const videoHdr = format?.supportsVideoHdr && enableHdr;
   const photoHdr = format?.supportsPhotoHdr && enableHdr && !videoHdr;
@@ -472,7 +477,7 @@ export default function CameraPage(): React.ReactElement {
 
   return (
     <View style={styles.container}>
-      {device != null ? (
+      {device != null && cameraPermission.hasPermission ? (
         <GestureDetector gesture={pinchGesture.enabled(isActive)}>
           <Reanimated.View
             onTouchEnd={onFocusTap}
