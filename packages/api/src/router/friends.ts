@@ -1,0 +1,191 @@
+import type { TRPCRouterRecord } from "@trpc/server";
+import { z } from "zod/v4";
+
+import { and, eq, inArray, like, ne, or } from "@acme/db";
+import { FriendRequest, Friendship, user as User } from "@acme/db/schema";
+
+import { protectedProcedure } from "../trpc";
+
+export const friendsRouter = {
+  searchUsers: protectedProcedure
+    .input(z.object({ query: z.string().min(1).max(64) }))
+    .query(async ({ ctx, input }) => {
+      const q = `%${input.query.trim()}%`;
+      const me = ctx.session.user.id;
+      // Simple search by name or email, excluding self
+      const users = await ctx.db
+        .select()
+        .from(User)
+        .where(
+          and(or(like(User.name, q), like(User.email, q)), ne(User.id, me)),
+        );
+
+      // Determine friendship/request status for each user
+      const userIds = users.map((u) => u.id);
+      if (userIds.length === 0)
+        return [] as {
+          id: string;
+          name: string;
+          isFriend: boolean;
+          hasPendingRequest: boolean;
+        }[];
+
+      const friendships = await ctx.db
+        .select()
+        .from(Friendship)
+        .where(
+          or(
+            and(
+              eq(Friendship.userIdA, me),
+              inArray(Friendship.userIdB, userIds),
+            ),
+            and(
+              eq(Friendship.userIdB, me),
+              inArray(Friendship.userIdA, userIds),
+            ),
+          ),
+        );
+
+      const requests = await ctx.db
+        .select()
+        .from(FriendRequest)
+        .where(
+          or(
+            and(
+              eq(FriendRequest.fromUserId, me),
+              inArray(FriendRequest.toUserId, userIds),
+            ),
+            and(
+              eq(FriendRequest.toUserId, me),
+              inArray(FriendRequest.fromUserId, userIds),
+            ),
+          ),
+        );
+
+      return users.map((u) => {
+        const isFriend = friendships.some(
+          (f) =>
+            (f.userIdA === me && f.userIdB === u.id) ||
+            (f.userIdB === me && f.userIdA === u.id),
+        );
+        const hasPendingRequest = requests.some(
+          (r) =>
+            (r.fromUserId === me &&
+              r.toUserId === u.id &&
+              r.status === "pending") ||
+            (r.toUserId === me &&
+              r.fromUserId === u.id &&
+              r.status === "pending"),
+        );
+        return { id: u.id, name: u.name, isFriend, hasPendingRequest };
+      });
+    }),
+
+  list: protectedProcedure.query(async ({ ctx }) => {
+    const me = ctx.session.user.id;
+    const rows = await ctx.db
+      .select()
+      .from(Friendship)
+      .where(or(eq(Friendship.userIdA, me), eq(Friendship.userIdB, me)));
+
+    const friendIds = rows.map((r) =>
+      r.userIdA === me ? r.userIdB : r.userIdA,
+    );
+    if (friendIds.length === 0)
+      return [] as { id: string; name: string }[];
+    const friends = await ctx.db
+      .select()
+      .from(User)
+      .where(or(...friendIds.map((id) => eq(User.id, id))));
+    return friends.map((u) => ({ id: u.id, name: u.name }));
+  }),
+
+  incomingRequests: protectedProcedure.query(async ({ ctx }) => {
+    const me = ctx.session.user.id;
+    const pending = await ctx.db
+      .select()
+      .from(FriendRequest)
+      .where(
+        and(
+          eq(FriendRequest.toUserId, me),
+          eq(FriendRequest.status, "pending"),
+        ),
+      );
+
+    const fromIds = pending.map((r) => r.fromUserId);
+    const users = fromIds.length
+      ? await ctx.db.select().from(User).where(inArray(User.id, fromIds))
+      : ([] as typeof User.$inferSelect[]);
+    const idToUser = new Map(users.map((u) => [u.id, u] as const));
+
+    return pending
+      .map((r) => {
+        const u = idToUser.get(r.fromUserId);
+        if (!u) return null;
+        return { requestId: r.id, fromUser: { id: u.id, name: u.name } };
+      })
+      .filter(Boolean);
+  }),
+
+  sendRequest: protectedProcedure
+    .input(z.object({ toUserId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const me = ctx.session.user.id;
+      if (me === input.toUserId) return { ok: true };
+
+      // If already friends, do nothing
+      const existingFriend = await ctx.db
+        .select()
+        .from(Friendship)
+        .where(
+          or(
+            and(
+              eq(Friendship.userIdA, me),
+              eq(Friendship.userIdB, input.toUserId),
+            ),
+            and(
+              eq(Friendship.userIdB, me),
+              eq(Friendship.userIdA, input.toUserId),
+            ),
+          ),
+        );
+      if (existingFriend.length > 0) return { ok: true };
+
+      await ctx.db.insert(FriendRequest).values({
+        fromUserId: me,
+        toUserId: input.toUserId,
+        status: "pending",
+      });
+      return { ok: true };
+    }),
+
+  acceptRequest: protectedProcedure
+    .input(z.object({ requestId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const me = ctx.session.user.id;
+      const request = (
+        await ctx.db
+          .select()
+          .from(FriendRequest)
+          .where(eq(FriendRequest.id, input.requestId))
+      )[0];
+      if (!request || request.toUserId !== me || request.status !== "pending")
+        return { ok: false };
+
+      // create friendship with normalized pair
+      const a =
+        request.fromUserId < request.toUserId
+          ? request.fromUserId
+          : request.toUserId;
+      const b =
+        request.fromUserId < request.toUserId
+          ? request.toUserId
+          : request.fromUserId;
+      await ctx.db.insert(Friendship).values({ userIdA: a, userIdB: b });
+      await ctx.db
+        .update(FriendRequest)
+        .set({ status: "accepted" })
+        .where(eq(FriendRequest.id, input.requestId));
+      return { ok: true };
+    }),
+} satisfies TRPCRouterRecord;

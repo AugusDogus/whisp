@@ -8,7 +8,7 @@ import { StatusBar } from "expo-status-bar";
 import { PortalHost } from "@rn-primitives/portal";
 import { QueryClientProvider } from "@tanstack/react-query";
 
-import { queryClient } from "~/utils/api";
+import { createExpoTRPCClient, queryClient, trpc } from "~/utils/api";
 import { RootNavigator } from "./navigation/RootNavigator";
 
 import "./styles.css";
@@ -18,11 +18,16 @@ export default function App() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider initialMetrics={initialWindowMetrics}>
         <QueryClientProvider client={queryClient}>
-          <View style={{ flex: 1 }}>
-            <RootNavigator />
-            <StatusBar />
-            <PortalHost />
-          </View>
+          <trpc.Provider
+            client={createExpoTRPCClient()}
+            queryClient={queryClient}
+          >
+            <View style={{ flex: 1 }}>
+              <RootNavigator />
+              <StatusBar />
+              <PortalHost />
+            </View>
+          </trpc.Provider>
         </QueryClientProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

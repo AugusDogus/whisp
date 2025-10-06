@@ -2,7 +2,6 @@ import type { RouteProp } from "@react-navigation/native";
 import { View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRoute } from "@react-navigation/native";
-import { useQuery } from "@tanstack/react-query";
 
 import type { RootStackParamList } from "~/navigation/types";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
@@ -12,7 +11,7 @@ import { trpc } from "~/utils/api";
 export default function Post() {
   const route = useRoute<RouteProp<RootStackParamList, "Post">>();
   const { id } = route.params;
-  const { data } = useQuery(trpc.post.byId.queryOptions({ id }));
+  const { data } = trpc.post.byId.useQuery({ id });
 
   if (!data) return null;
 

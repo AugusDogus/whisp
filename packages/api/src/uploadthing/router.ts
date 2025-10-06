@@ -1,5 +1,9 @@
 import type { FileRouter } from "uploadthing/types";
 import { createUploadthing, UploadThingError } from "uploadthing/server";
+import { z } from "zod/v4";
+
+import { db } from "@acme/db/client";
+import { Message, MessageDelivery } from "@acme/db/schema";
 
 interface CreateDeps {
   getSession: () => Promise<{ user: { id: string } } | null>;
@@ -19,15 +23,39 @@ export function createUploadRouter({ getSession }: CreateDeps) {
         maxFileCount: 1,
       },
     })
-      .middleware(async () => {
+      .input(
+        z.object({
+          recipients: z.array(z.string().min(1)).min(1),
+          mimeType: z.string().optional(),
+        }),
+      )
+      .middleware(async ({ input }) => {
         const session = await getSession();
         // eslint-disable-next-line @typescript-eslint/only-throw-error -- UploadThingError maps to proper HTTP status in UploadThing
         if (!session) throw new UploadThingError("Unauthorized");
-        return { userId: session.user.id };
+        return {
+          userId: session.user.id,
+          recipients: input.recipients,
+          mimeType: input.mimeType,
+        };
       })
-      .onUploadComplete(({ metadata, file }) => {
-        console.log("Upload complete for userId:", metadata.userId);
-        console.log("file url", file.ufsUrl);
+      .onUploadComplete(async ({ metadata, file }) => {
+        // Create message and deliveries
+        const messageId = crypto.randomUUID();
+        await db.insert(Message).values({
+          id: messageId,
+          senderId: metadata.userId,
+          fileUrl: file.ufsUrl,
+          fileKey: (file as unknown as { ufsKey?: string }).ufsKey ?? undefined,
+          mimeType: metadata.mimeType,
+        });
+        await db.insert(MessageDelivery).values(
+          metadata.recipients.map((rid) => ({
+            id: crypto.randomUUID(),
+            messageId,
+            recipientId: rid,
+          })),
+        );
         return { uploadedBy: metadata.userId };
       }),
   } satisfies FileRouter;

@@ -45,7 +45,7 @@ export default function SplashScreen() {
 
       if (cookieExists) {
         console.log("[Splash] Cookie found, redirecting to camera");
-        navigation.replace("Camera");
+        navigation.replace("Main");
         return;
       }
 

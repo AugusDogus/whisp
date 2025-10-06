@@ -1,9 +1,9 @@
 import { QueryClient } from "@tanstack/react-query";
 import { createTRPCClient, httpBatchLink, loggerLink } from "@trpc/client";
-import { createTRPCOptionsProxy } from "@trpc/tanstack-react-query";
+import { createTRPCReact } from "@trpc/react-query";
 import superjson from "superjson";
 
-import type { AppRouter } from "@acme/api";
+import type { AppRouter, RouterOutputs } from "@acme/api";
 
 import { authClient } from "./auth";
 import { getBaseUrl } from "./base-url";
@@ -16,11 +16,10 @@ export const queryClient = new QueryClient({
   },
 });
 
-/**
- * A set of typesafe hooks for consuming your API.
- */
-export const trpc = createTRPCOptionsProxy<AppRouter>({
-  client: createTRPCClient({
+export const trpc = createTRPCReact<AppRouter>();
+
+export function createExpoTRPCClient() {
+  return createTRPCClient<AppRouter>({
     links: [
       loggerLink({
         enabled: (opts) =>
@@ -43,8 +42,8 @@ export const trpc = createTRPCOptionsProxy<AppRouter>({
         },
       }),
     ],
-  }),
-  queryClient,
-});
+  });
+}
 
 export { type RouterInputs, type RouterOutputs } from "@acme/api";
+export type FriendsListOutput = RouterOutputs["friends"]["list"];

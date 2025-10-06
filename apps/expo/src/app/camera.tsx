@@ -1,3 +1,4 @@
+import type { RouteProp } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type * as React from "react";
 import type { GestureResponderEvent } from "react-native";
@@ -39,8 +40,9 @@ import {
   useFocusEffect,
   useIsFocused,
   useNavigation,
+  useRoute,
 } from "@react-navigation/native";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import type { CaptureButtonRef } from "~/components/capture-button";
 import type { RootStackParamList } from "~/navigation/types";
@@ -56,10 +58,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "~/components/ui/dialog";
+import { Input } from "~/components/ui/input";
 import { Text as UIText } from "~/components/ui/text";
 import { useIsForeground } from "~/hooks/useIsForeground";
 import { usePreferredCameraDevice } from "~/hooks/usePreferredCameraDevice";
 import { useCookieStore } from "~/stores/cookie-store";
+import { trpc } from "~/utils/api";
 import { authClient } from "~/utils/auth";
 import {
   CONTENT_SPACING,
@@ -90,6 +94,8 @@ export function useWhispCookie() {
 export default function CameraPage(): React.ReactElement {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const cameraRoute = useRoute<RouteProp<RootStackParamList, "Camera">>();
+  const defaultRecipientId = cameraRoute.params?.defaultRecipientId;
   const { data: session, isPending, refetch } = authClient.useSession();
   const { checkCookie: _checkCookie } = useCookieStore();
   const camera = useRef<Camera>(null);
@@ -180,12 +186,16 @@ export default function CameraPage(): React.ReactElement {
             console.debug("[Media] image prefetch failed", err);
           });
         }
-        navigation.navigate("Media", { path: media.path, type });
+        navigation.navigate("Media", {
+          path: media.path,
+          type,
+          defaultRecipientId,
+        });
       } catch (err) {
         console.error("Failed to navigate to Media screen", err);
       }
     },
-    [navigation],
+    [navigation, defaultRecipientId],
   );
   const onFlipCameraPressed = useCallback(() => {
     setCameraPosition((p) => (p === "back" ? "front" : "back"));
@@ -583,6 +593,18 @@ export default function CameraPage(): React.ReactElement {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        <Dialog>
+          <DialogTrigger asChild>
+            <Pressable
+              style={styles.button}
+              onPress={() => navigation.navigate("AddFriends")}
+            >
+              <Ionicons name="person-add-outline" color="white" size={24} />
+            </Pressable>
+          </DialogTrigger>
+          {/* Removed dialog content in favor of dedicated screen */}
+        </Dialog>
       </View>
 
       <View style={styles.rightButtonRow}>
@@ -678,4 +700,111 @@ function createStyles(safeAreaPadding: ReturnType<typeof useSafeAreaPadding>) {
       alignItems: "center",
     },
   });
+}
+
+export function FriendSearchAndRequests() {
+  const [query, setQuery] = useState("");
+  const queryClient = useQueryClient();
+  const { data: results = [], isPending } = trpc.friends.searchUsers.useQuery(
+    { query },
+    { enabled: query.trim().length > 0 },
+  );
+  const { data: incoming = [] } = trpc.friends.incomingRequests.useQuery();
+
+  const sendReq = trpc.friends.sendRequest.useMutation({
+    onSuccess: async () => {
+      await queryClient.invalidateQueries();
+    },
+  });
+  const acceptReq = trpc.friends.acceptRequest.useMutation({
+    onSuccess: async () => {
+      await queryClient.invalidateQueries();
+    },
+  });
+
+  return (
+    <View className="gap-4">
+      <Input
+        placeholder="Search by name or email"
+        value={query}
+        onChangeText={setQuery}
+      />
+
+      {query.trim().length > 0 && (
+        <View className="gap-2">
+          <UIText className="text-sm font-semibold">Search Results</UIText>
+          {isPending ? (
+            <UIText variant="muted" className="text-sm">
+              Searching…
+            </UIText>
+          ) : (results as unknown[]).length > 0 ? (
+            (
+              results as {
+                id: string;
+                name: string;
+                isFriend: boolean;
+                hasPendingRequest: boolean;
+              }[]
+            ).map((u) => (
+              <View
+                key={u.id}
+                className="flex-row items-center justify-between rounded-md bg-secondary px-3 py-2"
+              >
+                <UIText>{u.name}</UIText>
+                {u.isFriend ? (
+                  <UIText variant="muted" className="text-xs">
+                    Friends
+                  </UIText>
+                ) : u.hasPendingRequest ? (
+                  <UIText variant="muted" className="text-xs">
+                    Pending
+                  </UIText>
+                ) : (
+                  <Button
+                    size="sm"
+                    onPress={() => sendReq.mutate({ toUserId: u.id })}
+                  >
+                    <UIText>Add</UIText>
+                  </Button>
+                )}
+              </View>
+            ))
+          ) : (
+            <UIText variant="muted" className="text-sm">
+              No users found
+            </UIText>
+          )}
+        </View>
+      )}
+
+      <View className="gap-2">
+        <UIText className="text-sm font-semibold">Incoming Requests</UIText>
+        {(incoming as unknown[]).length === 0 ? (
+          <UIText variant="muted" className="text-sm">
+            No requests
+          </UIText>
+        ) : (
+          (
+            incoming as {
+              requestId: string;
+              fromUser: { id: string; name: string };
+            }[]
+          ).map((r) => (
+            <View
+              key={r.requestId}
+              className="flex-row items-center justify-between rounded-md bg-secondary px-3 py-2"
+            >
+              <UIText>{r.fromUser.name}</UIText>
+              <Button
+                size="sm"
+                onPress={() => acceptReq.mutate({ requestId: r.requestId })}
+              >
+                <UIText>Accept</UIText>
+              </Button>
+            </View>
+          ))
+        )}
+      </View>
+    </View>
+  );
 }

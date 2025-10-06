@@ -1,6 +1,6 @@
 import type { RouteProp } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { FlatList, Pressable, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Image } from "expo-image";
@@ -8,9 +8,11 @@ import { useNavigation, useRoute } from "@react-navigation/native";
 import { toast } from "sonner-native";
 
 import type { RootStackParamList } from "~/navigation/types";
+// import type { FriendsListOutput } from "~/utils/api";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { Text } from "~/components/ui/text";
+import { trpc } from "~/utils/api";
 import { createFile, useUploadThing } from "~/utils/uploadthing";
 
 interface FriendItem {
@@ -19,25 +21,15 @@ interface FriendItem {
   isSelected: boolean;
 }
 
-const MOCK_FRIENDS: Omit<FriendItem, "isSelected">[] = [
-  { id: "1", name: "Alex" },
-  { id: "2", name: "Bailey" },
-  { id: "3", name: "Casey" },
-  { id: "4", name: "Devon" },
-  { id: "5", name: "Emery" },
-  { id: "6", name: "Frankie" },
-  { id: "7", name: "Harper" },
-];
+// const MOCK_FRIENDS: Omit<FriendItem, "isSelected">[] = [];
 
 export default function FriendsScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute<RouteProp<RootStackParamList, "Friends">>();
-  const { path } = route.params;
+  const { path, defaultRecipientId } = route.params;
 
-  const [friends, setFriends] = useState<FriendItem[]>(() =>
-    MOCK_FRIENDS.map((f) => ({ ...f, isSelected: false })),
-  );
+  const [friends, setFriends] = useState<FriendItem[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
 
   const mediaSource = useMemo(() => ({ uri: `file://${path}` }), [path]);
@@ -57,6 +49,17 @@ export default function FriendsScreen() {
       prev.map((f) => (f.id === id ? { ...f, isSelected: !f.isSelected } : f)),
     );
   }
+
+  const { data: friendList } = trpc.friends.list.useQuery();
+  useEffect(() => {
+    if (!friendList) return;
+    setFriends(
+      friendList.map((f) => ({
+        ...f,
+        isSelected: defaultRecipientId ? f.id === defaultRecipientId : false,
+      })),
+    );
+  }, [friendList]);
 
   const { startUpload } = useUploadThing("imageUploader", {
     /**
@@ -128,7 +131,14 @@ export default function FriendsScreen() {
             disabled={numSelected === 0}
             onPress={() => {
               const file = createFile(mediaSource.uri);
-              void startUpload([file]);
+              const recipients = friends
+                .filter((f) => f.isSelected)
+                .map((f) => f.id);
+              void startUpload([file], {
+                input: {
+                  recipients,
+                },
+              });
               // After send, reset stack to prevent navigating back
               navigation.reset({ index: 0, routes: [{ name: "Camera" }] });
             }}

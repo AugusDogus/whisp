@@ -19,7 +19,7 @@ export default function MediaScreen() {
   const route = useRoute<RouteProp<RootStackParamList, "Media">>();
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { path, type } = route.params;
+  const { path, type, defaultRecipientId } = route.params;
 
   const source = useMemo(() => ({ uri: `file://${path}` }), [path]);
   const isFocused = useIsFocused();
@@ -71,7 +71,13 @@ export default function MediaScreen() {
           </Button>
           <Button
             className="px-6"
-            onPress={() => navigation.navigate("Friends", { path, type })}
+            onPress={() =>
+              navigation.navigate("Friends", {
+                path,
+                type,
+                defaultRecipientId,
+              })
+            }
           >
             <Text>Send</Text>
           </Button>
