@@ -59,7 +59,7 @@ export default function FriendsScreen() {
         isSelected: defaultRecipientId ? f.id === defaultRecipientId : false,
       })),
     );
-  }, [friendList]);
+  }, [friendList, defaultRecipientId]);
 
   const { startUpload } = useUploadThing("imageUploader", {
     /**

@@ -121,12 +121,13 @@ export default function InboxScreen() {
         />
       </View>
 
-      <Modal visible={!!viewer} transparent animationType="fade">
+      <Modal visible={Boolean(viewer)} transparent animationType="fade">
         <TouchableWithoutFeedback onPress={onViewerTap}>
           <View className="flex-1 items-center justify-center bg-black/90">
-            {viewer && viewer.queue[viewer.index]
+            {viewer?.queue[viewer.index]
               ? (() => {
-                  const m = viewer.queue[viewer.index]!;
+                  const m = viewer.queue[viewer.index];
+                  if (!m) return null;
                   const isVideo = (m.mimeType ?? "").startsWith("video/");
                   return isVideo ? (
                     <Video
