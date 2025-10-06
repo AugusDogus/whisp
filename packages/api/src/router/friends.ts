@@ -91,8 +91,7 @@ export const friendsRouter = {
     const friendIds = rows.map((r) =>
       r.userIdA === me ? r.userIdB : r.userIdA,
     );
-    if (friendIds.length === 0)
-      return [] as { id: string; name: string }[];
+    if (friendIds.length === 0) return [] as { id: string; name: string }[];
     const friends = await ctx.db
       .select()
       .from(User)
@@ -115,7 +114,7 @@ export const friendsRouter = {
     const fromIds = pending.map((r) => r.fromUserId);
     const users = fromIds.length
       ? await ctx.db.select().from(User).where(inArray(User.id, fromIds))
-      : ([] as typeof User.$inferSelect[]);
+      : ([] as (typeof User.$inferSelect)[]);
     const idToUser = new Map(users.map((u) => [u.id, u] as const));
 
     return pending
