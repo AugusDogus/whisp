@@ -1,4 +1,5 @@
 import type { inferRouterInputs, inferRouterOutputs } from "@trpc/server";
+import type { AnyFileRoute } from "uploadthing/types";
 
 import type { AppRouter } from "./root";
 import { appRouter } from "./root";
@@ -20,5 +21,10 @@ type RouterInputs = inferRouterInputs<AppRouter>;
  **/
 type RouterOutputs = inferRouterOutputs<AppRouter>;
 
-export { createTRPCContext, appRouter };
+export { appRouter, createTRPCContext };
 export type { AppRouter, RouterInputs, RouterOutputs };
+export interface UploadRouter {
+  imageUploader: AnyFileRoute;
+  [key: string]: AnyFileRoute;
+}
+export { createUploadRouter } from "./uploadthing/router";
