@@ -67,13 +67,13 @@ export default function MediaScreen() {
             className="px-6"
             onPress={() => navigation.goBack()}
           >
-            <Text>Retake</Text>
+            <Text>Cancel</Text>
           </Button>
           <Button
             className="px-6"
             onPress={() => navigation.navigate("Friends", { path, type })}
           >
-            <Text>Use</Text>
+            <Text>Send</Text>
           </Button>
         </View>
       </SafeAreaView>

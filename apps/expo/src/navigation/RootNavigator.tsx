@@ -1,5 +1,6 @@
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import { Toaster } from 'sonner-native';
 
 // import type { RootStackParamList } from "./types";
 import CameraScreen from "~/app/camera";
@@ -25,6 +26,7 @@ export function RootNavigator() {
         <Stack.Screen name="Media" component={MediaScreen} />
         <Stack.Screen name="Friends" component={FriendsScreen} />
       </Stack.Navigator>
+      <Toaster />
     </NavigationContainer>
   );
 }
