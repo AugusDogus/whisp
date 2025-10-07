@@ -1,148 +1,359 @@
 import type { RouteProp } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useEffect, useMemo, useState } from "react";
-import { FlatList, Pressable, View } from "react-native";
+import {
+  FlatList,
+  Modal,
+  Pressable,
+  RefreshControl,
+  TouchableWithoutFeedback,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { ResizeMode, Video } from "expo-av";
 import { Image } from "expo-image";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import { toast } from "sonner-native";
 
-import type { RootStackParamList } from "~/navigation/types";
-// import type { FriendsListOutput } from "~/utils/api";
+import type { MainTabParamList, RootStackParamList } from "~/navigation/types";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { Text } from "~/components/ui/text";
 import { trpc } from "~/utils/api";
 import { createFile, uploadFilesWithInput } from "~/utils/uploadthing";
 
-interface FriendItem {
+interface FriendRow {
   id: string;
   name: string;
+  image: string | null;
+  hasUnread: boolean;
+  unreadCount: number;
   isSelected: boolean;
 }
-
-// const MOCK_FRIENDS: Omit<FriendItem, "isSelected">[] = [];
 
 export default function FriendsScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const route = useRoute<RouteProp<RootStackParamList, "Friends">>();
-  const { path, defaultRecipientId } = route.params;
+  const route = useRoute<RouteProp<MainTabParamList, "Friends">>();
+  const mediaParams = route.params;
+  const hasMedia = Boolean(mediaParams?.path);
 
-  const [friends, setFriends] = useState<FriendItem[]>([]);
+  const { data: friends = [], refetch: refetchFriends } =
+    trpc.friends.list.useQuery();
+  const { data: inbox = [], refetch: refetchInbox } =
+    trpc.messages.inbox.useQuery();
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const utils = trpc.useUtils();
+  const markRead = trpc.messages.markRead.useMutation({
+    onSuccess: async () => {
+      await utils.messages.inbox.invalidate();
+    },
+  });
 
-  const mediaSource = useMemo(() => ({ uri: `file://${path}` }), [path]);
-  const numSelected = useMemo(
-    () => friends.filter((f) => f.isSelected).length,
-    [friends],
+  const onRefresh = async () => {
+    setIsRefreshing(true);
+    await Promise.all([refetchFriends(), refetchInbox()]);
+    setIsRefreshing(false);
+  };
+
+  const [viewer, setViewer] = useState<{
+    friendId: string;
+    queue: typeof inbox;
+    index: number;
+  } | null>(null);
+
+  const openViewer = (friendId: string) => {
+    const queue = inbox.filter((m) => m && m.senderId === friendId);
+    if (queue.length === 0) return;
+
+    // Optimistically update the inbox to remove messages from this friend
+    utils.messages.inbox.setData(undefined, (old) =>
+      old ? old.filter((m) => m && m.senderId !== friendId) : [],
+    );
+
+    setViewer({ friendId, queue, index: 0 });
+  };
+
+  const closeViewer = () => setViewer(null);
+
+  const onViewerTap = () => {
+    if (!viewer) return;
+    const current = viewer.queue[viewer.index];
+    if (current) {
+      markRead.mutate({ deliveryId: current.deliveryId });
+    }
+    const nextIndex = viewer.index + 1;
+    if (nextIndex < viewer.queue.length)
+      setViewer({ ...viewer, index: nextIndex });
+    else closeViewer();
+  };
+
+  const rows = useMemo<FriendRow[]>(() => {
+    const senderToMessages = new Map<string, number>();
+    for (const m of inbox) {
+      if (!m) continue;
+      const count = senderToMessages.get(m.senderId) ?? 0;
+      senderToMessages.set(m.senderId, count + 1);
+    }
+    return friends.map((f) => ({
+      id: f.id,
+      name: f.name,
+      image: (f as unknown as { image?: string | null }).image ?? null,
+      hasUnread: (senderToMessages.get(f.id) ?? 0) > 0,
+      unreadCount: senderToMessages.get(f.id) ?? 0,
+      isSelected:
+        hasMedia && mediaParams?.defaultRecipientId
+          ? f.id === mediaParams.defaultRecipientId
+          : false,
+    }));
+  }, [friends, inbox, hasMedia, mediaParams?.defaultRecipientId]);
+
+  const [selectedFriends, setSelectedFriends] = useState<Set<string>>(
+    new Set(
+      hasMedia && mediaParams?.defaultRecipientId
+        ? [mediaParams.defaultRecipientId]
+        : [],
+    ),
   );
 
-  const filteredFriends = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (q.length === 0) return friends;
-    return friends.filter((f) => f.name.toLowerCase().includes(q));
-  }, [friends, searchQuery]);
+  // Update selected friends when rows change (on initial load with defaultRecipientId)
+  useEffect(() => {
+    if (hasMedia && mediaParams?.defaultRecipientId) {
+      setSelectedFriends(new Set([mediaParams.defaultRecipientId]));
+    }
+  }, [hasMedia, mediaParams?.defaultRecipientId]);
 
   function toggleFriend(id: string) {
-    setFriends((prev) =>
-      prev.map((f) => (f.id === id ? { ...f, isSelected: !f.isSelected } : f)),
+    setSelectedFriends((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
+  const filteredRows = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (q.length === 0) return rows;
+    return rows.filter((f) => f.name.toLowerCase().includes(q));
+  }, [rows, searchQuery]);
+
+  const mediaSource = useMemo(
+    () => (mediaParams?.path ? { uri: `file://${mediaParams.path}` } : null),
+    [mediaParams?.path],
+  );
+
+  const numSelected = selectedFriends.size;
+
+  // Send mode: Show media preview, search, and send button
+  if (hasMedia && mediaSource) {
+    return (
+      <SafeAreaView className="bg-background">
+        <View className="h-full w-full">
+          <View className="flex w-full flex-row items-center gap-4 px-4">
+            <View className="h-16 w-16 overflow-hidden rounded-md bg-secondary">
+              <Image
+                source={mediaSource}
+                style={{ width: "100%", height: "100%" }}
+                contentFit="cover"
+              />
+            </View>
+            <Input
+              placeholder="Send to…"
+              className="w-auto flex-1"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+            />
+          </View>
+
+          <FlatList
+            className="mt-4"
+            data={filteredRows}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => (
+              <Pressable
+                className="flex-row items-center justify-between px-4 py-4"
+                onPress={() => toggleFriend(item.id)}
+              >
+                <View className="flex-row items-center gap-3">
+                  <View className="h-10 w-10 overflow-hidden rounded-full bg-secondary">
+                    {item.image ? (
+                      <Image
+                        source={{ uri: item.image }}
+                        style={{ width: 40, height: 40 }}
+                        contentFit="cover"
+                      />
+                    ) : (
+                      <View className="h-full w-full items-center justify-center">
+                        <Text className="text-base font-semibold">
+                          {(() => {
+                            const n = item.name.trim();
+                            if (n.length === 0) return "?";
+                            const cp = n.codePointAt(0);
+                            if (cp == null) return "?";
+                            const first = String.fromCodePoint(cp);
+                            return /^[a-z]$/i.test(first)
+                              ? first.toUpperCase()
+                              : first;
+                          })()}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text className="text-base">{item.name}</Text>
+                </View>
+                <View
+                  className={
+                    selectedFriends.has(item.id)
+                      ? "h-6 w-6 items-center justify-center rounded-full bg-primary"
+                      : "h-6 w-6 rounded-full border border-border"
+                  }
+                />
+              </Pressable>
+            )}
+            ItemSeparatorComponent={() => <View className="h-px bg-border" />}
+          />
+
+          <View className="flex flex-row gap-2 px-4 py-3">
+            <Button
+              variant="secondary"
+              className="w-1/2"
+              onPress={() => navigation.goBack()}
+            >
+              <Text>Back</Text>
+            </Button>
+            <Button
+              className="w-1/2"
+              disabled={numSelected === 0}
+              onPress={() => {
+                const file = createFile(mediaSource.uri);
+                const recipients = Array.from(selectedFriends);
+                void uploadFilesWithInput("imageUploader", {
+                  files: [file],
+                  input: { recipients },
+                })
+                  .then(() => toast.success("whisper sent"))
+                  .catch((err: unknown) =>
+                    toast.error(
+                      err instanceof Error ? err.message : "Upload failed",
+                    ),
+                  );
+                // After send, reset to Main (tabbed root)
+                navigation.reset({ index: 0, routes: [{ name: "Main" }] });
+              }}
+            >
+              <Text>{numSelected > 0 ? `Send (${numSelected})` : "Send"}</Text>
+            </Button>
+          </View>
+        </View>
+      </SafeAreaView>
     );
   }
 
-  const { data: friendList } = trpc.friends.list.useQuery();
-  useEffect(() => {
-    if (!friendList) return;
-    setFriends(
-      friendList.map((f) => ({
-        ...f,
-        isSelected: defaultRecipientId ? f.id === defaultRecipientId : false,
-      })),
-    );
-  }, [friendList, defaultRecipientId]);
-
+  // Normal mode: Show friends list with inbox counts
   return (
-    <SafeAreaView className="bg-background">
-      <View className="h-full w-full">
-        <View className="flex w-full flex-row items-center gap-4 px-4">
-          <View className="h-16 w-16 overflow-hidden rounded-md bg-secondary">
-            <Image
-              source={mediaSource}
-              style={{ width: "100%", height: "100%" }}
-              contentFit="cover"
-            />
+    <>
+      <SafeAreaView className="bg-background">
+        <View className="h-full w-full">
+          <View className="items-center px-4 py-3">
+            <Text className="text-lg font-semibold">Friends</Text>
           </View>
-          <Input
-            placeholder="Send to…"
-            className="w-auto flex-1"
-            value={searchQuery}
-            onChangeText={setSearchQuery}
+
+          <FlatList
+            data={rows}
+            keyExtractor={(item) => item.id}
+            refreshControl={
+              <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
+            }
+            renderItem={({ item }) => (
+              <Pressable
+                className="flex-row items-center justify-between px-4 py-4"
+                onPress={() => {
+                  if (item.unreadCount > 0) openViewer(item.id);
+                  else {
+                    navigation.navigate("Camera", {
+                      defaultRecipientId: item.id,
+                    });
+                  }
+                }}
+              >
+                <View className="flex-row items-center gap-3">
+                  <View className="h-10 w-10 overflow-hidden rounded-full bg-secondary">
+                    {item.image ? (
+                      <Image
+                        source={{ uri: item.image }}
+                        style={{ width: 40, height: 40 }}
+                        contentFit="cover"
+                      />
+                    ) : (
+                      <View className="h-full w-full items-center justify-center">
+                        <Text className="text-base font-semibold">
+                          {(() => {
+                            const n = item.name.trim();
+                            if (n.length === 0) return "?";
+                            const cp = n.codePointAt(0);
+                            if (cp == null) return "?";
+                            const first = String.fromCodePoint(cp);
+                            return /^[a-z]$/i.test(first)
+                              ? first.toUpperCase()
+                              : first;
+                          })()}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text className="text-base">{item.name}</Text>
+                </View>
+                {item.hasUnread ? (
+                  <View className="items-center justify-center rounded-full bg-primary px-2 py-1">
+                    <Text className="text-xs font-semibold text-primary-foreground">
+                      {item.unreadCount}
+                    </Text>
+                  </View>
+                ) : (
+                  <View className="h-3 w-3 rounded-full bg-muted" />
+                )}
+              </Pressable>
+            )}
+            ItemSeparatorComponent={() => <View className="h-px bg-border" />}
           />
         </View>
+      </SafeAreaView>
 
-        <FlatList
-          className="mt-4"
-          data={filteredFriends}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <Pressable
-              className="flex-row items-center justify-between px-4 py-4"
-              onPress={() => toggleFriend(item.id)}
-            >
-              <View className="flex-row items-center gap-3">
-                <View className="h-10 w-10 items-center justify-center rounded-full bg-secondary">
-                  <Text className="text-base font-semibold">
-                    {item.name.slice(0, 1).toUpperCase()}
-                  </Text>
-                </View>
-                <Text className="text-base">{item.name}</Text>
-              </View>
-              <View
-                className={
-                  item.isSelected
-                    ? "h-6 w-6 items-center justify-center rounded-full bg-primary"
-                    : "h-6 w-6 rounded-full border border-border"
-                }
-              />
-            </Pressable>
-          )}
-          ItemSeparatorComponent={() => <View className="h-px bg-border" />}
-        />
-
-        <View className="flex flex-row gap-2 px-4 py-3">
-          <Button
-            variant="secondary"
-            className="w-1/2"
-            onPress={() => navigation.goBack()}
-          >
-            <Text>Back</Text>
-          </Button>
-          <Button
-            className="w-1/2"
-            disabled={numSelected === 0}
-            onPress={() => {
-              const file = createFile(mediaSource.uri);
-              const recipients = friends
-                .filter((f) => f.isSelected)
-                .map((f) => f.id);
-              void uploadFilesWithInput("imageUploader", {
-                files: [file],
-                input: { recipients },
-              })
-                .then(() => toast.success("whisper sent"))
-                .catch((err: unknown) =>
-                  toast.error(
-                    err instanceof Error ? err.message : "Upload failed",
-                  ),
-                );
-              // After send, reset to Main (tabbed root)
-              navigation.reset({ index: 0, routes: [{ name: "Main" }] });
-            }}
-          >
-            <Text>{numSelected > 0 ? `Send (${numSelected})` : "Send"}</Text>
-          </Button>
-        </View>
-      </View>
-    </SafeAreaView>
+      {/* Message viewer modal - outside SafeAreaView to avoid safe area padding */}
+      <Modal visible={Boolean(viewer)} transparent={false} animationType="fade">
+        <TouchableWithoutFeedback onPress={onViewerTap}>
+          <View className="flex-1 bg-black">
+            {viewer?.queue[viewer.index]
+              ? (() => {
+                  const m = viewer.queue[viewer.index];
+                  if (!m) return null;
+                  const isVideo = (m.mimeType ?? "").startsWith("video/");
+                  return isVideo ? (
+                    <Video
+                      source={{ uri: m.fileUrl }}
+                      style={{ width: "100%", height: "100%" }}
+                      resizeMode={ResizeMode.COVER}
+                      shouldPlay
+                      isLooping={false}
+                      useNativeControls={false}
+                    />
+                  ) : (
+                    <Image
+                      source={{ uri: m.fileUrl }}
+                      style={{ width: "100%", height: "100%" }}
+                      contentFit="cover"
+                    />
+                  );
+                })()
+              : null}
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+    </>
   );
 }

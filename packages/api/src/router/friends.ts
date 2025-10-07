@@ -98,6 +98,13 @@ export const friendsRouter = {
     const friendIds = rows.map((r) =>
       r.userIdA === me ? r.userIdB : r.userIdA,
     );
+
+    // Feature flag: Allow sending messages to yourself for testing
+    const allowSelfMessages = process.env.ALLOW_SELF_MESSAGES === "true";
+    if (allowSelfMessages) {
+      friendIds.push(me);
+    }
+
     if (friendIds.length === 0)
       return [] as { id: string; name: string; image: string | null }[];
     const friends = await ctx.db

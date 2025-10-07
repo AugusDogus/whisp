@@ -72,10 +72,13 @@ export default function MediaScreen() {
           <Button
             className="px-6"
             onPress={() =>
-              navigation.navigate("Friends", {
-                path,
-                type,
-                defaultRecipientId,
+              navigation.navigate("Main", {
+                screen: "Friends",
+                params: {
+                  path,
+                  type,
+                  defaultRecipientId,
+                },
               })
             }
           >

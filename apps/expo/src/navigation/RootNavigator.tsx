@@ -7,7 +7,6 @@ import { Toaster } from "sonner-native";
 import AddFriendsScreen from "~/app/add-friends";
 import CameraScreen from "~/app/camera";
 import FriendsScreen from "~/app/friends";
-import InboxScreen from "~/app/inbox";
 import SplashScreen from "~/app/index";
 import LoginScreen from "~/app/login";
 import MediaScreen from "~/app/media";
@@ -23,7 +22,7 @@ function MainTabs() {
       tabBarPosition="bottom"
       screenOptions={{ tabBarStyle: { display: "none" }, swipeEnabled: true }}
     >
-      <TopTabs.Screen name="Inbox" component={InboxScreen} />
+      <TopTabs.Screen name="Friends" component={FriendsScreen} />
       <TopTabs.Screen name="Camera" component={CameraScreen} />
     </TopTabs.Navigator>
   );
@@ -41,7 +40,6 @@ export function RootNavigator() {
         <Stack.Screen name="Main" component={MainTabs} />
         <Stack.Screen name="Post" component={PostScreen} />
         <Stack.Screen name="Media" component={MediaScreen} />
-        <Stack.Screen name="Friends" component={FriendsScreen} />
         <Stack.Screen name="AddFriends" component={AddFriendsScreen} />
       </Stack.Navigator>
       <Toaster />

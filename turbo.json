@@ -53,7 +53,9 @@
     "AUTH_REDIRECT_PROXY_URL",
     "AUTH_SECRET",
     "UPLOADTHING_TOKEN",
-    "PORT"
+    "PORT",
+    "ALLOW_SELF_MESSAGES",
+    "EXPO_PUBLIC_ALLOW_SELF_MESSAGES"
   ],
   "globalPassThroughEnv": [
     "NODE_ENV",

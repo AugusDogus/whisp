@@ -42,3 +42,7 @@ export const CAPTURE_BUTTON_SIZE = 78;
 
 // Control Button like Flash
 export const CONTROL_BUTTON_SIZE = 40;
+
+// Feature Flags
+export const ALLOW_SELF_MESSAGES =
+  process.env.EXPO_PUBLIC_ALLOW_SELF_MESSAGES === "true";
