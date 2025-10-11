@@ -18,6 +18,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     bundleIdentifier: "whisp.chat",
     supportsTablet: true,
     icon: "./assets/icon.png",
+    infoPlist: {
+      ITSAppUsesNonExemptEncryption: false,
+    },
   },
   android: {
     package: "whisp.chat",
