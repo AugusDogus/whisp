@@ -97,6 +97,14 @@ export default function CameraPage(): React.ReactElement {
   const cameraRoute = useRoute<RouteProp<MainTabParamList, "Camera">>();
   const defaultRecipientId = cameraRoute.params?.defaultRecipientId;
   const { data: session, isPending, refetch } = authClient.useSession();
+
+  // Query friend info if we have a pre-selected recipient
+  const { data: friends = [] } = trpc.friends.list.useQuery(undefined, {
+    enabled: !!defaultRecipientId,
+  });
+  const selectedFriend = defaultRecipientId
+    ? friends.find((f) => f.id === defaultRecipientId)
+    : null;
   const { checkCookie: _checkCookie } = useCookieStore();
   const camera = useRef<Camera>(null);
   const captureButtonRef = useRef<CaptureButtonRef>(null);
@@ -474,7 +482,7 @@ export default function CameraPage(): React.ReactElement {
   const photoHdr = format?.supportsPhotoHdr && enableHdr && !videoHdr;
 
   // Create styles with current safe area padding
-  const styles = createStyles(safeAreaPadding);
+  const styles = createStyles(safeAreaPadding, !!selectedFriend);
 
   const {
     data: _cookie,
@@ -554,6 +562,48 @@ export default function CameraPage(): React.ReactElement {
       />
 
       <StatusBarBlurBackground />
+
+      {/* Selected friend indicator banner */}
+      {selectedFriend && (
+        <View style={styles.selectedFriendBanner}>
+          <View className="flex-row items-center gap-3 rounded-full bg-black/70 py-2 pl-2 pr-2">
+            <View className="h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-secondary">
+              {(selectedFriend as { image?: string | null }).image ? (
+                <Image
+                  source={{
+                    uri: (selectedFriend as { image?: string | null }).image!,
+                  }}
+                  style={{ width: 32, height: 32 }}
+                  contentFit="cover"
+                />
+              ) : (
+                <Text style={{ color: "white", fontWeight: "600" }}>
+                  {(() => {
+                    const n = selectedFriend.name.trim();
+                    if (n.length === 0) return "?";
+                    const cp = n.codePointAt(0);
+                    if (cp == null) return "?";
+                    const first = String.fromCodePoint(cp);
+                    return /^[a-z]$/i.test(first) ? first.toUpperCase() : first;
+                  })()}
+                </Text>
+              )}
+            </View>
+            <Text style={[styles.selectedFriendText, { marginLeft: 4 }]}>
+              Sending to {selectedFriend.name}
+            </Text>
+            <Pressable
+              onPress={() => {
+                // Clear the pre-selection by resetting navigation params
+                navigation.setParams({ defaultRecipientId: undefined });
+              }}
+              style={styles.clearButton}
+            >
+              <Ionicons name="close-outline" size={24} color="white" />
+            </Pressable>
+          </View>
+        </View>
+      )}
 
       <View style={styles.leftButtonRow}>
         <Dialog>
@@ -670,7 +720,19 @@ export default function CameraPage(): React.ReactElement {
 }
 
 // Create styles with safe area padding - this needs to be moved inside the component
-function createStyles(safeAreaPadding: ReturnType<typeof useSafeAreaPadding>) {
+function createStyles(
+  safeAreaPadding: ReturnType<typeof useSafeAreaPadding>,
+  hasSelectedFriend: boolean,
+) {
+  // Calculate spacing for banner when friend is selected
+  const bannerHeight = 48; // Height of the banner pill
+  const bannerSpacing = 16; // Spacing between banner and capture button
+
+  // Always keep capture button elevated to leave room for potential banner
+  // This prevents shifting when banner appears/disappears
+  const captureButtonBottom =
+    safeAreaPadding.paddingBottom + bannerHeight + bannerSpacing * 2;
+
   return StyleSheet.create({
     container: {
       flex: 1,
@@ -679,7 +741,7 @@ function createStyles(safeAreaPadding: ReturnType<typeof useSafeAreaPadding>) {
     captureButton: {
       position: "absolute",
       alignSelf: "center",
-      bottom: safeAreaPadding.paddingBottom + 40, // Move up 40px from safe area
+      bottom: captureButtonBottom,
     },
     button: {
       marginBottom: CONTENT_SPACING,
@@ -710,6 +772,20 @@ function createStyles(safeAreaPadding: ReturnType<typeof useSafeAreaPadding>) {
       flex: 1,
       justifyContent: "center",
       alignItems: "center",
+    },
+    selectedFriendBanner: {
+      position: "absolute",
+      bottom: safeAreaPadding.paddingBottom + bannerSpacing,
+      alignSelf: "center",
+      zIndex: 10,
+    },
+    selectedFriendText: {
+      color: "white",
+      fontSize: 14,
+      fontWeight: "600",
+    },
+    clearButton: {
+      marginLeft: 4,
     },
   });
 }
