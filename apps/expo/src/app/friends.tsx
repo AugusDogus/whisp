@@ -16,6 +16,7 @@ import { useNavigation, useRoute } from "@react-navigation/native";
 import { toast } from "sonner-native";
 
 import type { MainTabParamList, RootStackParamList } from "~/navigation/types";
+import { FriendsListSkeletonVaried } from "~/components/friends-skeleton";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { Text } from "~/components/ui/text";
@@ -38,10 +39,16 @@ export default function FriendsScreen() {
   const mediaParams = route.params;
   const hasMedia = Boolean(mediaParams?.path);
 
-  const { data: friends = [], refetch: refetchFriends } =
-    trpc.friends.list.useQuery();
-  const { data: inbox = [], refetch: refetchInbox } =
-    trpc.messages.inbox.useQuery();
+  const {
+    data: friends = [],
+    refetch: refetchFriends,
+    isLoading: friendsLoading,
+  } = trpc.friends.list.useQuery();
+  const {
+    data: inbox = [],
+    refetch: refetchInbox,
+    isLoading: inboxLoading,
+  } = trpc.messages.inbox.useQuery();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const utils = trpc.useUtils();
@@ -149,6 +156,8 @@ export default function FriendsScreen() {
 
   const numSelected = selectedFriends.size;
 
+  const isLoading = friendsLoading || inboxLoading;
+
   // Send mode: Show media preview, search, and send button
   if (hasMedia && mediaSource) {
     return (
@@ -170,53 +179,59 @@ export default function FriendsScreen() {
             />
           </View>
 
-          <FlatList
-            className="mt-4"
-            data={filteredRows}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => (
-              <Pressable
-                className="flex-row items-center justify-between px-4 py-4"
-                onPress={() => toggleFriend(item.id)}
-              >
-                <View className="flex-row items-center gap-3">
-                  <View className="h-10 w-10 overflow-hidden rounded-full bg-secondary">
-                    {item.image ? (
-                      <Image
-                        source={{ uri: item.image }}
-                        style={{ width: 40, height: 40 }}
-                        contentFit="cover"
-                      />
-                    ) : (
-                      <View className="h-full w-full items-center justify-center">
-                        <Text className="text-base font-semibold">
-                          {(() => {
-                            const n = item.name.trim();
-                            if (n.length === 0) return "?";
-                            const cp = n.codePointAt(0);
-                            if (cp == null) return "?";
-                            const first = String.fromCodePoint(cp);
-                            return /^[a-z]$/i.test(first)
-                              ? first.toUpperCase()
-                              : first;
-                          })()}
-                        </Text>
-                      </View>
-                    )}
+          {isLoading ? (
+            <View className="mt-4">
+              <FriendsListSkeletonVaried />
+            </View>
+          ) : (
+            <FlatList
+              className="mt-4"
+              data={filteredRows}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <Pressable
+                  className="flex-row items-center justify-between px-4 py-4"
+                  onPress={() => toggleFriend(item.id)}
+                >
+                  <View className="flex-row items-center gap-3">
+                    <View className="h-10 w-10 overflow-hidden rounded-full bg-secondary">
+                      {item.image ? (
+                        <Image
+                          source={{ uri: item.image }}
+                          style={{ width: 40, height: 40 }}
+                          contentFit="cover"
+                        />
+                      ) : (
+                        <View className="h-full w-full items-center justify-center">
+                          <Text className="text-base font-semibold">
+                            {(() => {
+                              const n = item.name.trim();
+                              if (n.length === 0) return "?";
+                              const cp = n.codePointAt(0);
+                              if (cp == null) return "?";
+                              const first = String.fromCodePoint(cp);
+                              return /^[a-z]$/i.test(first)
+                                ? first.toUpperCase()
+                                : first;
+                            })()}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text className="text-base">{item.name}</Text>
                   </View>
-                  <Text className="text-base">{item.name}</Text>
-                </View>
-                <View
-                  className={
-                    selectedFriends.has(item.id)
-                      ? "h-6 w-6 items-center justify-center rounded-full bg-primary"
-                      : "h-6 w-6 rounded-full border border-border"
-                  }
-                />
-              </Pressable>
-            )}
-            ItemSeparatorComponent={() => <View className="h-px bg-border" />}
-          />
+                  <View
+                    className={
+                      selectedFriends.has(item.id)
+                        ? "h-6 w-6 items-center justify-center rounded-full bg-primary"
+                        : "h-6 w-6 rounded-full border border-border"
+                    }
+                  />
+                </Pressable>
+              )}
+              ItemSeparatorComponent={() => <View className="h-px bg-border" />}
+            />
+          )}
 
           <View className="flex flex-row gap-2 px-4 py-3">
             <Button
@@ -263,64 +278,71 @@ export default function FriendsScreen() {
             <Text className="text-lg font-semibold">Friends</Text>
           </View>
 
-          <FlatList
-            data={rows}
-            keyExtractor={(item) => item.id}
-            refreshControl={
-              <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
-            }
-            renderItem={({ item }) => (
-              <Pressable
-                className="flex-row items-center justify-between px-4 py-4"
-                onPress={() => {
-                  if (item.unreadCount > 0) openViewer(item.id);
-                  else {
-                    navigation.navigate("Camera", {
-                      defaultRecipientId: item.id,
-                    });
-                  }
-                }}
-              >
-                <View className="flex-row items-center gap-3">
-                  <View className="h-10 w-10 overflow-hidden rounded-full bg-secondary">
-                    {item.image ? (
-                      <Image
-                        source={{ uri: item.image }}
-                        style={{ width: 40, height: 40 }}
-                        contentFit="cover"
-                      />
-                    ) : (
-                      <View className="h-full w-full items-center justify-center">
-                        <Text className="text-base font-semibold">
-                          {(() => {
-                            const n = item.name.trim();
-                            if (n.length === 0) return "?";
-                            const cp = n.codePointAt(0);
-                            if (cp == null) return "?";
-                            const first = String.fromCodePoint(cp);
-                            return /^[a-z]$/i.test(first)
-                              ? first.toUpperCase()
-                              : first;
-                          })()}
-                        </Text>
-                      </View>
-                    )}
+          {isLoading ? (
+            <FriendsListSkeletonVaried />
+          ) : (
+            <FlatList
+              data={rows}
+              keyExtractor={(item) => item.id}
+              refreshControl={
+                <RefreshControl
+                  refreshing={isRefreshing}
+                  onRefresh={onRefresh}
+                />
+              }
+              renderItem={({ item }) => (
+                <Pressable
+                  className="flex-row items-center justify-between px-4 py-4"
+                  onPress={() => {
+                    if (item.unreadCount > 0) openViewer(item.id);
+                    else {
+                      navigation.navigate("Camera", {
+                        defaultRecipientId: item.id,
+                      });
+                    }
+                  }}
+                >
+                  <View className="flex-row items-center gap-3">
+                    <View className="h-10 w-10 overflow-hidden rounded-full bg-secondary">
+                      {item.image ? (
+                        <Image
+                          source={{ uri: item.image }}
+                          style={{ width: 40, height: 40 }}
+                          contentFit="cover"
+                        />
+                      ) : (
+                        <View className="h-full w-full items-center justify-center">
+                          <Text className="text-base font-semibold">
+                            {(() => {
+                              const n = item.name.trim();
+                              if (n.length === 0) return "?";
+                              const cp = n.codePointAt(0);
+                              if (cp == null) return "?";
+                              const first = String.fromCodePoint(cp);
+                              return /^[a-z]$/i.test(first)
+                                ? first.toUpperCase()
+                                : first;
+                            })()}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text className="text-base">{item.name}</Text>
                   </View>
-                  <Text className="text-base">{item.name}</Text>
-                </View>
-                {item.hasUnread ? (
-                  <View className="items-center justify-center rounded-full bg-primary px-2 py-1">
-                    <Text className="text-xs font-semibold text-primary-foreground">
-                      {item.unreadCount}
-                    </Text>
-                  </View>
-                ) : (
-                  <View className="h-3 w-3 rounded-full bg-muted" />
-                )}
-              </Pressable>
-            )}
-            ItemSeparatorComponent={() => <View className="h-px bg-border" />}
-          />
+                  {item.hasUnread ? (
+                    <View className="items-center justify-center rounded-full bg-primary px-2 py-1">
+                      <Text className="text-xs font-semibold text-primary-foreground">
+                        {item.unreadCount}
+                      </Text>
+                    </View>
+                  ) : (
+                    <View className="h-3 w-3 rounded-full bg-muted" />
+                  )}
+                </Pressable>
+              )}
+              ItemSeparatorComponent={() => <View className="h-px bg-border" />}
+            />
+          )}
         </View>
       </SafeAreaView>
 
