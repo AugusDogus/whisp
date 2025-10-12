@@ -1,14 +1,21 @@
-import { View } from "react-native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { useState } from "react";
+import { Pressable, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
+import { useNavigation } from "@react-navigation/native";
 
+import type { RootStackParamList } from "~/navigation/types";
 import { Button } from "~/components/ui/button";
 import { Text } from "~/components/ui/text";
 import { authClient } from "~/utils/auth";
 
 export default function ProfileScreen() {
   const { data: session } = authClient.useSession();
+  const navigation =
+    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const [showSettings, setShowSettings] = useState(false);
 
   return (
     <SafeAreaView className="bg-background">
@@ -44,52 +51,174 @@ export default function ProfileScreen() {
             </View>
           </View>
 
-          {/* Stats or additional info section */}
-          <View className="mt-8 gap-3">
-            <View className="rounded-lg bg-secondary p-4">
-              <View className="flex-row items-center gap-3">
-                <View className="h-10 w-10 items-center justify-center rounded-full bg-primary/10">
-                  <Ionicons name="people" size={20} color="#666" />
+          {/* Cards section */}
+          {!showSettings ? (
+            <View className="mt-8 gap-3">
+              {/* Friends Card */}
+              <Pressable
+                onPress={() => {
+                  navigation.navigate("Main", {
+                    screen: "Friends",
+                  });
+                }}
+                className="rounded-lg bg-secondary p-4 active:opacity-70"
+              >
+                <View className="flex-row items-center gap-3">
+                  <View className="h-10 w-10 items-center justify-center rounded-full bg-primary/10">
+                    <Ionicons name="people" size={20} color="#666" />
+                  </View>
+                  <View className="flex-1">
+                    <Text className="text-base font-semibold">Friends</Text>
+                    <Text variant="muted" className="text-xs">
+                      Manage your connections
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color="#666" />
                 </View>
-                <View>
-                  <Text className="text-base font-semibold">Friends</Text>
-                  <Text variant="muted" className="text-xs">
-                    Manage your connections
-                  </Text>
-                </View>
-              </View>
-            </View>
+              </Pressable>
 
-            <View className="rounded-lg bg-secondary p-4">
-              <View className="flex-row items-center gap-3">
-                <View className="h-10 w-10 items-center justify-center rounded-full bg-primary/10">
-                  <Ionicons name="settings" size={20} color="#666" />
+              {/* Settings Card */}
+              <Pressable
+                onPress={() => setShowSettings(true)}
+                className="rounded-lg bg-secondary p-4 active:opacity-70"
+              >
+                <View className="flex-row items-center gap-3">
+                  <View className="h-10 w-10 items-center justify-center rounded-full bg-primary/10">
+                    <Ionicons name="settings" size={20} color="#666" />
+                  </View>
+                  <View className="flex-1">
+                    <Text className="text-base font-semibold">Settings</Text>
+                    <Text variant="muted" className="text-xs">
+                      Customize your experience
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color="#666" />
                 </View>
-                <View>
-                  <Text className="text-base font-semibold">Settings</Text>
-                  <Text variant="muted" className="text-xs">
-                    Customize your experience
-                  </Text>
-                </View>
-              </View>
+              </Pressable>
             </View>
-          </View>
+          ) : (
+            <SettingsPanel onBack={() => setShowSettings(false)} />
+          )}
 
           {/* Bottom section - Sign out */}
-          <View className="flex-1 justify-end pb-4">
-            <Button
-              variant="destructive"
-              onPress={async () => {
-                console.log("[ProfileScreen] Signing out");
-                await authClient.signOut();
-              }}
-              className="w-full"
-            >
-              <Text>Sign Out</Text>
-            </Button>
-          </View>
+          {!showSettings && (
+            <View className="flex-1 justify-end pb-4">
+              <Button
+                variant="destructive"
+                onPress={async () => {
+                  console.log("[ProfileScreen] Signing out");
+                  await authClient.signOut();
+                }}
+                className="w-full"
+              >
+                <Text>Sign Out</Text>
+              </Button>
+            </View>
+          )}
         </View>
       </View>
     </SafeAreaView>
+  );
+}
+
+function SettingsPanel({ onBack }: { onBack: () => void }) {
+  return (
+    <View className="mt-8 flex-1 gap-3">
+      {/* Back button */}
+      <Pressable
+        onPress={onBack}
+        className="mb-2 flex-row items-center gap-2 active:opacity-70"
+      >
+        <Ionicons name="chevron-back" size={20} color="#666" />
+        <Text className="text-base font-semibold">Back</Text>
+      </Pressable>
+
+      {/* Privacy Settings Card */}
+      <View className="rounded-lg bg-secondary p-4">
+        <View className="flex-row items-center gap-3 pb-3">
+          <View className="h-10 w-10 items-center justify-center rounded-full bg-primary/10">
+            <Ionicons name="shield-checkmark" size={20} color="#666" />
+          </View>
+          <View className="flex-1">
+            <Text className="text-base font-semibold">Privacy</Text>
+            <Text variant="muted" className="text-xs">
+              Control who can send you whispers
+            </Text>
+          </View>
+        </View>
+        <View className="gap-3 pt-2">
+          <View className="flex-row items-center justify-between">
+            <Text className="text-sm">Allow whispers from</Text>
+            <Text variant="muted" className="text-sm">
+              Friends only
+            </Text>
+          </View>
+          <View className="flex-row items-center justify-between">
+            <Text className="text-sm">Read receipts</Text>
+            <Text variant="muted" className="text-sm">
+              On
+            </Text>
+          </View>
+        </View>
+      </View>
+
+      {/* Notifications Card */}
+      <View className="rounded-lg bg-secondary p-4">
+        <View className="flex-row items-center gap-3 pb-3">
+          <View className="h-10 w-10 items-center justify-center rounded-full bg-primary/10">
+            <Ionicons name="notifications" size={20} color="#666" />
+          </View>
+          <View className="flex-1">
+            <Text className="text-base font-semibold">Notifications</Text>
+            <Text variant="muted" className="text-xs">
+              Manage push notifications
+            </Text>
+          </View>
+        </View>
+        <View className="gap-3 pt-2">
+          <View className="flex-row items-center justify-between">
+            <Text className="text-sm">New whispers</Text>
+            <Text variant="muted" className="text-sm">
+              On
+            </Text>
+          </View>
+          <View className="flex-row items-center justify-between">
+            <Text className="text-sm">Friend requests</Text>
+            <Text variant="muted" className="text-sm">
+              On
+            </Text>
+          </View>
+        </View>
+      </View>
+
+      {/* About Card */}
+      <View className="rounded-lg bg-secondary p-4">
+        <View className="flex-row items-center gap-3 pb-3">
+          <View className="h-10 w-10 items-center justify-center rounded-full bg-primary/10">
+            <Ionicons name="information-circle" size={20} color="#666" />
+          </View>
+          <View className="flex-1">
+            <Text className="text-base font-semibold">About</Text>
+            <Text variant="muted" className="text-xs">
+              App information and legal
+            </Text>
+          </View>
+        </View>
+        <View className="gap-3 pt-2">
+          <View className="flex-row items-center justify-between">
+            <Text className="text-sm">Version</Text>
+            <Text variant="muted" className="text-sm">
+              1.0.0
+            </Text>
+          </View>
+          <Pressable className="active:opacity-70">
+            <Text className="text-sm text-primary">Terms of Service</Text>
+          </Pressable>
+          <Pressable className="active:opacity-70">
+            <Text className="text-sm text-primary">Privacy Policy</Text>
+          </Pressable>
+        </View>
+      </View>
+    </View>
   );
 }
