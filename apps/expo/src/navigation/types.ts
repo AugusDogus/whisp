@@ -4,7 +4,6 @@ export interface RootStackParamList extends ParamListBase {
   Splash: undefined;
   Login: undefined;
   Main: { screen?: string; params?: Record<string, unknown> } | undefined;
-  AddFriends: undefined;
   Post: { id: string };
   Media: { path: string; type: "photo" | "video"; defaultRecipientId?: string };
 }
@@ -16,4 +15,5 @@ export interface MainTabParamList extends ParamListBase {
     | { path?: string; type?: "photo" | "video"; defaultRecipientId?: string }
     | undefined;
   Camera: { defaultRecipientId?: string } | undefined;
+  Profile: undefined;
 }

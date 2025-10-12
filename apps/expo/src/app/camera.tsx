@@ -42,24 +42,12 @@ import {
   useNavigation,
   useRoute,
 } from "@react-navigation/native";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 
 import type { CaptureButtonRef } from "~/components/capture-button";
 import type { MainTabParamList, RootStackParamList } from "~/navigation/types";
 import { CaptureButton } from "~/components/capture-button";
 import { StatusBarBlurBackground } from "~/components/status-bar-blur-background";
-import { Button } from "~/components/ui/button";
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "~/components/ui/dialog";
-import { Input } from "~/components/ui/input";
-import { Text as UIText } from "~/components/ui/text";
 import { useIsForeground } from "~/hooks/useIsForeground";
 import { usePreferredCameraDevice } from "~/hooks/usePreferredCameraDevice";
 import { useCookieStore } from "~/stores/cookie-store";
@@ -605,70 +593,6 @@ export default function CameraPage(): React.ReactElement {
         </View>
       )}
 
-      <View style={styles.leftButtonRow}>
-        <Dialog>
-          <DialogTrigger asChild>
-            <Pressable style={styles.button}>
-              <Ionicons name="person" color="white" size={24} />
-            </Pressable>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Profile</DialogTitle>
-            </DialogHeader>
-            <View className="items-center gap-4 py-4">
-              <View className="h-20 w-20 items-center justify-center overflow-hidden rounded-full bg-secondary">
-                {session?.user.image ? (
-                  <Image
-                    source={{ uri: session.user.image }}
-                    style={{ width: 80, height: 80 }}
-                    contentFit="cover"
-                  />
-                ) : (
-                  <Ionicons name="person" size={40} color="#666" />
-                )}
-              </View>
-              <View className="items-center">
-                <UIText className="text-lg font-semibold">
-                  {session?.user.name ?? "User"}
-                </UIText>
-                {session?.user.email && (
-                  <UIText variant="muted" className="text-sm">
-                    {session.user.email}
-                  </UIText>
-                )}
-              </View>
-            </View>
-            <DialogFooter>
-              <DialogClose asChild>
-                <Button
-                  variant="destructive"
-                  onPress={async () => {
-                    console.log("[CameraPage] Signing out");
-                    await authClient.signOut();
-                  }}
-                  className="w-full"
-                >
-                  <UIText>Sign Out</UIText>
-                </Button>
-              </DialogClose>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        <Dialog>
-          <DialogTrigger asChild>
-            <Pressable
-              style={styles.button}
-              onPress={() => navigation.navigate("AddFriends")}
-            >
-              <Ionicons name="person-add-outline" color="white" size={24} />
-            </Pressable>
-          </DialogTrigger>
-          {/* Removed dialog content in favor of dedicated screen */}
-        </Dialog>
-      </View>
-
       <View style={styles.rightButtonRow}>
         <Pressable style={styles.button} onPress={onFlipCameraPressed}>
           <Ionicons name="camera-reverse" color="white" size={24} />
@@ -788,111 +712,4 @@ function createStyles(
       marginLeft: 4,
     },
   });
-}
-
-export function FriendSearchAndRequests() {
-  const [query, setQuery] = useState("");
-  const queryClient = useQueryClient();
-  const { data: results = [], isPending } = trpc.friends.searchUsers.useQuery(
-    { query },
-    { enabled: query.trim().length > 0 },
-  );
-  const { data: incoming = [] } = trpc.friends.incomingRequests.useQuery();
-
-  const sendReq = trpc.friends.sendRequest.useMutation({
-    onSuccess: async () => {
-      await queryClient.invalidateQueries();
-    },
-  });
-  const acceptReq = trpc.friends.acceptRequest.useMutation({
-    onSuccess: async () => {
-      await queryClient.invalidateQueries();
-    },
-  });
-
-  return (
-    <View className="gap-4">
-      <Input
-        placeholder="Search by name or email"
-        value={query}
-        onChangeText={setQuery}
-      />
-
-      {query.trim().length > 0 && (
-        <View className="gap-2">
-          <UIText className="text-sm font-semibold">Search Results</UIText>
-          {isPending ? (
-            <UIText variant="muted" className="text-sm">
-              Searching…
-            </UIText>
-          ) : (results as unknown[]).length > 0 ? (
-            (
-              results as {
-                id: string;
-                name: string;
-                isFriend: boolean;
-                hasPendingRequest: boolean;
-              }[]
-            ).map((u) => (
-              <View
-                key={u.id}
-                className="flex-row items-center justify-between rounded-md bg-secondary px-3 py-2"
-              >
-                <UIText>{u.name}</UIText>
-                {u.isFriend ? (
-                  <UIText variant="muted" className="text-xs">
-                    Friends
-                  </UIText>
-                ) : u.hasPendingRequest ? (
-                  <UIText variant="muted" className="text-xs">
-                    Pending
-                  </UIText>
-                ) : (
-                  <Button
-                    size="sm"
-                    onPress={() => sendReq.mutate({ toUserId: u.id })}
-                  >
-                    <UIText>Add</UIText>
-                  </Button>
-                )}
-              </View>
-            ))
-          ) : (
-            <UIText variant="muted" className="text-sm">
-              No users found
-            </UIText>
-          )}
-        </View>
-      )}
-
-      <View className="gap-2">
-        <UIText className="text-sm font-semibold">Incoming Requests</UIText>
-        {(incoming as unknown[]).length === 0 ? (
-          <UIText variant="muted" className="text-sm">
-            No requests
-          </UIText>
-        ) : (
-          (
-            incoming as {
-              requestId: string;
-              fromUser: { id: string; name: string };
-            }[]
-          ).map((r) => (
-            <View
-              key={r.requestId}
-              className="flex-row items-center justify-between rounded-md bg-secondary px-3 py-2"
-            >
-              <UIText>{r.fromUser.name}</UIText>
-              <Button
-                size="sm"
-                onPress={() => acceptReq.mutate({ requestId: r.requestId })}
-              >
-                <UIText>Accept</UIText>
-              </Button>
-            </View>
-          ))
-        )}
-      </View>
-    </View>
-  );
 }

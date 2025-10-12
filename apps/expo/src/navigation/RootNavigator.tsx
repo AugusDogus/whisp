@@ -4,13 +4,13 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { Toaster } from "sonner-native";
 
 // import type { RootStackParamList } from "./types";
-import AddFriendsScreen from "~/app/add-friends";
 import CameraScreen from "~/app/camera";
 import FriendsScreen from "~/app/friends";
 import SplashScreen from "~/app/index";
 import LoginScreen from "~/app/login";
 import MediaScreen from "~/app/media";
 import PostScreen from "~/app/post/[id]";
+import ProfileScreen from "~/app/profile";
 import { RecordingProvider, useRecording } from "~/contexts/RecordingContext";
 
 const Stack = createNativeStackNavigator();
@@ -30,6 +30,7 @@ function MainTabs() {
     >
       <TopTabs.Screen name="Friends" component={FriendsScreen} />
       <TopTabs.Screen name="Camera" component={CameraScreen} />
+      <TopTabs.Screen name="Profile" component={ProfileScreen} />
     </TopTabs.Navigator>
   );
 }
@@ -47,7 +48,6 @@ export function RootNavigator() {
           <Stack.Screen name="Main" component={MainTabs} />
           <Stack.Screen name="Post" component={PostScreen} />
           <Stack.Screen name="Media" component={MediaScreen} />
-          <Stack.Screen name="AddFriends" component={AddFriendsScreen} />
         </Stack.Navigator>
         <Toaster />
       </NavigationContainer>

@@ -12,10 +12,12 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ResizeMode, Video } from "expo-av";
 import { Image } from "expo-image";
+import { Ionicons } from "@expo/vector-icons";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import { toast } from "sonner-native";
 
 import type { MainTabParamList, RootStackParamList } from "~/navigation/types";
+import { AddFriendsPanel } from "~/components/add-friends-panel";
 import { FriendsListSkeletonVaried } from "~/components/friends-skeleton";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
@@ -51,6 +53,7 @@ export default function FriendsScreen() {
   } = trpc.messages.inbox.useQuery();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [showAddFriends, setShowAddFriends] = useState(false);
   const utils = trpc.useUtils();
   const markRead = trpc.messages.markRead.useMutation({
     onSuccess: async () => {
@@ -274,12 +277,26 @@ export default function FriendsScreen() {
     <>
       <SafeAreaView className="bg-background">
         <View className="h-full w-full">
-          <View className="items-center px-4 py-3">
+          <View className="relative items-center px-4 py-3 pb-4">
             <Text className="text-lg font-semibold">Friends</Text>
+            <Pressable
+              onPress={() => setShowAddFriends(!showAddFriends)}
+              className="absolute right-4 top-3 h-10 w-10 items-center justify-center rounded-full bg-secondary"
+            >
+              <Ionicons
+                name={showAddFriends ? "close" : "person-add-outline"}
+                size={20}
+                color="#888"
+              />
+            </Pressable>
           </View>
 
           {isLoading ? (
             <FriendsListSkeletonVaried />
+          ) : showAddFriends ? (
+            <View className="flex-1 px-4 pt-2">
+              <AddFriendsPanel />
+            </View>
           ) : (
             <FlatList
               data={rows}
