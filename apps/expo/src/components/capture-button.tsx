@@ -1,7 +1,7 @@
 import type { ViewProps } from "react-native";
 import type { SharedValue } from "react-native-reanimated";
 import type { Camera, PhotoFile, VideoFile } from "react-native-vision-camera";
-import React, { useCallback, useRef } from "react";
+import React, { useCallback, useEffect, useRef } from "react";
 import { StyleSheet, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Reanimated, {
@@ -145,8 +145,38 @@ const CaptureButtonComponent = React.forwardRef<CaptureButtonRef, Props>(
       ],
     );
 
+    const recordingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+      null,
+    );
+
+    // Cleanup on unmount
+    useEffect(() => {
+      return () => {
+        if (recordingTimeoutRef.current) {
+          clearTimeout(recordingTimeoutRef.current);
+          recordingTimeoutRef.current = null;
+        }
+      };
+    }, []);
+
+    const cleanupGestureState = useCallback(() => {
+      "worklet";
+      // Clear any pending recording start
+      if (recordingTimeoutRef.current) {
+        clearTimeout(recordingTimeoutRef.current);
+        recordingTimeoutRef.current = null;
+      }
+
+      // Reset all state
+      panStartY.value = 0;
+      panOffsetY.value = 0;
+      initialTouchY.value = 0;
+      isPressingButton.value = false;
+    }, [panStartY, panOffsetY, initialTouchY, isPressingButton]);
+
     const unifiedGesture = Gesture.Manual()
       .runOnJS(true)
+      .hitSlop({ top: 20, bottom: 20, left: 20, right: 20 }) // Extend touch area
       .onTouchesDown((event) => {
         // Touch started - begin recording logic and store initial position
         isPressingButton.value = true;
@@ -159,7 +189,7 @@ const CaptureButtonComponent = React.forwardRef<CaptureButtonRef, Props>(
         }
 
         // Schedule recording start after delay
-        setTimeout(() => {
+        recordingTimeoutRef.current = setTimeout(() => {
           if (
             pressDownDate.current &&
             pressDownDate.current.getTime() === now
@@ -234,9 +264,21 @@ const CaptureButtonComponent = React.forwardRef<CaptureButtonRef, Props>(
       .onTouchesUp(() => {
         // Touch ended - handle recording/photo logic
         try {
-          if (pressDownDate.current == null) {
-            throw new Error("PressDownDate ref .current was null!");
+          // Clear any pending recording timeout
+          if (recordingTimeoutRef.current) {
+            clearTimeout(recordingTimeoutRef.current);
+            recordingTimeoutRef.current = null;
           }
+
+          if (pressDownDate.current == null) {
+            console.warn("PressDownDate ref .current was null on touchUp!");
+            // Try to stop recording anyway to recover from broken state
+            void captureHook.stopRecording();
+            cleanupGestureState();
+            setIsPressingButton(false);
+            return;
+          }
+
           const now = new Date();
           const diff = now.getTime() - pressDownDate.current.getTime();
           pressDownDate.current = undefined;
@@ -257,6 +299,24 @@ const CaptureButtonComponent = React.forwardRef<CaptureButtonRef, Props>(
             setIsPressingButton(false);
           }, 150);
         }
+      })
+      .onTouchesCancelled(() => {
+        // Gesture was cancelled (finger moved too far, system interrupted, etc.)
+        console.log("Capture gesture cancelled - force resetting state");
+
+        // Clear any pending recording timeout
+        if (recordingTimeoutRef.current) {
+          clearTimeout(recordingTimeoutRef.current);
+          recordingTimeoutRef.current = null;
+        }
+
+        // Force reset the capture hook state (handles recording stop if needed)
+        captureHook.forceReset();
+
+        // Clean up gesture state
+        pressDownDate.current = undefined;
+        cleanupGestureState();
+        setIsPressingButton(false);
       });
 
     const shadowStyle = useAnimatedStyle(

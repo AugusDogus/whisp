@@ -2,6 +2,8 @@ import type { useSharedValue } from "react-native-reanimated";
 import type { Camera, PhotoFile, VideoFile } from "react-native-vision-camera";
 import { useCallback, useRef } from "react";
 
+import { useRecording } from "~/contexts/RecordingContext";
+
 export type CaptureState = "idle" | "photo" | "recording";
 export type CaptureSource = "button" | "volume";
 
@@ -23,6 +25,7 @@ export function useCameraCapture({
   isPressingButton,
   setIsPressingButton,
 }: UseCameraCaptureProps) {
+  const { setIsRecording } = useRecording();
   const captureState = useRef<CaptureState>("idle");
   const captureSource = useRef<CaptureSource>("button");
   const recordingStartTime = useRef<number>(0);
@@ -99,6 +102,9 @@ export function useCameraCapture({
         isPressingButton.value = true;
         setIsPressingButton(true);
 
+        // Update global recording state
+        setIsRecording(true);
+
         camera.current.startRecording({
           flash: flash,
           onRecordingError: (error) => {
@@ -109,6 +115,7 @@ export function useCameraCapture({
             captureState.current = "idle";
             isPressingButton.value = false;
             setIsPressingButton(false);
+            setIsRecording(false);
           },
           onRecordingFinished: (video) => {
             onMediaCaptured(video, "video");
@@ -116,6 +123,7 @@ export function useCameraCapture({
             captureState.current = "idle";
             isPressingButton.value = false;
             setIsPressingButton(false);
+            setIsRecording(false);
           },
         });
       } catch (e) {
@@ -124,9 +132,17 @@ export function useCameraCapture({
         captureState.current = "idle";
         isPressingButton.value = false;
         setIsPressingButton(false);
+        setIsRecording(false);
       }
     },
-    [camera, flash, onMediaCaptured, isPressingButton, setIsPressingButton],
+    [
+      camera,
+      flash,
+      onMediaCaptured,
+      isPressingButton,
+      setIsPressingButton,
+      setIsRecording,
+    ],
   );
 
   // Core recording stop logic
@@ -158,6 +174,7 @@ export function useCameraCapture({
           captureState.current = "idle";
           isPressingButton.value = false;
           setIsPressingButton(false);
+          setIsRecording(false);
         }
       }, 150);
     } catch (e) {
@@ -166,8 +183,9 @@ export function useCameraCapture({
       captureState.current = "idle";
       isPressingButton.value = false;
       setIsPressingButton(false);
+      setIsRecording(false);
     }
-  }, [camera, isPressingButton, setIsPressingButton]);
+  }, [camera, isPressingButton, setIsPressingButton, setIsRecording]);
 
   // Cancel recording (for photo/video conflicts)
   const cancelRecording = useCallback(async () => {
@@ -186,6 +204,30 @@ export function useCameraCapture({
       captureState.current = "idle";
     }
   }, [camera]);
+
+  // Force reset state (for broken state recovery)
+  const forceReset = useCallback(() => {
+    console.log("Force resetting capture state");
+
+    // Clear any timeouts
+    if (photoAnimationTimeout.current) {
+      clearTimeout(photoAnimationTimeout.current);
+      photoAnimationTimeout.current = null;
+    }
+
+    // Try to stop recording if active
+    if (captureState.current === "recording" && camera.current) {
+      void camera.current.stopRecording().catch(() => {
+        // Ignore errors during force reset
+      });
+    }
+
+    // Reset all state
+    captureState.current = "idle";
+    isPressingButton.value = false;
+    setIsPressingButton(false);
+    setIsRecording(false);
+  }, [camera, isPressingButton, setIsPressingButton, setIsRecording]);
 
   // State queries
   const isIdle = useCallback(() => captureState.current === "idle", []);
@@ -206,6 +248,7 @@ export function useCameraCapture({
     startRecording,
     stopRecording,
     cancelRecording,
+    forceReset,
 
     // State queries
     isIdle,

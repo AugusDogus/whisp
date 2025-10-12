@@ -1,0 +1,28 @@
+import React, { createContext, useContext, useState } from "react";
+
+interface RecordingContextType {
+  isRecording: boolean;
+  setIsRecording: (recording: boolean) => void;
+}
+
+const RecordingContext = createContext<RecordingContextType | undefined>(
+  undefined,
+);
+
+export function RecordingProvider({ children }: { children: React.ReactNode }) {
+  const [isRecording, setIsRecording] = useState(false);
+
+  return (
+    <RecordingContext.Provider value={{ isRecording, setIsRecording }}>
+      {children}
+    </RecordingContext.Provider>
+  );
+}
+
+export function useRecording() {
+  const context = useContext(RecordingContext);
+  if (context === undefined) {
+    throw new Error("useRecording must be used within a RecordingProvider");
+  }
+  return context;
+}
