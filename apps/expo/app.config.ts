@@ -68,5 +68,14 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
           "$(PRODUCT_NAME) needs access to your Microphone.",
       },
     ],
+    [
+      "expo-notifications",
+      {
+        icon: "./assets/notification-icon.png",
+        color: "#ffffff",
+        defaultChannel: "default",
+        enableBackgroundRemoteNotifications: true,
+      },
+    ],
   ],
 });
