@@ -151,15 +151,15 @@ export default function CameraPage(): React.ReactElement {
     device = preferredDevice;
   }
 
-  const [targetFps, setTargetFps] = useState(60);
+  const [targetFps, setTargetFps] = useState(30);
 
   const screenAspectRatio = screenHeight / SCREEN_WIDTH;
   const format = useCameraFormat(device, [
     { fps: targetFps },
     { videoAspectRatio: screenAspectRatio },
-    { videoResolution: "max" },
+    { videoResolution: { width: 1920, height: 1080 } },
     { photoAspectRatio: screenAspectRatio },
-    { photoResolution: "max" },
+    { photoResolution: { width: 1920, height: 1080 } },
   ]);
 
   const fps = Math.min(format?.maxFps ?? 1, targetFps);
@@ -548,6 +548,7 @@ export default function CameraPage(): React.ReactElement {
                 videoHdr={videoHdr}
                 photoQualityBalance="speed"
                 lowLightBoost={device.supportsLowLightBoost && enableNightMode}
+                videoStabilizationMode="off"
                 enableZoomGesture={false}
                 animatedProps={cameraAnimatedProps}
                 exposure={0}
