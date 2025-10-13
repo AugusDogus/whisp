@@ -5,6 +5,7 @@ import type { UploadRouter } from "@acme/api";
 
 import { authClient } from "~/utils/auth";
 import { getBaseUrl } from "~/utils/base-url";
+import { compressImage, compressVideo } from "~/utils/media-compression";
 
 export const {
   useImageUploader,
@@ -52,8 +53,26 @@ type ExpoFileWithLastModified = ExpoFile & {
   lastModified: number;
 };
 
-export const createFile = (uri: string) => {
-  const file = new ExpoFile(uri) as ExpoFileWithLastModified;
+/**
+ * Creates a File object from a URI with automatic compression
+ * @param uri The file URI (can be with or without file:// prefix)
+ * @param type The media type - "photo" or "video" - to determine compression method
+ * @returns A File object ready for upload
+ */
+export const createFile = async (
+  uri: string,
+  type?: "photo" | "video",
+): Promise<File> => {
+  let processedUri = uri;
+
+  // Apply compression if type is specified
+  if (type === "photo") {
+    processedUri = await compressImage(uri);
+  } else if (type === "video") {
+    processedUri = await compressVideo(uri);
+  }
+
+  const file = new ExpoFile(processedUri) as ExpoFileWithLastModified;
   file.lastModified = new Date().getTime();
   return file as File;
 };

@@ -91,5 +91,6 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         iosPermissions: ["Camera", "Microphone", "Notifications"],
       },
     ],
+    "react-native-compressor",
   ],
 });

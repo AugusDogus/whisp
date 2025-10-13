@@ -15,7 +15,6 @@ import { Image } from "expo-image";
 import * as Notifications from "expo-notifications";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation, useRoute } from "@react-navigation/native";
-import { toast } from "sonner-native";
 
 import type { MainTabParamList, RootStackParamList } from "~/navigation/types";
 import { AddFriendsPanel } from "~/components/add-friends-panel";
@@ -24,7 +23,7 @@ import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { Text } from "~/components/ui/text";
 import { trpc } from "~/utils/api";
-import { createFile, uploadFilesWithInput } from "~/utils/uploadthing";
+import { uploadMedia } from "~/utils/media-upload";
 
 interface FriendRow {
   id: string;
@@ -281,20 +280,15 @@ export default function FriendsScreen() {
               className="w-1/2"
               disabled={numSelected === 0}
               onPress={() => {
-                const file = createFile(mediaSource.uri);
-                const recipients = Array.from(selectedFriends);
-                void uploadFilesWithInput("imageUploader", {
-                  files: [file],
-                  input: { recipients },
-                })
-                  .then(() => toast.success("whisper sent"))
-                  .catch((err: unknown) =>
-                    toast.error(
-                      err instanceof Error ? err.message : "Upload failed",
-                    ),
-                  );
-                // After send, reset to Main (tabbed root)
-                navigation.reset({ index: 0, routes: [{ name: "Main" }] });
+                if (mediaSource && mediaParams?.type) {
+                  void uploadMedia({
+                    uri: mediaSource.uri,
+                    type: mediaParams.type,
+                    recipients: Array.from(selectedFriends),
+                  });
+                  // Navigate immediately, don't wait for upload
+                  navigation.reset({ index: 0, routes: [{ name: "Main" }] });
+                }
               }}
             >
               <Text>{numSelected > 0 ? `Send (${numSelected})` : "Send"}</Text>

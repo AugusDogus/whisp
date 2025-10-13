@@ -10,12 +10,11 @@ import {
   useNavigation,
   useRoute,
 } from "@react-navigation/native";
-import { toast } from "sonner-native";
 
 import type { RootStackParamList } from "~/navigation/types";
 import { Button } from "~/components/ui/button";
 import { Text } from "~/components/ui/text";
-import { createFile, uploadFilesWithInput } from "~/utils/uploadthing";
+import { uploadMedia } from "~/utils/media-upload";
 
 export default function MediaScreen() {
   const route = useRoute<RouteProp<RootStackParamList, "Media">>();
@@ -76,18 +75,12 @@ export default function MediaScreen() {
             onPress={() => {
               // If we have a default recipient, send directly without friend selection
               if (defaultRecipientId) {
-                const file = createFile(`file://${path}`);
-                void uploadFilesWithInput("imageUploader", {
-                  files: [file],
-                  input: { recipients: [defaultRecipientId], mimeType: type },
-                })
-                  .then(() => toast.success("whisper sent"))
-                  .catch((err: unknown) =>
-                    toast.error(
-                      err instanceof Error ? err.message : "Upload failed",
-                    ),
-                  );
-                // After send, reset to Main (camera)
+                void uploadMedia({
+                  uri: `file://${path}`,
+                  type,
+                  recipients: [defaultRecipientId],
+                });
+                // Navigate immediately, don't wait for upload
                 navigation.reset({ index: 0, routes: [{ name: "Main" }] });
               } else {
                 // No default recipient, go to friend selection
