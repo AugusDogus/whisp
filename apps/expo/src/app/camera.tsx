@@ -11,12 +11,14 @@ import type {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   InteractionManager,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import { check, PERMISSIONS, request, RESULTS } from "react-native-permissions";
 import Reanimated, {
   Extrapolate,
   interpolate,
@@ -27,9 +29,6 @@ import {
   Camera,
   useCameraDevice,
   useCameraFormat,
-  useCameraPermission,
-  useLocationPermission,
-  useMicrophonePermission,
 } from "react-native-vision-camera";
 import { VolumeManager } from "react-native-volume-manager";
 import { Image } from "expo-image";
@@ -97,11 +96,35 @@ export default function CameraPage(): React.ReactElement {
   const camera = useRef<Camera>(null);
   const captureButtonRef = useRef<CaptureButtonRef>(null);
   const [isCameraInitialized, setIsCameraInitialized] = useState(false);
-  const cameraPermission = useCameraPermission();
-  const microphone = useMicrophonePermission();
-  const location = useLocationPermission();
+  const [cameraPermission, setCameraPermission] = useState<string>(
+    RESULTS.DENIED,
+  );
+  const [microphonePermission, setMicrophonePermission] = useState<string>(
+    RESULTS.DENIED,
+  );
   const zoom = useSharedValue(1);
   const isPressingButton = useSharedValue(false);
+
+  // Check permissions on mount
+  useEffect(() => {
+    async function checkPermissions() {
+      const camera = await check(
+        Platform.OS === "ios"
+          ? PERMISSIONS.IOS.CAMERA
+          : PERMISSIONS.ANDROID.CAMERA,
+      );
+      const mic = await check(
+        Platform.OS === "ios"
+          ? PERMISSIONS.IOS.MICROPHONE
+          : PERMISSIONS.ANDROID.RECORD_AUDIO,
+      );
+
+      setCameraPermission(camera);
+      setMicrophonePermission(mic);
+    }
+
+    void checkPermissions();
+  }, []);
 
   // Safe area and screen dimensions
   const safeAreaPadding = useSafeAreaPadding();
@@ -449,22 +472,30 @@ export default function CameraPage(): React.ReactElement {
   }, [device?.name, format, fps]);
 
   useEffect(() => {
-    if (!cameraPermission.hasPermission) {
-      void cameraPermission.requestPermission();
+    async function requestPermissions() {
+      if (cameraPermission !== RESULTS.GRANTED) {
+        const result = await request(
+          Platform.OS === "ios"
+            ? PERMISSIONS.IOS.CAMERA
+            : PERMISSIONS.ANDROID.CAMERA,
+        );
+        setCameraPermission(result);
+      }
+      if (microphonePermission !== RESULTS.GRANTED) {
+        const result = await request(
+          Platform.OS === "ios"
+            ? PERMISSIONS.IOS.MICROPHONE
+            : PERMISSIONS.ANDROID.RECORD_AUDIO,
+        );
+        setMicrophonePermission(result);
+      }
     }
-    if (!microphone.hasPermission) {
-      void microphone.requestPermission();
-    }
-    if (!location.hasPermission) {
-      void location.requestPermission();
-    }
+
+    if (!isCameraInitialized || !isActive) return;
+    void requestPermissions();
     // we intentionally only track booleans to avoid effect identity churn
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    cameraPermission.hasPermission,
-    microphone.hasPermission,
-    location.hasPermission,
-  ]);
+     
+  }, [isCameraInitialized, isActive, cameraPermission, microphonePermission]);
 
   const videoHdr = format?.supportsVideoHdr && enableHdr;
   const photoHdr = format?.supportsPhotoHdr && enableHdr && !videoHdr;
@@ -480,7 +511,7 @@ export default function CameraPage(): React.ReactElement {
 
   return (
     <View style={styles.container}>
-      {device != null && cameraPermission.hasPermission ? (
+      {device != null && cameraPermission === RESULTS.GRANTED ? (
         <GestureDetector gesture={pinchGesture.enabled(isActive)}>
           <Reanimated.View
             onTouchEnd={onFocusTap}
@@ -524,8 +555,8 @@ export default function CameraPage(): React.ReactElement {
                 outputOrientation="device"
                 photo={true}
                 video={true}
-                audio={microphone.hasPermission}
-                enableLocation={location.hasPermission}
+                audio={microphonePermission === RESULTS.GRANTED}
+                enableLocation={false}
               />
             </GestureDetector>
           </Reanimated.View>

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { AppState, Platform } from "react-native";
+import { checkNotifications } from "react-native-permissions";
 import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
 
@@ -51,12 +52,10 @@ export function usePushNotifications(isAuthenticated: boolean) {
   useEffect(() => {
     let mounted = true;
 
-    Notifications.getPermissionsAsync()
+    checkNotifications()
       .then(({ status }) => {
         if (mounted) {
-          setPermissionsGranted(
-            status === Notifications.PermissionStatus.GRANTED,
-          );
+          setPermissionsGranted(status === "granted");
         }
       })
       .catch((error) => {

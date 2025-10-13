@@ -20,6 +20,10 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     icon: "./assets/icon.png",
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
+      NSCameraUsageDescription:
+        "Whisp needs access to your Camera to capture and send photos and videos to your friends.",
+      NSMicrophoneUsageDescription:
+        "Whisp needs access to your Microphone to record videos with sound.",
     },
   },
   android: {
@@ -33,6 +37,10 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     edgeToEdgeEnabled: true,
     googleServicesFile:
       process.env.GOOGLE_SERVICES_JSON ?? "./google-services.json",
+    permissions: [
+      "android.permission.CAMERA",
+      "android.permission.RECORD_AUDIO",
+    ],
   },
   extra: {
     eas: {
@@ -75,6 +83,12 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         color: "#ffffff",
         defaultChannel: "default",
         enableBackgroundRemoteNotifications: true,
+      },
+    ],
+    [
+      "react-native-permissions",
+      {
+        iosPermissions: ["Camera", "Microphone", "Notifications"],
       },
     ],
   ],

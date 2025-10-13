@@ -1,8 +1,15 @@
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useEffect, useState } from "react";
 import { Platform, View } from "react-native";
+import {
+  check,
+  checkNotifications,
+  PERMISSIONS,
+  request,
+  requestNotifications,
+  RESULTS,
+} from "react-native-permissions";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Camera } from "react-native-vision-camera";
 import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
 import * as SecureStore from "expo-secure-store";
@@ -29,19 +36,25 @@ export default function OnboardingScreen() {
   useEffect(() => {
     async function checkPermissions() {
       try {
-        const cameraStatus = Camera.getCameraPermissionStatus();
-        const microphoneStatus = Camera.getMicrophonePermissionStatus();
-        const notificationStatus = await Notifications.getPermissionsAsync();
+        const cameraStatus = await check(
+          Platform.OS === "ios"
+            ? PERMISSIONS.IOS.CAMERA
+            : PERMISSIONS.ANDROID.CAMERA,
+        );
+        const microphoneStatus = await check(
+          Platform.OS === "ios"
+            ? PERMISSIONS.IOS.MICROPHONE
+            : PERMISSIONS.ANDROID.RECORD_AUDIO,
+        );
+        const { status: notificationStatus } = await checkNotifications();
 
         // Determine first step that needs permission
 
-        if (cameraStatus !== "granted") {
+        if (cameraStatus !== RESULTS.GRANTED) {
           setCurrentStep("camera");
-        } else if (microphoneStatus !== "granted") {
+        } else if (microphoneStatus !== RESULTS.GRANTED) {
           setCurrentStep("microphone");
-        } else if (
-          notificationStatus.status !== Notifications.PermissionStatus.GRANTED
-        ) {
+        } else if (notificationStatus !== RESULTS.GRANTED) {
           setCurrentStep("notifications");
         } else {
           // All permissions granted, go to main
@@ -62,18 +75,24 @@ export default function OnboardingScreen() {
   const requestCameraPermission = async () => {
     setIsRequesting(true);
     try {
-      await Camera.requestCameraPermission();
+      await request(
+        Platform.OS === "ios"
+          ? PERMISSIONS.IOS.CAMERA
+          : PERMISSIONS.ANDROID.CAMERA,
+      );
       // Check next permission needed
-      const microphoneStatus = Camera.getMicrophonePermissionStatus();
+      const microphoneStatus = await check(
+        Platform.OS === "ios"
+          ? PERMISSIONS.IOS.MICROPHONE
+          : PERMISSIONS.ANDROID.RECORD_AUDIO,
+      );
 
-      if (microphoneStatus !== "granted") {
+      if (microphoneStatus !== RESULTS.GRANTED) {
         setCurrentStep("microphone");
       } else {
-        const notificationStatus = await Notifications.getPermissionsAsync();
+        const { status: notificationStatus } = await checkNotifications();
 
-        if (
-          notificationStatus.status !== Notifications.PermissionStatus.GRANTED
-        ) {
+        if (notificationStatus !== RESULTS.GRANTED) {
           setCurrentStep("notifications");
         } else {
           setCurrentStep("complete");
@@ -90,12 +109,14 @@ export default function OnboardingScreen() {
   const requestMicrophonePermission = async () => {
     setIsRequesting(true);
     try {
-      await Camera.requestMicrophonePermission();
+      await request(
+        Platform.OS === "ios"
+          ? PERMISSIONS.IOS.MICROPHONE
+          : PERMISSIONS.ANDROID.RECORD_AUDIO,
+      );
       // Check next permission needed
-      const notificationStatus = await Notifications.getPermissionsAsync();
-      if (
-        notificationStatus.status !== Notifications.PermissionStatus.GRANTED
-      ) {
+      const { status: notificationStatus } = await checkNotifications();
+      if (notificationStatus !== RESULTS.GRANTED) {
         setCurrentStep("notifications");
       } else {
         setCurrentStep("complete");
@@ -121,10 +142,14 @@ export default function OnboardingScreen() {
       }
 
       if (Device.isDevice) {
-        const { status } = await Notifications.requestPermissionsAsync();
+        const { status } = await requestNotifications([
+          "alert",
+          "sound",
+          "badge",
+        ]);
 
         // If permission granted, register the push token
-        if (status === Notifications.PermissionStatus.GRANTED) {
+        if (status === RESULTS.GRANTED) {
           try {
             const pushToken = await Notifications.getExpoPushTokenAsync({
               projectId: EXPO_PROJECT_ID,
