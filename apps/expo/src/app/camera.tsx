@@ -494,7 +494,6 @@ export default function CameraPage(): React.ReactElement {
     if (!isCameraInitialized || !isActive) return;
     void requestPermissions();
     // we intentionally only track booleans to avoid effect identity churn
-     
   }, [isCameraInitialized, isActive, cameraPermission, microphonePermission]);
 
   const videoHdr = format?.supportsVideoHdr && enableHdr;
