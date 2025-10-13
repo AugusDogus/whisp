@@ -470,7 +470,7 @@ export default function CameraPage(): React.ReactElement {
   const photoHdr = format?.supportsPhotoHdr && enableHdr && !videoHdr;
 
   // Create styles with current safe area padding
-  const styles = createStyles(safeAreaPadding, !!selectedFriend);
+  const styles = createStyles(safeAreaPadding);
 
   const {
     data: _cookie,
@@ -559,7 +559,8 @@ export default function CameraPage(): React.ReactElement {
               {(selectedFriend as { image?: string | null }).image ? (
                 <Image
                   source={{
-                    uri: (selectedFriend as { image?: string | null }).image!,
+                    uri:
+                      (selectedFriend as { image?: string | null }).image ?? "",
                   }}
                   style={{ width: 32, height: 32 }}
                   contentFit="cover"
@@ -644,10 +645,7 @@ export default function CameraPage(): React.ReactElement {
 }
 
 // Create styles with safe area padding - this needs to be moved inside the component
-function createStyles(
-  safeAreaPadding: ReturnType<typeof useSafeAreaPadding>,
-  hasSelectedFriend: boolean,
-) {
+function createStyles(safeAreaPadding: ReturnType<typeof useSafeAreaPadding>) {
   // Calculate spacing for banner when friend is selected
   const bannerHeight = 48; // Height of the banner pill
   const bannerSpacing = 16; // Spacing between banner and capture button

@@ -1,5 +1,6 @@
 import { Dimensions, Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Constants from "expo-constants";
 
 export const CONTENT_SPACING = 15;
 
@@ -46,3 +47,15 @@ export const CONTROL_BUTTON_SIZE = 40;
 // Feature Flags
 export const ALLOW_SELF_MESSAGES =
   process.env.EXPO_PUBLIC_ALLOW_SELF_MESSAGES === "true";
+
+// Expo Push Notifications - read from app.config.ts via Constants
+interface ExpoConfigExtra {
+  eas?: {
+    projectId?: string;
+  };
+}
+
+const expoConfigExtra = Constants.expoConfig?.extra as
+  | ExpoConfigExtra
+  | undefined;
+export const EXPO_PROJECT_ID = expoConfigExtra?.eas?.projectId ?? "";

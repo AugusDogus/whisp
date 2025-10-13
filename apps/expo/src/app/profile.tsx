@@ -1,6 +1,6 @@
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useState } from "react";
-import { Pressable, View } from "react-native";
+import { Pressable, Switch, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
@@ -9,6 +9,7 @@ import { useNavigation } from "@react-navigation/native";
 import type { RootStackParamList } from "~/navigation/types";
 import { Button } from "~/components/ui/button";
 import { Text } from "~/components/ui/text";
+import { trpc } from "~/utils/api";
 import { authClient } from "~/utils/auth";
 
 export default function ProfileScreen() {
@@ -122,6 +123,62 @@ export default function ProfileScreen() {
 }
 
 function SettingsPanel({ onBack }: { onBack: () => void }) {
+  const utils = trpc.useUtils();
+  const { data: preferences } = trpc.notifications.getPreferences.useQuery(
+    undefined,
+    {
+      // Use cached data immediately if available, fallback to defaults
+      initialData: () =>
+        utils.notifications.getPreferences.getData() ?? {
+          notifyOnMessages: true,
+          notifyOnFriendActivity: true,
+        },
+      // Still fetch in background to ensure fresh data
+      staleTime: 0,
+    },
+  );
+  const updatePreferences = trpc.notifications.updatePreferences.useMutation({
+    onMutate: async (newPrefs) => {
+      // Cancel outgoing refetches
+      await utils.notifications.getPreferences.cancel();
+
+      // Snapshot the previous value
+      const previousPrefs = utils.notifications.getPreferences.getData();
+
+      // Optimistically update to the new value
+      utils.notifications.getPreferences.setData(undefined, (old) => {
+        if (!old) return old;
+        return {
+          notifyOnMessages: old.notifyOnMessages,
+          notifyOnFriendActivity: old.notifyOnFriendActivity,
+          ...newPrefs,
+        };
+      });
+
+      // Return context with the snapshot
+      return { previousPrefs };
+    },
+    onError: (_err, _newPrefs, context) => {
+      // Rollback to the previous value on error
+      if (context?.previousPrefs) {
+        utils.notifications.getPreferences.setData(
+          undefined,
+          context.previousPrefs,
+        );
+      }
+    },
+    onSettled: () => {
+      // Refetch after mutation
+      void utils.notifications.getPreferences.refetch();
+    },
+  });
+
+  const handleToggle = (key: keyof typeof preferences) => {
+    updatePreferences.mutate({
+      [key]: !preferences[key],
+    });
+  };
+
   return (
     <View className="mt-8 flex-1 gap-3">
       {/* Back button */}
@@ -132,35 +189,6 @@ function SettingsPanel({ onBack }: { onBack: () => void }) {
         <Ionicons name="chevron-back" size={20} color="#666" />
         <Text className="text-base font-semibold">Back</Text>
       </Pressable>
-
-      {/* Privacy Settings Card */}
-      <View className="rounded-lg bg-secondary p-4">
-        <View className="flex-row items-center gap-3 pb-3">
-          <View className="h-10 w-10 items-center justify-center rounded-full bg-primary/10">
-            <Ionicons name="shield-checkmark" size={20} color="#666" />
-          </View>
-          <View className="flex-1">
-            <Text className="text-base font-semibold">Privacy</Text>
-            <Text variant="muted" className="text-xs">
-              Control who can send you whispers
-            </Text>
-          </View>
-        </View>
-        <View className="gap-3 pt-2">
-          <View className="flex-row items-center justify-between">
-            <Text className="text-sm">Allow whispers from</Text>
-            <Text variant="muted" className="text-sm">
-              Friends only
-            </Text>
-          </View>
-          <View className="flex-row items-center justify-between">
-            <Text className="text-sm">Read receipts</Text>
-            <Text variant="muted" className="text-sm">
-              On
-            </Text>
-          </View>
-        </View>
-      </View>
 
       {/* Notifications Card */}
       <View className="rounded-lg bg-secondary p-4">
@@ -178,15 +206,17 @@ function SettingsPanel({ onBack }: { onBack: () => void }) {
         <View className="gap-3 pt-2">
           <View className="flex-row items-center justify-between">
             <Text className="text-sm">New whispers</Text>
-            <Text variant="muted" className="text-sm">
-              On
-            </Text>
+            <Switch
+              value={preferences.notifyOnMessages}
+              onValueChange={() => handleToggle("notifyOnMessages")}
+            />
           </View>
           <View className="flex-row items-center justify-between">
             <Text className="text-sm">Friend requests</Text>
-            <Text variant="muted" className="text-sm">
-              On
-            </Text>
+            <Switch
+              value={preferences.notifyOnFriendActivity}
+              onValueChange={() => handleToggle("notifyOnFriendActivity")}
+            />
           </View>
         </View>
       </View>

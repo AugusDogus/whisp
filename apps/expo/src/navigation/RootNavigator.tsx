@@ -23,6 +23,7 @@ function MainTabs() {
     <TopTabs.Navigator
       initialRouteName="Camera"
       tabBarPosition="bottom"
+      backBehavior="initialRoute" // Always go back to Camera (initial route)
       screenOptions={{
         tabBarStyle: { display: "none" },
         swipeEnabled: !isRecording, // Disable swipe when recording

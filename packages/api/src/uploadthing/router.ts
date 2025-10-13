@@ -5,6 +5,8 @@ import { z } from "zod/v4";
 import { db } from "@acme/db/client";
 import { Message, MessageDelivery } from "@acme/db/schema";
 
+import { notifyNewMessage } from "../utils/send-notification";
+
 interface CreateDeps {
   getSession: () => Promise<{ user: { id: string } } | null>;
 }
@@ -56,6 +58,20 @@ export function createUploadRouter({ getSession }: CreateDeps) {
             recipientId: rid,
           })),
         );
+
+        // Get sender name for notification
+        const sender = await db.query.user.findFirst({
+          where: (users, { eq }) => eq(users.id, metadata.userId),
+          columns: { name: true },
+        });
+
+        // Send notifications to all recipients (fire-and-forget, don't block response)
+        if (sender) {
+          for (const recipientId of metadata.recipients) {
+            void notifyNewMessage(db, recipientId, sender.name, messageId);
+          }
+        }
+
         return { uploadedBy: metadata.userId };
       }),
   } satisfies FileRouter;

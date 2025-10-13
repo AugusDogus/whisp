@@ -30,6 +30,24 @@ export * from "./auth-schema";
 
 // Friend relationships and messaging (ephemeral media)
 
+// Push notification tokens for multiple devices
+export const PushToken = sqliteTable("push_token", (t) => ({
+  id: t
+    .text()
+    .notNull()
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  userId: t.text().notNull(),
+  token: t.text().notNull().unique(),
+  // platform: 'ios' | 'android' | 'web'
+  platform: t.text().notNull(),
+  createdAt: t
+    .integer({ mode: "timestamp" })
+    .$defaultFn(() => new Date())
+    .notNull(),
+  updatedAt: t.integer({ mode: "timestamp" }).$onUpdateFn(() => new Date()),
+}));
+
 export const FriendRequest = sqliteTable("friend_request", (t) => ({
   id: t
     .text()

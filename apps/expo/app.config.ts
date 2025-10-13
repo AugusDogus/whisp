@@ -31,6 +31,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       backgroundColor: "#171717",
     },
     edgeToEdgeEnabled: true,
+    googleServicesFile:
+      process.env.GOOGLE_SERVICES_JSON ?? "./google-services.json",
   },
   extra: {
     eas: {

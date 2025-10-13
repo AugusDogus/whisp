@@ -5,6 +5,10 @@ import { and, eq, inArray, like, ne, or } from "@acme/db";
 import { FriendRequest, Friendship, user as User } from "@acme/db/schema";
 
 import { protectedProcedure } from "../trpc";
+import {
+  notifyFriendAccept,
+  notifyFriendRequest,
+} from "../utils/send-notification";
 
 export const friendsRouter = {
   searchUsers: protectedProcedure
@@ -169,11 +173,25 @@ export const friendsRouter = {
         );
       if (existingFriend.length > 0) return { ok: true };
 
-      await ctx.db.insert(FriendRequest).values({
-        fromUserId: me,
-        toUserId: input.toUserId,
-        status: "pending",
-      });
+      const [friendRequest] = await ctx.db
+        .insert(FriendRequest)
+        .values({
+          fromUserId: me,
+          toUserId: input.toUserId,
+          status: "pending",
+        })
+        .returning();
+
+      // Send notification (fire-and-forget, don't block response)
+      if (friendRequest) {
+        void notifyFriendRequest(
+          ctx.db,
+          input.toUserId,
+          ctx.session.user.name,
+          friendRequest.id,
+        );
+      }
+
       return { ok: true };
     }),
 
@@ -204,6 +222,14 @@ export const friendsRouter = {
         .update(FriendRequest)
         .set({ status: "accepted" })
         .where(eq(FriendRequest.id, input.requestId));
+
+      // Send notification to the person who sent the request (fire-and-forget)
+      void notifyFriendAccept(
+        ctx.db,
+        request.fromUserId,
+        ctx.session.user.name,
+      );
+
       return { ok: true };
     }),
 } satisfies TRPCRouterRecord;

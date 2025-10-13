@@ -8,6 +8,12 @@ export const user = sqliteTable("user", (t) => ({
   image: t.text(),
   createdAt: t.integer({ mode: "timestamp" }).notNull(),
   updatedAt: t.integer({ mode: "timestamp" }).notNull(),
+  // Notification preferences
+  notifyOnMessages: t.integer({ mode: "boolean" }).notNull().default(true),
+  notifyOnFriendActivity: t
+    .integer({ mode: "boolean" })
+    .notNull()
+    .default(true),
 }));
 
 export const session = sqliteTable("session", (t) => ({
