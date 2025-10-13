@@ -280,7 +280,9 @@ export default function FriendsScreen() {
               className="w-1/2"
               disabled={numSelected === 0}
               onPress={() => {
-                if (mediaSource && mediaParams?.type) {
+                // mediaSource is guaranteed non-null in this block (line 197 condition)
+                // mediaParams.type must exist if we're in send mode
+                if (mediaParams?.type) {
                   void uploadMedia({
                     uri: mediaSource.uri,
                     type: mediaParams.type,
