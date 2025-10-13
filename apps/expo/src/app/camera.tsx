@@ -552,7 +552,7 @@ export default function CameraPage(): React.ReactElement {
                 enableZoomGesture={false}
                 animatedProps={cameraAnimatedProps}
                 exposure={0}
-                outputOrientation="device"
+                outputOrientation="preview"
                 photo={true}
                 video={true}
                 audio={microphonePermission === RESULTS.GRANTED}
