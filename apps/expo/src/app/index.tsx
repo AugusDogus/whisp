@@ -44,8 +44,20 @@ export default function SplashScreen() {
       }
 
       if (cookieExists) {
-        console.log("[Splash] Cookie found, redirecting to camera");
-        navigation.replace("Main");
+        // Check if user has completed onboarding
+        const onboardingComplete = await SecureStore.getItemAsync(
+          "whisp_onboarding_complete",
+        );
+
+        if (onboardingComplete === "true") {
+          console.log(
+            "[Splash] Cookie found, onboarding complete, redirecting to main",
+          );
+          navigation.replace("Main");
+        } else {
+          console.log("[Splash] Cookie found, redirecting to onboarding");
+          navigation.replace("Onboarding");
+        }
         return;
       }
 

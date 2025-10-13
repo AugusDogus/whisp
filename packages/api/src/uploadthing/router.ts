@@ -68,7 +68,13 @@ export function createUploadRouter({ getSession }: CreateDeps) {
         // Send notifications to all recipients (fire-and-forget, don't block response)
         if (sender) {
           for (const recipientId of metadata.recipients) {
-            void notifyNewMessage(db, recipientId, sender.name, messageId);
+            void notifyNewMessage(
+              db,
+              recipientId,
+              metadata.userId,
+              sender.name,
+              messageId,
+            );
           }
         }
 

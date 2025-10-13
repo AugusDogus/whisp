@@ -1,20 +1,44 @@
+import type {
+  LinkingOptions,
+  NavigationContainerRef,
+} from "@react-navigation/native";
+import { createRef } from "react";
 import { createMaterialTopTabNavigator } from "@react-navigation/material-top-tabs";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { Toaster } from "sonner-native";
 
-// import type { RootStackParamList } from "./types";
+import type { RootStackParamList } from "./types";
 import CameraScreen from "~/app/camera";
 import FriendsScreen from "~/app/friends";
 import SplashScreen from "~/app/index";
 import LoginScreen from "~/app/login";
 import MediaScreen from "~/app/media";
+import OnboardingScreen from "~/app/onboarding";
 import PostScreen from "~/app/post/[id]";
 import ProfileScreen from "~/app/profile";
 import { RecordingProvider, useRecording } from "~/contexts/RecordingContext";
 
-const Stack = createNativeStackNavigator();
+const Stack = createNativeStackNavigator<RootStackParamList>();
 const TopTabs = createMaterialTopTabNavigator();
+
+// Export navigation ref for use outside React components (e.g., push notifications)
+export const navigationRef =
+  createRef<NavigationContainerRef<RootStackParamList>>();
+
+const linking: LinkingOptions<RootStackParamList> = {
+  prefixes: ["whisp://", "exp+whisp://"],
+  config: {
+    screens: {
+      Splash: "splash",
+      Login: "login",
+      Onboarding: "onboarding",
+      Main: "main",
+      Post: "post/:id",
+      Media: "media",
+    },
+  },
+};
 
 function MainTabs() {
   const { isRecording } = useRecording();
@@ -39,13 +63,14 @@ function MainTabs() {
 export function RootNavigator() {
   return (
     <RecordingProvider>
-      <NavigationContainer>
+      <NavigationContainer linking={linking} ref={navigationRef}>
         <Stack.Navigator
           initialRouteName="Splash"
           screenOptions={{ headerShown: false, animation: "none" }}
         >
           <Stack.Screen name="Splash" component={SplashScreen} />
           <Stack.Screen name="Login" component={LoginScreen} />
+          <Stack.Screen name="Onboarding" component={OnboardingScreen} />
           <Stack.Screen name="Main" component={MainTabs} />
           <Stack.Screen name="Post" component={PostScreen} />
           <Stack.Screen name="Media" component={MediaScreen} />

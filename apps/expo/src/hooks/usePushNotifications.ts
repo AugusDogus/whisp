@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { Platform } from "react-native";
+import { AppState, Platform } from "react-native";
 import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
 
+import { navigationRef } from "~/navigation/RootNavigator";
 import { trpc } from "~/utils/api";
 import { EXPO_PROJECT_ID } from "~/utils/constants";
 
@@ -32,18 +33,37 @@ export function usePushNotifications(isAuthenticated: boolean) {
 
   const registerToken = trpc.notifications.registerPushToken.useMutation();
 
-  // Request permissions early (before auth)
+  // Clear all notifications when app comes to foreground
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (nextAppState) => {
+      if (nextAppState === "active") {
+        // App has come to the foreground, clear all notifications
+        void Notifications.dismissAllNotificationsAsync();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
+  // Check permissions (don't request automatically - onboarding handles that)
   useEffect(() => {
     let mounted = true;
 
-    requestNotificationPermissions()
-      .then((granted) => {
+    Notifications.getPermissionsAsync()
+      .then(({ status }) => {
         if (mounted) {
-          setPermissionsGranted(granted);
+          setPermissionsGranted(
+            status === Notifications.PermissionStatus.GRANTED,
+          );
         }
       })
       .catch((error) => {
-        console.error("Failed to request notification permissions:", error);
+        console.error("Failed to check notification permissions:", error);
+        if (mounted) {
+          setPermissionsGranted(false);
+        }
       });
 
     return () => {
@@ -51,7 +71,62 @@ export function usePushNotifications(isAuthenticated: boolean) {
     };
   }, []);
 
-  // Register token only after authentication
+  // Set up notification listeners
+  useEffect(() => {
+    if (!isAuthenticated) {
+      return;
+    }
+
+    // Listen for notifications received while app is foregrounded
+    notificationListener.current =
+      Notifications.addNotificationReceivedListener((notification) => {
+        setNotification(notification);
+      });
+
+    // Listen for notification taps
+    responseListener.current =
+      Notifications.addNotificationResponseReceivedListener((response) => {
+        console.log("Notification tapped:", response);
+        const data = response.notification.request.content.data;
+
+        // Handle navigation based on notification type
+
+        if (data.type === "message") {
+          // Navigate to Friends screen with the sender ID to auto-open messages
+          if (navigationRef.current && data.senderId) {
+            navigationRef.current.navigate("Main", {
+              screen: "Friends",
+              params: { openMessageFromSender: data.senderId },
+            });
+          }
+        } else if (data.type === "friend_request") {
+          // Navigate to Friends screen
+          if (navigationRef.current) {
+            navigationRef.current.navigate("Main", {
+              screen: "Friends",
+            });
+          }
+        } else if (data.type === "friend_accept") {
+          // Navigate to Friends screen
+          if (navigationRef.current) {
+            navigationRef.current.navigate("Main", {
+              screen: "Friends",
+            });
+          }
+        }
+      });
+
+    return () => {
+      if (notificationListener.current) {
+        notificationListener.current.remove();
+      }
+      if (responseListener.current) {
+        responseListener.current.remove();
+      }
+    };
+  }, [isAuthenticated]);
+
+  // Register token only after authentication AND permissions are granted
   useEffect(() => {
     // Don't register push notifications until user is authenticated and permissions granted
     if (!isAuthenticated || !permissionsGranted) {
@@ -75,69 +150,19 @@ export function usePushNotifications(isAuthenticated: boolean) {
         console.error("Failed to get push token:", error);
       });
 
-    // Listen for notifications received while app is foregrounded
-    notificationListener.current =
-      Notifications.addNotificationReceivedListener((notification) => {
-        setNotification(notification);
-      });
-
-    // Listen for notification taps
-    responseListener.current =
-      Notifications.addNotificationResponseReceivedListener((response) => {
-        console.log("Notification tapped:", response);
-        // Handle navigation based on notification data
-      });
-
     return () => {
       mounted = false;
-      if (notificationListener.current) {
-        notificationListener.current.remove();
-      }
-      if (responseListener.current) {
-        responseListener.current.remove();
-      }
     };
+    // registerToken is intentionally excluded from deps because it's a stable
+    // tRPC mutation function that doesn't need to trigger re-registration.
+    // We only want to register the push token when auth or permission state changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated, permissionsGranted]); // Run when authentication or permissions change
+  }, [isAuthenticated, permissionsGranted]);
 
   return {
     expoPushToken,
     notification,
   };
-}
-
-// Request notification permissions early (called on app start, before auth)
-async function requestNotificationPermissions(): Promise<boolean> {
-  if (Platform.OS === "android") {
-    await Notifications.setNotificationChannelAsync("default", {
-      name: "default",
-      importance: Notifications.AndroidImportance.MAX,
-      vibrationPattern: [0, 250, 250, 250],
-      lightColor: "#FF231F7C",
-    });
-  }
-
-  if (!Device.isDevice) {
-    console.log("Must use physical device for Push Notifications");
-    return false;
-  }
-
-  const { status: existingStatus } = await Notifications.getPermissionsAsync();
-  let finalStatus = existingStatus;
-
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-enum-comparison
-  if (existingStatus !== "granted") {
-    const { status } = await Notifications.requestPermissionsAsync();
-    finalStatus = status;
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-enum-comparison
-  if (finalStatus !== "granted") {
-    console.log("Notification permissions not granted");
-    return false;
-  }
-
-  return true;
 }
 
 // Get Expo push token (called after auth and permissions are granted)

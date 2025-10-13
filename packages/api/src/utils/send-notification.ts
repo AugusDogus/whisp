@@ -74,6 +74,7 @@ export async function sendNotificationToUser(
 export async function notifyNewMessage(
   database: typeof db,
   recipientId: string,
+  senderId: string,
   senderName: string,
   messageId: string,
 ) {
@@ -98,6 +99,7 @@ export async function notifyNewMessage(
     {
       type: "message",
       messageId,
+      senderId,
     },
   );
 }

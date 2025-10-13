@@ -24,7 +24,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (session) {
-      navigation.reset({ index: 0, routes: [{ name: "Main" }] });
+      navigation.reset({ index: 0, routes: [{ name: "Onboarding" }] });
     }
   }, [session, navigation]);
 

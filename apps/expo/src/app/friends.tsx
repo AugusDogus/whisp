@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ResizeMode, Video } from "expo-av";
 import { Image } from "expo-image";
+import * as Notifications from "expo-notifications";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import { toast } from "sonner-native";
@@ -82,10 +83,17 @@ export default function FriendsScreen() {
       old ? old.filter((m) => m && m.senderId !== friendId) : [],
     );
 
+    // Clear notifications when opening viewer
+    void Notifications.dismissAllNotificationsAsync();
+
     setViewer({ friendId, queue, index: 0 });
   };
 
-  const closeViewer = () => setViewer(null);
+  const closeViewer = () => {
+    setViewer(null);
+    // Clear any remaining notifications when closing viewer
+    void Notifications.dismissAllNotificationsAsync();
+  };
 
   const onViewerTap = () => {
     if (!viewer) return;
@@ -133,6 +141,31 @@ export default function FriendsScreen() {
       setSelectedFriends(new Set([mediaParams.defaultRecipientId]));
     }
   }, [hasMedia, mediaParams?.defaultRecipientId]);
+
+  // Handle deep link to open specific sender's messages
+  useEffect(() => {
+    if (
+      mediaParams?.openMessageFromSender &&
+      inbox.length > 0 &&
+      !viewer // Only open if viewer is not already open
+    ) {
+      const senderId = mediaParams.openMessageFromSender;
+      const hasMessagesFromSender = inbox.some((m) => m?.senderId === senderId);
+
+      if (hasMessagesFromSender) {
+        // Open the message viewer for this sender
+        openViewer(senderId);
+
+        // Clear the deep link param to prevent reopening on subsequent renders
+        navigation.setParams({ openMessageFromSender: undefined });
+      }
+    }
+    // openViewer is intentionally excluded from deps to avoid infinite loop:
+    // openViewer modifies inbox state, which would cause it to be redefined,
+    // triggering this effect again. We only want this to run when the deep
+    // link parameter changes, not when openViewer's reference changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mediaParams?.openMessageFromSender, inbox, viewer, navigation]);
 
   function toggleFriend(id: string) {
     setSelectedFriends((prev) => {
