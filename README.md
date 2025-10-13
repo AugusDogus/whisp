@@ -141,6 +141,13 @@ Better Auth includes an [auth proxy plugin](https://www.better-auth.com/docs/plu
 
 Add your local IP (e.g., `192.168.x.y:3000`) to your OAuth provider settings. Note that this is unreliable as your IP may change.
 
+## 📊 Database Maintenance
+
+The app includes an automated cleanup system that runs daily via Vercel Cron to prevent the database from growing indefinitely:
+
+- **Soft-deleted messages** (30+ days old) are permanently purged
+- **Old unread messages** (90+ days old) are automatically removed
+
 ## 🛠️ Available Scripts
 
 ```bash

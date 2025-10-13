@@ -19,6 +19,7 @@ export const env = createEnv({
     DATABASE_URL: z.url(),
     DATABASE_TOKEN: z.string(),
     LOCAL_URL: z.url().default("http://localhost:3000"),
+    CRON_SECRET: z.string().optional(),
   },
 
   /**
