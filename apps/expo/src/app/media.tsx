@@ -10,10 +10,12 @@ import {
   useNavigation,
   useRoute,
 } from "@react-navigation/native";
+import { toast } from "sonner-native";
 
 import type { RootStackParamList } from "~/navigation/types";
 import { Button } from "~/components/ui/button";
 import { Text } from "~/components/ui/text";
+import { createFile, uploadFilesWithInput } from "~/utils/uploadthing";
 
 export default function MediaScreen() {
   const route = useRoute<RouteProp<RootStackParamList, "Media">>();
@@ -71,16 +73,34 @@ export default function MediaScreen() {
           </Button>
           <Button
             className="px-6"
-            onPress={() =>
-              navigation.navigate("Main", {
-                screen: "Friends",
-                params: {
-                  path,
-                  type,
-                  defaultRecipientId,
-                },
-              })
-            }
+            onPress={() => {
+              // If we have a default recipient, send directly without friend selection
+              if (defaultRecipientId) {
+                const file = createFile(`file://${path}`);
+                void uploadFilesWithInput("imageUploader", {
+                  files: [file],
+                  input: { recipients: [defaultRecipientId], mimeType: type },
+                })
+                  .then(() => toast.success("whisper sent"))
+                  .catch((err: unknown) =>
+                    toast.error(
+                      err instanceof Error ? err.message : "Upload failed",
+                    ),
+                  );
+                // After send, reset to Main (camera)
+                navigation.reset({ index: 0, routes: [{ name: "Main" }] });
+              } else {
+                // No default recipient, go to friend selection
+                navigation.navigate("Main", {
+                  screen: "Friends",
+                  params: {
+                    path,
+                    type,
+                    defaultRecipientId,
+                  },
+                });
+              }
+            }}
           >
             <Text>Send</Text>
           </Button>
