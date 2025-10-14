@@ -91,6 +91,8 @@ export const Message = sqliteTable("message", (t) => ({
   // Store UploadThing file key for deletion when all recipients have read
   fileKey: t.text(),
   mimeType: t.text(),
+  // Store base64-encoded thumbhash for image/video preview
+  thumbhash: t.text(),
   createdAt: t
     .integer({ mode: "timestamp" })
     .$defaultFn(() => new Date())

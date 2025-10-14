@@ -29,6 +29,7 @@ export function createUploadRouter({ getSession }: CreateDeps) {
         z.object({
           recipients: z.array(z.string().min(1)).min(1),
           mimeType: z.string().optional(),
+          thumbhash: z.string().optional(),
         }),
       )
       .middleware(async ({ input }) => {
@@ -39,6 +40,7 @@ export function createUploadRouter({ getSession }: CreateDeps) {
           userId: session.user.id,
           recipients: input.recipients,
           mimeType: input.mimeType,
+          thumbhash: input.thumbhash,
         };
       })
       .onUploadComplete(async ({ metadata, file }) => {
@@ -50,6 +52,7 @@ export function createUploadRouter({ getSession }: CreateDeps) {
           fileUrl: file.ufsUrl,
           fileKey: (file as unknown as { ufsKey?: string }).ufsKey ?? undefined,
           mimeType: metadata.mimeType,
+          thumbhash: metadata.thumbhash,
         });
 
         // Create deliveries and track recipient -> deliveryId mapping
@@ -79,6 +82,7 @@ export function createUploadRouter({ getSession }: CreateDeps) {
               file.ufsUrl,
               metadata.mimeType,
               delivery.id, // Pass the real deliveryId!
+              metadata.thumbhash,
             );
           }
         }

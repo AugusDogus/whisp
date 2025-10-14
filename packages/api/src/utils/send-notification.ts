@@ -80,6 +80,7 @@ export async function notifyNewMessage(
   fileUrl?: string,
   mimeType?: string,
   deliveryId?: string,
+  thumbhash?: string,
 ) {
   // Check if user has message notifications enabled
   const recipient = await database.query.user.findFirst({
@@ -106,6 +107,7 @@ export async function notifyNewMessage(
       fileUrl,
       mimeType,
       deliveryId,
+      thumbhash,
     },
   );
 }

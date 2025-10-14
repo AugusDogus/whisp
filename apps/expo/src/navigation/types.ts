@@ -23,6 +23,7 @@ export interface MainTabParamList extends ParamListBase {
           senderId: string;
           fileUrl: string;
           mimeType: string;
+          thumbhash?: string;
           deliveryId: string;
         };
       }

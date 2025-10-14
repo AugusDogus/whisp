@@ -39,6 +39,7 @@ export const messagesRouter = {
           senderId: m.senderId,
           fileUrl: m.fileUrl,
           mimeType: m.mimeType ?? undefined,
+          thumbhash: m.thumbhash ?? undefined,
           createdAt: m.createdAt,
         };
       })

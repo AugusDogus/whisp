@@ -1,6 +1,7 @@
 import type { RouteProp } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import type { Video as VideoType } from "expo-av";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BackHandler,
   FlatList,
@@ -55,6 +56,7 @@ export default function FriendsScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [showAddFriends, setShowAddFriends] = useState(false);
+  const videoRef = useRef<VideoType>(null);
   const utils = trpc.useUtils();
   const markRead = trpc.messages.markRead.useMutation({
     onSuccess: async () => {
@@ -226,6 +228,7 @@ export default function FriendsScreen() {
             senderId: instantMessage.senderId,
             fileUrl: instantMessage.fileUrl,
             mimeType: instantMessage.mimeType,
+            thumbhash: instantMessage.thumbhash,
             createdAt: new Date(),
           };
 
@@ -570,20 +573,61 @@ export default function FriendsScreen() {
                   const m = viewer.queue[viewer.index];
                   if (!m) return null;
                   const isVideo = (m.mimeType ?? "").startsWith("video/");
+                  console.log("Rendering message:", {
+                    isVideo,
+                    mimeType: m.mimeType,
+                    fileUrl: m.fileUrl,
+                    hasThumbhash: !!m.thumbhash,
+                  });
                   return isVideo ? (
-                    <Video
-                      source={{ uri: m.fileUrl }}
-                      style={{ width: "100%", height: "100%" }}
-                      resizeMode={ResizeMode.COVER}
-                      shouldPlay
-                      isLooping={false}
-                      useNativeControls={false}
-                    />
+                    <View style={{ width: "100%", height: "100%" }}>
+                      {/* Show thumbhash as background while video loads */}
+                      {m.thumbhash && (
+                        <Image
+                          placeholder={{ thumbhash: m.thumbhash }}
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            position: "absolute",
+                          }}
+                          contentFit="cover"
+                        />
+                      )}
+                      {/* Video renders on top */}
+                      <Video
+                        ref={videoRef}
+                        source={{ uri: m.fileUrl }}
+                        style={{ width: "100%", height: "100%" }}
+                        resizeMode={ResizeMode.COVER}
+                        shouldPlay
+                        isLooping={true}
+                        useNativeControls={false}
+                        onLoad={async () => {
+                          // Ensure video plays once loaded
+                          console.log("Video loaded, attempting to play");
+                          try {
+                            const status =
+                              await videoRef.current?.getStatusAsync();
+                            console.log("Video status:", status);
+                            await videoRef.current?.playAsync();
+                            console.log("Video play called");
+                          } catch (err) {
+                            console.error("Error playing video:", err);
+                          }
+                        }}
+                        onError={(error) => {
+                          console.error("Video error:", error);
+                        }}
+                      />
+                    </View>
                   ) : (
                     <Image
                       source={{ uri: m.fileUrl }}
                       style={{ width: "100%", height: "100%" }}
                       contentFit="cover"
+                      placeholder={
+                        m.thumbhash ? { thumbhash: m.thumbhash } : undefined
+                      }
                     />
                   );
                 })()
