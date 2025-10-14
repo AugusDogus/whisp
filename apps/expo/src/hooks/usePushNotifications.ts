@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState, Platform } from "react-native";
 import { checkNotifications } from "react-native-permissions";
 import * as Device from "expo-device";
@@ -12,11 +12,11 @@ import { EXPO_PROJECT_ID } from "~/utils/constants";
 Notifications.setNotificationHandler({
   handleNotification: () =>
     Promise.resolve({
-      shouldShowAlert: true,
-      shouldPlaySound: true,
-      shouldSetBadge: true,
-      shouldShowBanner: true,
-      shouldShowList: true,
+      shouldShowAlert: false, // Don't show banner when app is in foreground
+      shouldPlaySound: false, // Don't play sound when app is in foreground
+      shouldSetBadge: false, // Don't update badge when app is in foreground
+      shouldShowBanner: false, // Don't show banner when app is in foreground
+      shouldShowList: false, // Don't add to notification list when app is in foreground
     }),
 });
 
@@ -33,6 +33,85 @@ export function usePushNotifications(isAuthenticated: boolean) {
   );
 
   const registerToken = trpc.notifications.registerPushToken.useMutation();
+  const utils = trpc.useUtils();
+
+  // Handle notification response (common logic for both tap scenarios)
+  const handleNotificationResponse = useCallback(
+    (response: Notifications.NotificationResponse) => {
+      const data = response.notification.request.content.data;
+      console.log("Notification data:", data);
+
+      // Invalidate relevant queries before navigation to ensure fresh data
+      if (data.type === "message") {
+        console.log("Invalidating inbox query before navigation");
+        void utils.messages.inbox.invalidate();
+      } else if (
+        data.type === "friend_request" ||
+        data.type === "friend_accept"
+      ) {
+        console.log("Invalidating friends queries before navigation");
+        void utils.friends.list.invalidate();
+        void utils.friends.incomingRequests.invalidate();
+      }
+
+      // Handle navigation based on notification type
+      if (data.type === "message") {
+        // Navigate to Friends screen with the sender ID to auto-open messages
+        console.log("Navigating to message from sender:", data.senderId);
+        if (navigationRef.current && data.senderId) {
+          // If we have fileUrl and mimeType in the notification, pass them for instant viewing
+          const params: {
+            openMessageFromSender: string;
+            instantMessage?: {
+              messageId: string;
+              senderId: string;
+              fileUrl: string;
+              mimeType: string;
+              deliveryId: string;
+            };
+          } = { openMessageFromSender: String(data.senderId) };
+
+          if (
+            data.fileUrl &&
+            data.mimeType &&
+            data.messageId &&
+            data.deliveryId
+          ) {
+            console.log("Using instant message data from notification");
+            params.instantMessage = {
+              messageId: data.messageId as string,
+              senderId: data.senderId as string,
+              fileUrl: data.fileUrl as string,
+              mimeType: data.mimeType as string,
+              deliveryId: data.deliveryId as string,
+            };
+          }
+
+          navigationRef.current.navigate("Main", {
+            screen: "Friends",
+            params,
+          });
+        } else {
+          console.warn("Navigation ref or senderId not available");
+        }
+      } else if (data.type === "friend_request") {
+        // Navigate to Friends screen
+        if (navigationRef.current) {
+          navigationRef.current.navigate("Main", {
+            screen: "Friends",
+          });
+        }
+      } else if (data.type === "friend_accept") {
+        // Navigate to Friends screen
+        if (navigationRef.current) {
+          navigationRef.current.navigate("Main", {
+            screen: "Friends",
+          });
+        }
+      }
+    },
+    [utils],
+  );
 
   // Clear all notifications when app comes to foreground
   useEffect(() => {
@@ -76,43 +155,47 @@ export function usePushNotifications(isAuthenticated: boolean) {
       return;
     }
 
+    // Check if app was opened by tapping a notification (when launched from killed state)
+    Notifications.getLastNotificationResponseAsync()
+      .then((response) => {
+        if (response) {
+          console.log("App opened from notification (killed state):", response);
+          handleNotificationResponse(response);
+        }
+      })
+      .catch((error) => {
+        console.error("Error getting last notification response:", error);
+      });
+
     // Listen for notifications received while app is foregrounded
     notificationListener.current =
       Notifications.addNotificationReceivedListener((notification) => {
+        console.log("Notification received:", notification);
         setNotification(notification);
+
+        // Invalidate queries based on notification type to prefetch fresh data
+        const data = notification.request.content.data;
+        if (data.type === "message") {
+          console.log("Invalidating inbox query for new message notification");
+          // This will cause the inbox to refetch in the background
+          void utils.messages.inbox.invalidate();
+        } else if (
+          data.type === "friend_request" ||
+          data.type === "friend_accept"
+        ) {
+          console.log(
+            "Invalidating friends queries for friend activity notification",
+          );
+          void utils.friends.list.invalidate();
+          void utils.friends.incomingRequests.invalidate();
+        }
       });
 
-    // Listen for notification taps
+    // Listen for notification taps (when app is already running)
     responseListener.current =
       Notifications.addNotificationResponseReceivedListener((response) => {
-        console.log("Notification tapped:", response);
-        const data = response.notification.request.content.data;
-
-        // Handle navigation based on notification type
-
-        if (data.type === "message") {
-          // Navigate to Friends screen with the sender ID to auto-open messages
-          if (navigationRef.current && data.senderId) {
-            navigationRef.current.navigate("Main", {
-              screen: "Friends",
-              params: { openMessageFromSender: data.senderId },
-            });
-          }
-        } else if (data.type === "friend_request") {
-          // Navigate to Friends screen
-          if (navigationRef.current) {
-            navigationRef.current.navigate("Main", {
-              screen: "Friends",
-            });
-          }
-        } else if (data.type === "friend_accept") {
-          // Navigate to Friends screen
-          if (navigationRef.current) {
-            navigationRef.current.navigate("Main", {
-              screen: "Friends",
-            });
-          }
-        }
+        console.log("Notification tapped (app running):", response);
+        handleNotificationResponse(response);
       });
 
     return () => {
@@ -123,7 +206,7 @@ export function usePushNotifications(isAuthenticated: boolean) {
         responseListener.current.remove();
       }
     };
-  }, [isAuthenticated]);
+  }, [isAuthenticated, handleNotificationResponse]);
 
   // Register token only after authentication AND permissions are granted
   useEffect(() => {

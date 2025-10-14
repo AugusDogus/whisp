@@ -97,7 +97,8 @@ export default function FriendsScreen() {
   const onViewerTap = () => {
     if (!viewer) return;
     const current = viewer.queue[viewer.index];
-    if (current) {
+    if (current && current.deliveryId) {
+      // Mark as read
       markRead.mutate({ deliveryId: current.deliveryId });
     }
     const nextIndex = viewer.index + 1;
@@ -141,30 +142,175 @@ export default function FriendsScreen() {
     }
   }, [hasMedia, mediaParams?.defaultRecipientId]);
 
+  // Sync viewer queue with inbox when inbox updates (for instant messages)
+  // When inbox refetches after seeding with instant message, we may get additional messages
+  // or updated data - keep the viewer in sync
+  useEffect(() => {
+    if (!viewer || viewer.queue.length === 0) return;
+
+    // Find all messages from the current friend in inbox
+    const inboxMessages = inbox.filter(
+      (m) => m && m.senderId === viewer.friendId,
+    );
+
+    // If inbox has more messages than viewer queue, someone sent multiple messages
+    // Update the viewer queue to include all messages
+    if (inboxMessages.length > viewer.queue.length) {
+      console.log("Inbox has new messages, updating viewer queue");
+
+      // Find the current message we're viewing
+      const currentMessage = viewer.queue[viewer.index];
+      const matchingIndex = currentMessage
+        ? inboxMessages.findIndex(
+            (m) => m?.messageId === currentMessage.messageId,
+          )
+        : 0;
+
+      setViewer({
+        ...viewer,
+        queue: inboxMessages,
+        index: matchingIndex >= 0 ? matchingIndex : viewer.index,
+      });
+
+      // Remove from inbox (already viewing)
+      utils.messages.inbox.setData(undefined, (old) =>
+        old ? old.filter((m) => m && m.senderId !== viewer.friendId) : [],
+      );
+    }
+  }, [inbox, viewer, utils]);
+
   // Handle deep link to open specific sender's messages
   useEffect(() => {
-    if (
-      mediaParams?.openMessageFromSender &&
-      inbox.length > 0 &&
-      !viewer // Only open if viewer is not already open
-    ) {
-      const senderId = mediaParams.openMessageFromSender;
-      const hasMessagesFromSender = inbox.some((m) => m?.senderId === senderId);
+    const senderId = mediaParams?.openMessageFromSender;
+    const instantMessage = mediaParams?.instantMessage;
 
-      if (hasMessagesFromSender) {
+    console.log("Deep link effect triggered:", {
+      openMessageFromSender: senderId,
+      hasInstantMessage: !!instantMessage,
+      inboxLoading,
+      inboxLength: inbox.length,
+      viewerOpen: !!viewer,
+    });
+
+    if (senderId && !viewer && !inboxLoading) {
+      // If we have instant message data, seed the query cache with it! 🚀
+      if (instantMessage) {
+        console.log(
+          "Seeding inbox cache with instant message data (no fetch needed!)",
+        );
+
+        // Seed the inbox query cache with the instant message
+        // This adds it to the cache as if it came from the server with REAL data!
+        utils.messages.inbox.setData(undefined, (old) => {
+          const instantMsg = {
+            deliveryId: instantMessage.deliveryId, // Real deliveryId from notification!
+            messageId: instantMessage.messageId,
+            senderId: instantMessage.senderId,
+            fileUrl: instantMessage.fileUrl,
+            mimeType: instantMessage.mimeType,
+            createdAt: new Date(),
+          };
+
+          // Add instant message to existing inbox (or create new array)
+          const updated = old ? [...old, instantMsg] : [instantMsg];
+          return updated;
+        });
+
+        // Clear the instant message param (keep openMessageFromSender to trigger normal flow)
+        navigation.setParams({
+          instantMessage: undefined,
+        });
+
+        // Invalidate inbox to fetch real data in background (will merge/replace)
+        void utils.messages.inbox.invalidate();
+
+        // Let the normal flow below handle opening the viewer
+        // (it will find our seeded message and open it)
+      }
+
+      // Fallback: No instant message data, use the old flow
+      // Check if we already have messages from this sender in the current inbox
+      const messagesFromSender = inbox.filter(
+        (m) => m && m.senderId === senderId,
+      );
+
+      console.log("Checking for messages from sender:", {
+        senderId,
+        messagesCount: messagesFromSender.length,
+        inboxSenders: inbox.map((m) => m?.senderId),
+      });
+
+      if (messagesFromSender.length > 0) {
         // Open the message viewer for this sender
-        openViewer(senderId);
+        console.log("Opening viewer for sender:", senderId);
 
-        // Clear the deep link param to prevent reopening on subsequent renders
+        // Optimistically update the inbox to remove messages from this friend
+        utils.messages.inbox.setData(undefined, (old) =>
+          old ? old.filter((m) => m && m.senderId !== senderId) : [],
+        );
+
+        // Clear notifications when opening viewer
+        void Notifications.dismissAllNotificationsAsync();
+
+        // Set viewer with messages
+        setViewer({
+          friendId: senderId,
+          queue: messagesFromSender,
+          index: 0,
+        });
+
+        // Clear the param after handling
         navigation.setParams({ openMessageFromSender: undefined });
+      } else {
+        // No messages found - might be a timing issue, let's refetch once
+        console.log("No messages in current inbox, refetching...");
+        refetchInbox()
+          .then(({ data: freshInbox }) => {
+            const freshMessages = (freshInbox ?? []).filter(
+              (m) => m && m.senderId === senderId,
+            );
+
+            if (freshMessages.length > 0) {
+              console.log(
+                "Found messages after refetch:",
+                freshMessages.length,
+              );
+
+              // Optimistically update the inbox
+              utils.messages.inbox.setData(undefined, (old) =>
+                old ? old.filter((m) => m && m.senderId !== senderId) : [],
+              );
+
+              void Notifications.dismissAllNotificationsAsync();
+
+              setViewer({
+                friendId: senderId,
+                queue: freshMessages as typeof inbox,
+                index: 0,
+              });
+            } else {
+              console.log("Still no messages found after refetch");
+            }
+
+            navigation.setParams({ openMessageFromSender: undefined });
+          })
+          .catch((error) => {
+            console.error("Error refetching inbox:", error);
+            navigation.setParams({ openMessageFromSender: undefined });
+          });
       }
     }
-    // openViewer is intentionally excluded from deps to avoid infinite loop:
-    // openViewer modifies inbox state, which would cause it to be redefined,
-    // triggering this effect again. We only want this to run when the deep
-    // link parameter changes, not when openViewer's reference changes.
+    // refetchInbox and utils are intentionally excluded from deps to avoid infinite loop.
+    // We only want this to run when the deep link parameter or inbox data changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mediaParams?.openMessageFromSender, inbox, viewer, navigation]);
+  }, [
+    mediaParams?.openMessageFromSender,
+    mediaParams?.instantMessage,
+    inbox,
+    inboxLoading,
+    viewer,
+    navigation,
+  ]);
 
   function toggleFriend(id: string) {
     setSelectedFriends((prev) => {

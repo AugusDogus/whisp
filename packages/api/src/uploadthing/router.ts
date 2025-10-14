@@ -51,13 +51,15 @@ export function createUploadRouter({ getSession }: CreateDeps) {
           fileKey: (file as unknown as { ufsKey?: string }).ufsKey ?? undefined,
           mimeType: metadata.mimeType,
         });
-        await db.insert(MessageDelivery).values(
-          metadata.recipients.map((rid) => ({
-            id: crypto.randomUUID(),
-            messageId,
-            recipientId: rid,
-          })),
-        );
+
+        // Create deliveries and track recipient -> deliveryId mapping
+        const deliveries = metadata.recipients.map((rid) => ({
+          id: crypto.randomUUID(),
+          messageId,
+          recipientId: rid,
+        }));
+
+        await db.insert(MessageDelivery).values(deliveries);
 
         // Get sender name for notification
         const sender = await db.query.user.findFirst({
@@ -65,15 +67,18 @@ export function createUploadRouter({ getSession }: CreateDeps) {
           columns: { name: true },
         });
 
-        // Send notifications to all recipients (fire-and-forget, don't block response)
+        // Send notifications to all recipients with their specific deliveryId
         if (sender) {
-          for (const recipientId of metadata.recipients) {
+          for (const delivery of deliveries) {
             void notifyNewMessage(
               db,
-              recipientId,
+              delivery.recipientId,
               metadata.userId,
               sender.name,
               messageId,
+              file.ufsUrl,
+              metadata.mimeType,
+              delivery.id, // Pass the real deliveryId!
             );
           }
         }

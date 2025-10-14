@@ -18,6 +18,13 @@ export interface MainTabParamList extends ParamListBase {
         type?: "photo" | "video";
         defaultRecipientId?: string;
         openMessageFromSender?: string;
+        instantMessage?: {
+          messageId: string;
+          senderId: string;
+          fileUrl: string;
+          mimeType: string;
+          deliveryId: string;
+        };
       }
     | undefined;
   Camera: { defaultRecipientId?: string } | undefined;
