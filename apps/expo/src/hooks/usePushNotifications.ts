@@ -69,7 +69,7 @@ export function usePushNotifications(isAuthenticated: boolean) {
               mimeType: string;
               deliveryId: string;
             };
-          } = { openMessageFromSender: String(data.senderId) };
+          } = { openMessageFromSender: String(data.senderId ?? "") };
 
           if (
             data.fileUrl &&
@@ -206,7 +206,13 @@ export function usePushNotifications(isAuthenticated: boolean) {
         responseListener.current.remove();
       }
     };
-  }, [isAuthenticated, handleNotificationResponse]);
+  }, [
+    isAuthenticated,
+    handleNotificationResponse,
+    utils.messages.inbox,
+    utils.friends.list,
+    utils.friends.incomingRequests,
+  ]);
 
   // Register token only after authentication AND permissions are granted
   useEffect(() => {

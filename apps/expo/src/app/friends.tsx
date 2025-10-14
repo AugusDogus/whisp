@@ -97,7 +97,7 @@ export default function FriendsScreen() {
   const onViewerTap = () => {
     if (!viewer) return;
     const current = viewer.queue[viewer.index];
-    if (current && current.deliveryId) {
+    if (current?.deliveryId) {
       // Mark as read
       markRead.mutate({ deliveryId: current.deliveryId });
     }
@@ -285,7 +285,7 @@ export default function FriendsScreen() {
 
               setViewer({
                 friendId: senderId,
-                queue: freshMessages as typeof inbox,
+                queue: freshMessages,
                 index: 0,
               });
             } else {
