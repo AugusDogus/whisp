@@ -58,7 +58,10 @@ export function usePushNotifications(isAuthenticated: boolean) {
       if (data.type === "message") {
         // Navigate to Friends screen with the sender ID to auto-open messages
         console.log("Navigating to message from sender:", data.senderId);
-        if (navigationRef.current && data.senderId) {
+
+        // Validate that senderId is a string
+        const senderId = typeof data.senderId === "string" ? data.senderId : "";
+        if (navigationRef.current && senderId) {
           // If we have fileUrl and mimeType in the notification, pass them for instant viewing
           const params: {
             openMessageFromSender: string;
@@ -69,7 +72,7 @@ export function usePushNotifications(isAuthenticated: boolean) {
               mimeType: string;
               deliveryId: string;
             };
-          } = { openMessageFromSender: String(data.senderId ?? "") };
+          } = { openMessageFromSender: senderId };
 
           if (
             data.fileUrl &&
