@@ -1,7 +1,8 @@
 import type { RouteProp } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  BackHandler,
   FlatList,
   Modal,
   Pressable,
@@ -88,11 +89,28 @@ export default function FriendsScreen() {
     setViewer({ friendId, queue, index: 0 });
   };
 
-  const closeViewer = () => {
+  const closeViewer = useCallback(() => {
     setViewer(null);
     // Clear any remaining notifications when closing viewer
     void Notifications.dismissAllNotificationsAsync();
-  };
+  }, []);
+
+  // Handle hardware back button when viewer is open
+  useEffect(() => {
+    if (!viewer) return;
+
+    const onBackPress = () => {
+      closeViewer();
+      return true; // Prevent default behavior
+    };
+
+    const backHandler = BackHandler.addEventListener(
+      "hardwareBackPress",
+      onBackPress,
+    );
+
+    return () => backHandler.remove();
+  }, [viewer, closeViewer]);
 
   const onViewerTap = () => {
     if (!viewer) return;
@@ -539,7 +557,12 @@ export default function FriendsScreen() {
       </SafeAreaView>
 
       {/* Message viewer modal - outside SafeAreaView to avoid safe area padding */}
-      <Modal visible={Boolean(viewer)} transparent={false} animationType="fade">
+      <Modal
+        visible={Boolean(viewer)}
+        transparent={false}
+        animationType="fade"
+        onRequestClose={closeViewer}
+      >
         <TouchableWithoutFeedback onPress={onViewerTap}>
           <View className="flex-1 bg-black">
             {viewer?.queue[viewer.index]
