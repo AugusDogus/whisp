@@ -510,18 +510,18 @@ export default function CameraPage(): React.ReactElement {
 
   return (
     <View style={styles.container}>
-      {device != null && cameraPermission === RESULTS.GRANTED ? (
-        <GestureDetector gesture={pinchGesture.enabled(isActive)}>
-          <Reanimated.View
-            onTouchEnd={onFocusTap}
-            style={StyleSheet.absoluteFill}
+      <GestureDetector gesture={pinchGesture.enabled(isActive)}>
+        <Reanimated.View
+          onTouchEnd={onFocusTap}
+          style={StyleSheet.absoluteFill}
+        >
+          <GestureDetector
+            gesture={Gesture.Tap()
+              .numberOfTaps(2)
+              .runOnJS(true)
+              .onEnd(onDoubleTap)}
           >
-            <GestureDetector
-              gesture={Gesture.Tap()
-                .numberOfTaps(2)
-                .runOnJS(true)
-                .onEnd(onDoubleTap)}
-            >
+            {device && (
               <ReanimatedCamera
                 style={StyleSheet.absoluteFill}
                 device={device}
@@ -558,14 +558,10 @@ export default function CameraPage(): React.ReactElement {
                 audio={microphonePermission === RESULTS.GRANTED}
                 enableLocation={false}
               />
-            </GestureDetector>
-          </Reanimated.View>
-        </GestureDetector>
-      ) : (
-        <View style={styles.emptyContainer}>
-          <Text style={styles.text}>Your phone does not have a Camera.</Text>
-        </View>
-      )}
+            )}
+          </GestureDetector>
+        </Reanimated.View>
+      </GestureDetector>
 
       <CaptureButton
         ref={captureButtonRef}
