@@ -20,6 +20,7 @@ import { useNavigation, useRoute } from "@react-navigation/native";
 
 import type { MainTabParamList, RootStackParamList } from "~/navigation/types";
 import { AddFriendsPanel } from "~/components/add-friends-panel";
+import { CaptionRenderer } from "~/components/caption-renderer";
 import { FriendsListSkeletonVaried } from "~/components/friends-skeleton";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
@@ -74,6 +75,11 @@ export default function FriendsScreen() {
     friendId: string;
     queue: typeof inbox;
     index: number;
+  } | null>(null);
+
+  const [viewerLayout, setViewerLayout] = useState<{
+    width: number;
+    height: number;
   } | null>(null);
 
   const openViewer = (friendId: string) => {
@@ -229,6 +235,7 @@ export default function FriendsScreen() {
             fileUrl: instantMessage.fileUrl,
             mimeType: instantMessage.mimeType,
             thumbhash: instantMessage.thumbhash,
+            annotations: instantMessage.annotations,
             createdAt: new Date(),
           };
 
@@ -454,6 +461,7 @@ export default function FriendsScreen() {
                     uri: mediaSource.uri,
                     type: mediaParams.type,
                     recipients: Array.from(selectedFriends),
+                    annotations: mediaParams.annotations,
                   });
                   // Navigate immediately, don't wait for upload
                   navigation.reset({ index: 0, routes: [{ name: "Main" }] });
@@ -567,7 +575,13 @@ export default function FriendsScreen() {
         onRequestClose={closeViewer}
       >
         <TouchableWithoutFeedback onPress={onViewerTap}>
-          <View className="flex-1 bg-black">
+          <View
+            className="flex-1 bg-black"
+            onLayout={(e) => {
+              const { width, height } = e.nativeEvent.layout;
+              setViewerLayout({ width, height });
+            }}
+          >
             {viewer?.queue[viewer.index]
               ? (() => {
                   const m = viewer.queue[viewer.index];
@@ -632,6 +646,14 @@ export default function FriendsScreen() {
                   );
                 })()
               : null}
+            {/* Caption Overlay */}
+            {viewer?.queue[viewer.index] && viewerLayout && (
+              <CaptionRenderer
+                annotations={viewer.queue[viewer.index]?.annotations}
+                containerWidth={viewerLayout.width}
+                containerHeight={viewerLayout.height}
+              />
+            )}
           </View>
         </TouchableWithoutFeedback>
       </Modal>

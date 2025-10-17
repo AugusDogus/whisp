@@ -1,5 +1,7 @@
 import type { ParamListBase } from "@react-navigation/native";
 
+import type { Annotation } from "@acme/validators";
+
 export interface RootStackParamList extends ParamListBase {
   Splash: undefined;
   Login: undefined;
@@ -17,6 +19,7 @@ export interface MainTabParamList extends ParamListBase {
         path?: string;
         type?: "photo" | "video";
         defaultRecipientId?: string;
+        annotations?: Annotation[];
         openMessageFromSender?: string;
         instantMessage?: {
           messageId: string;
@@ -24,6 +27,7 @@ export interface MainTabParamList extends ParamListBase {
           fileUrl: string;
           mimeType: string;
           thumbhash?: string;
+          annotations?: string;
           deliveryId: string;
         };
       }

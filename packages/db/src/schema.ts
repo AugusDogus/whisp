@@ -93,6 +93,8 @@ export const Message = sqliteTable("message", (t) => ({
   mimeType: t.text(),
   // Store base64-encoded thumbhash for image/video preview
   thumbhash: t.text(),
+  // Store JSON string of Annotation[]
+  annotations: t.text(),
   createdAt: t
     .integer({ mode: "timestamp" })
     .$defaultFn(() => new Date())
@@ -121,7 +123,9 @@ export const CreateFriendRequestSchema = createInsertSchema(FriendRequest, {
     .default("pending"),
 }).omit({ id: true, createdAt: true, updatedAt: true });
 
-export const CreateMessageSchema = createInsertSchema(Message).omit({
+export const CreateMessageSchema = createInsertSchema(Message, {
+  annotations: z.string().optional(),
+}).omit({
   id: true,
   createdAt: true,
   deletedAt: true,
