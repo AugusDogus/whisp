@@ -1,5 +1,5 @@
 import type { SharedValue } from "react-native-reanimated";
-import { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 import { Keyboard, Platform, StyleSheet, TextInput, View } from "react-native";
 import {
   Gesture,
@@ -38,9 +38,9 @@ interface AnimatedCaptionProps {
   draggingCaptionIdShared: SharedValue<string | null>;
   translateY: SharedValue<number>;
   actualYPositions: SharedValue<Record<string, number>>;
-  showCursor: boolean;
-  overrideText?: string; // Use this text for cursor calculation when editing
+  captionHeights: SharedValue<Record<string, number>>;
   font: ReturnType<typeof matchFont> | null;
+  showText?: boolean; // If false, only show background
 }
 
 function AnimatedCaption({
@@ -50,20 +50,67 @@ function AnimatedCaption({
   draggingCaptionIdShared,
   translateY,
   actualYPositions,
-  showCursor,
-  overrideText,
+  captionHeights,
   font,
+  showText = true,
 }: AnimatedCaptionProps) {
-  // Use overrideText for display if provided (for real-time editing)
-  const displayText = overrideText ?? caption.text;
+  // Handle word wrapping using Paragraph API for accurate measurements
+  const { displayText, lineCount } = useMemo(() => {
+    if (!font)
+      return {
+        displayText: caption.text.replace(/ /g, "\u00A0"),
+        lineCount: 1,
+      };
+
+    const maxWidth = containerWidth - PILL_PADDING_H * 2;
+    const words = caption.text.split(" ");
+    const lines: string[] = [];
+    let currentLine = "";
+
+    const paragraphStyle = { textAlign: TextAlign.Left };
+    const textStyle = {
+      color: Skia.Color(TEXT_COLOR),
+      fontSize: FONT_SIZE,
+      fontFamilies: [
+        Platform.select({
+          ios: "Helvetica Neue",
+          android: "sans-serif",
+          default: "sans-serif",
+        }),
+      ],
+      fontStyle: { weight: 400 },
+    };
+
+    for (const word of words) {
+      const testLine = currentLine ? `${currentLine} ${word}` : word;
+
+      // Use Paragraph API to measure the actual width
+      const testParagraph = Skia.ParagraphBuilder.Make(paragraphStyle);
+      testParagraph.pushStyle(textStyle);
+      testParagraph.addText(testLine);
+      testParagraph.pop();
+      const p = testParagraph.build();
+      p.layout(999999); // Layout without constraint to get natural width
+      const testWidth = p.getLongestLine();
+
+      if (testWidth > maxWidth && currentLine) {
+        lines.push(currentLine);
+        currentLine = word;
+      } else {
+        currentLine = testLine;
+      }
+    }
+    if (currentLine) lines.push(currentLine);
+
+    return {
+      displayText: lines.join("\n").replace(/ /g, "\u00A0"),
+      lineCount: Math.max(1, lines.length),
+    };
+  }, [caption.text, font, containerWidth]);
 
   // Create paragraph for proper kerning and text shaping
   const paragraph = useMemo(() => {
     if (!font) return null;
-    // Add a non-breaking space after the text so Paragraph accounts for trailing spaces
-    // Regular spaces get trimmed, but nbsp forces the paragraph to include them
-    // Always include nbsp even if text is empty so cursor can be positioned
-    const textForMeasurement = `${displayText}\u00A0`;
 
     const paragraphStyle = {
       textAlign: TextAlign.Center,
@@ -80,18 +127,40 @@ function AnimatedCaption({
         }),
       ],
       fontStyle: {
-        weight: 700, // Bold
+        weight: 400, // Normal
       },
     };
 
     const builder = Skia.ParagraphBuilder.Make(paragraphStyle);
     builder.pushStyle(textStyle);
-    builder.addText(textForMeasurement);
+    builder.addText(displayText);
     builder.pop();
     const p = builder.build();
-    p.layout(containerWidth - PILL_PADDING_H * 2); // Layout with max width
+    p.layout(containerWidth - PILL_PADDING_H * 2); // Layout with padding for proper centering and wrapping
     return p;
   }, [displayText, containerWidth, font]);
+
+  // Calculate height based on paragraph height
+  const barHeight = useMemo(() => {
+    const minHeight = FONT_SIZE * 1.2 + PILL_PADDING_V * 2;
+    if (!paragraph || caption.text.length === 0) {
+      captionHeights.value = {
+        ...captionHeights.value,
+        [caption.id]: minHeight,
+      };
+      return minHeight;
+    }
+    const height = Math.max(
+      minHeight,
+      paragraph.getHeight() + PILL_PADDING_V * 2,
+    );
+    // Update shared value for gesture detection
+    captionHeights.value = {
+      ...captionHeights.value,
+      [caption.id]: height,
+    };
+    return height;
+  }, [paragraph, caption.id, caption.text.length, captionHeights]);
 
   const animatedStyle = useAnimatedStyle(() => {
     const isDragging = draggingCaptionIdShared.value === caption.id;
@@ -125,7 +194,7 @@ function AnimatedCaption({
       <Canvas
         style={{
           width: containerWidth,
-          height: FONT_SIZE * 1.2 + PILL_PADDING_V * 2,
+          height: barHeight,
         }}
       >
         <Group>
@@ -133,47 +202,17 @@ function AnimatedCaption({
             x={0}
             y={0}
             width={containerWidth}
-            height={FONT_SIZE * 1.2 + PILL_PADDING_V * 2}
+            height={barHeight}
             r={0}
             color={PILL_BG_COLOR}
           />
-          {paragraph && (
-            <>
-              {(() => {
-                // Paragraph width includes trailing spaces thanks to the nbsp we added
-                const textWidth = paragraph.getLongestLine();
-
-                // Text is centered based on paragraph width
-                const availableWidth = containerWidth - PILL_PADDING_H * 2;
-                const textStartX =
-                  PILL_PADDING_H + (availableWidth - textWidth) / 2;
-
-                // Cursor position: at the end of text
-                const cursorX = textStartX + textWidth - 3;
-
-                return (
-                  <>
-                    <Paragraph
-                      paragraph={paragraph}
-                      x={PILL_PADDING_H}
-                      y={PILL_PADDING_V}
-                      width={availableWidth}
-                    />
-                    {/* Show cursor at the end of text when editing */}
-                    {showCursor && (
-                      <RoundedRect
-                        x={cursorX}
-                        y={PILL_PADDING_V}
-                        width={2}
-                        height={FONT_SIZE * 1.2}
-                        r={1}
-                        color={TEXT_COLOR}
-                      />
-                    )}
-                  </>
-                );
-              })()}
-            </>
+          {showText && paragraph && (
+            <Paragraph
+              paragraph={paragraph}
+              x={PILL_PADDING_H}
+              y={PILL_PADDING_V}
+              width={containerWidth - PILL_PADDING_H * 2}
+            />
           )}
         </Group>
       </Canvas>
@@ -212,33 +251,10 @@ export function CaptionEditor({
   containerHeight,
 }: CaptionEditorProps) {
   const editingCaption = captions.find((c) => c.id === editingCaptionId);
-  const [inputValue, setInputValue] = useState(editingCaption?.text ?? "");
+
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
   const inputRef = useRef<TextInput>(null);
-
-  // Blinking cursor state
-  const [showCursor, setShowCursor] = useState(true);
-
-  // Sync inputValue with editingCaption when editingCaptionId changes
-  useEffect(() => {
-    setInputValue(editingCaption?.text ?? "");
-  }, [editingCaptionId, editingCaption?.text]);
-
-  // Blink cursor when editing
-  useEffect(() => {
-    if (!editingCaptionId) {
-      setShowCursor(false);
-      return;
-    }
-
-    setShowCursor(true);
-    const interval = setInterval(() => {
-      setShowCursor((prev) => !prev);
-    }, 500); // Blink every 500ms
-
-    return () => clearInterval(interval);
-  }, [editingCaptionId]);
 
   // Use system font for Skia rendering - matches across platforms
   const font = useMemo(() => {
@@ -250,16 +266,9 @@ export function CaptionEditor({
     return matchFont({
       fontFamily,
       fontSize: FONT_SIZE,
-      fontWeight: "bold",
+      fontWeight: "normal",
     });
   }, []);
-
-  // Update input value when editing caption changes
-  useEffect(() => {
-    if (editingCaption) {
-      setInputValue(editingCaption.text);
-    }
-  }, [editingCaption]);
 
   // Reset translation when not editing
   useEffect(() => {
@@ -269,22 +278,12 @@ export function CaptionEditor({
     }
   }, [editingCaptionId, translateX, translateY]);
 
-  // Note: textMetrics removed since we're using full-width bars now
-
-  // Calculate position for editing caption
-  const editingCaptionPosition = useMemo(() => {
-    if (!editingCaption) return null;
-
-    const x = editingCaption.x * containerWidth;
-    const y = editingCaption.y * containerHeight;
-
-    return { x, y };
-  }, [editingCaption, containerWidth, containerHeight]);
-
   // Pan gesture for dragging captions - use shared value for reactive animation
   const draggingCaptionIdShared = useSharedValue<string | null>(null);
   // Store actual Y positions that update synchronously during drag
   const actualYPositions = useSharedValue<Record<string, number>>({});
+  // Store caption heights for gesture detection
+  const captionHeights = useSharedValue<Record<string, number>>({});
 
   // Initialize actualYPositions from captions
   useEffect(() => {
@@ -301,9 +300,11 @@ export function CaptionEditor({
       "worklet";
       // Find which caption we're dragging
       const tapY = event.y;
-      const barHeight = FONT_SIZE * 1.2 + PILL_PADDING_V * 2;
 
       for (const caption of captions) {
+        const barHeight =
+          captionHeights.value[caption.id] ??
+          FONT_SIZE * 1.2 + PILL_PADDING_V * 2;
         const barTop = caption.y * containerHeight;
         const barBottom = barTop + barHeight;
 
@@ -333,7 +334,9 @@ export function CaptionEditor({
       let newY = currentY + translateAmount;
 
       // Keep within bounds
-      const barHeight = FONT_SIZE * 1.2 + PILL_PADDING_V * 2;
+      const barHeight =
+        captionHeights.value[draggedCaptionId] ??
+        FONT_SIZE * 1.2 + PILL_PADDING_V * 2;
       const minY = MARGIN;
       const maxY = containerHeight - barHeight - MARGIN;
 
@@ -360,83 +363,62 @@ export function CaptionEditor({
     });
 
   // Tap gesture for creating new caption or editing existing
-  const tapGesture = Gesture.Tap()
-    .onBegin(() => {
-      "worklet";
-      console.log("[CaptionEditor] Tap detected");
-    })
-    .onEnd((event) => {
-      "worklet";
-      const tapY = event.y;
-      const barHeight = FONT_SIZE * 1.2 + PILL_PADDING_V * 2;
+  const tapGesture = Gesture.Tap().onEnd((event) => {
+    "worklet";
+    const tapY = event.y;
 
-      console.log("[CaptionEditor] Tap ended", {
-        x: event.x,
-        y: event.y,
-        captionCount: captions.length,
-        isEditing: !!editingCaptionId,
-      });
-
-      if (editingCaptionId) {
-        // If we're editing and tap outside the input area, stop editing
-        const editingPos = captions.find((c) => c.id === editingCaptionId);
-        if (editingPos) {
-          const barTop = editingPos.y * containerHeight;
-          const barBottom = barTop + barHeight;
-
-          if (tapY < barTop || tapY > barBottom) {
-            console.log("[CaptionEditor] Tapped outside, stopping edit");
-            runOnJS(onStopEditing)();
-            return;
-          }
-        }
-      }
-
-      // Check if tapped on any existing caption
-      for (const caption of captions) {
-        const barTop = caption.y * containerHeight;
+    if (editingCaptionId) {
+      // If we're editing and tap outside the input area, stop editing
+      const editingPos = captions.find((c) => c.id === editingCaptionId);
+      if (editingPos) {
+        const barHeight =
+          captionHeights.value[editingPos.id] ??
+          FONT_SIZE * 1.2 + PILL_PADDING_V * 2;
+        const barTop = editingPos.y * containerHeight;
         const barBottom = barTop + barHeight;
 
-        if (tapY >= barTop && tapY <= barBottom) {
-          console.log("[CaptionEditor] Tapped on caption", caption.id);
-          runOnJS(onStartEditing)(caption.id);
+        if (tapY < barTop || tapY > barBottom) {
+          runOnJS(handleSubmit)();
           return;
         }
       }
+    }
 
-      // If not editing and didn't tap on any caption, create new one
-      if (!editingCaptionId) {
-        const normalizedX = event.x / containerWidth;
-        const normalizedY = event.y / containerHeight;
-        console.log("[CaptionEditor] Creating caption at", {
-          normalizedX,
-          normalizedY,
-        });
-        runOnJS(onTapCreate)(normalizedX, normalizedY);
+    // Check if tapped on any existing caption
+    for (const caption of captions) {
+      const barHeight =
+        captionHeights.value[caption.id] ??
+        FONT_SIZE * 1.2 + PILL_PADDING_V * 2;
+      const barTop = caption.y * containerHeight;
+      const barBottom = barTop + barHeight;
+
+      if (tapY >= barTop && tapY <= barBottom) {
+        console.log("[CaptionEditor] Tapped on caption", caption.id);
+        runOnJS(onStartEditing)(caption.id);
+        return;
       }
-    });
+    }
+
+    // If not editing and didn't tap on any caption, create new one
+    if (!editingCaptionId) {
+      const normalizedX = event.x / containerWidth;
+      const normalizedY = event.y / containerHeight;
+      console.log("[CaptionEditor] Creating caption at", {
+        normalizedX,
+        normalizedY,
+      });
+      runOnJS(onTapCreate)(normalizedX, normalizedY);
+    }
+  });
 
   // Use Exclusive to allow both - pan will block tap if it starts moving
   const composedGesture = Gesture.Exclusive(panGesture, tapGesture);
-
-  // Handle text input changes
-  function handleTextChange(text: string) {
-    console.log("[CaptionEditor] handleTextChange:", {
-      text,
-      length: text.length,
-      lastChar: text[text.length - 1],
-    });
-    setInputValue(text);
-    if (editingCaption) {
-      onUpdate({ ...editingCaption, text });
-    }
-  }
 
   // Handle text input submission
   function handleSubmit() {
     inputRef.current?.blur();
     Keyboard.dismiss();
-    if (!inputValue.trim() && editingCaption) {
+    if (editingCaption && !editingCaption.text.trim()) {
       onDelete(editingCaption.id);
     } else {
       onStopEditing();
@@ -447,66 +429,80 @@ export function CaptionEditor({
     <GestureHandlerRootView style={StyleSheet.absoluteFill}>
       <GestureDetector gesture={composedGesture}>
         <Animated.View style={StyleSheet.absoluteFill}>
-          {/* Render all captions (show if has text or currently editing) */}
+          {/* Render all captions with their TextInputs */}
           {captions
             .filter((c) => c.text.length > 0 || c.id === editingCaptionId)
-            .map((caption) => (
-              <AnimatedCaption
-                key={caption.id}
-                caption={caption}
-                containerWidth={containerWidth}
-                containerHeight={containerHeight}
-                draggingCaptionIdShared={draggingCaptionIdShared}
-                translateY={translateY}
-                actualYPositions={actualYPositions}
-                showCursor={
-                  caption.id === editingCaptionId ? showCursor : false
-                }
-                overrideText={
-                  caption.id === editingCaptionId ? inputValue : undefined
-                }
-                font={font}
-              />
-            ))}
+            .map((caption) => {
+              const isEditing = caption.id === editingCaptionId;
+              const captionY = caption.y * containerHeight;
 
-          {/* Native TextInput for editing - Full width bar */}
-          {editingCaption && editingCaptionPosition && (
-            <View
-              style={[
-                styles.inputContainer,
-                {
-                  top: editingCaptionPosition.y,
-                  left: 0,
-                  right: 0,
-                  width: containerWidth,
-                },
-              ]}
-            >
-              <TextInput
-                ref={inputRef}
-                value={inputValue}
-                onChangeText={handleTextChange}
-                onSubmitEditing={handleSubmit}
-                onBlur={handleSubmit}
-                autoFocus
-                blurOnSubmit
-                multiline={false}
-                style={[
-                  styles.input,
-                  {
-                    fontSize: FONT_SIZE,
-                    paddingHorizontal: PILL_PADDING_H,
-                    paddingVertical: PILL_PADDING_V,
-                    width: "100%",
-                    opacity: 0, // Invisible - Canvas caption shows the visual
-                  },
-                ]}
-                placeholderTextColor="transparent"
-                placeholder=""
-                maxLength={280}
-              />
-            </View>
-          )}
+              return (
+                <React.Fragment key={caption.id}>
+                  {/* Skia caption background + text */}
+                  <AnimatedCaption
+                    caption={caption}
+                    containerWidth={containerWidth}
+                    containerHeight={containerHeight}
+                    draggingCaptionIdShared={draggingCaptionIdShared}
+                    translateY={translateY}
+                    actualYPositions={actualYPositions}
+                    captionHeights={captionHeights}
+                    font={font}
+                    showText={!isEditing}
+                  />
+
+                  {/* TextInput overlay for editing */}
+                  {isEditing &&
+                    (() => {
+                      // Use the calculated caption height from the Skia component
+                      const inputHeight =
+                        captionHeights.value[caption.id] ||
+                        FONT_SIZE * 1.2 + PILL_PADDING_V * 2;
+                      return (
+                        <View
+                          style={[
+                            styles.inputContainer,
+                            {
+                              top: captionY,
+                              left: 0,
+                              right: 0,
+                              width: containerWidth,
+                              height: inputHeight,
+                            },
+                          ]}
+                        >
+                          <TextInput
+                            key={caption.id}
+                            ref={inputRef}
+                            value={caption.text}
+                            onChangeText={(text) => {
+                              onUpdate({ ...caption, text });
+                            }}
+                            onSubmitEditing={handleSubmit}
+                            onBlur={handleSubmit}
+                            autoFocus
+                            multiline={true}
+                            scrollEnabled={false}
+                            style={[
+                              styles.input,
+                              {
+                                fontSize: FONT_SIZE - 0,
+                                lineHeight: FONT_SIZE * 1.2,
+                                height: inputHeight,
+                                paddingHorizontal: PILL_PADDING_H,
+                                paddingVertical: PILL_PADDING_V,
+                                width: "100%",
+                                textAlignVertical: "top",
+                              },
+                            ]}
+                            maxLength={280}
+                          />
+                        </View>
+                      );
+                    })()}
+                </React.Fragment>
+              );
+            })}
         </Animated.View>
       </GestureDetector>
     </GestureHandlerRootView>
@@ -520,12 +516,12 @@ const styles = StyleSheet.create({
   },
   inputContainer: {
     position: "absolute",
-    backgroundColor: "transparent", // Transparent - Canvas caption shows the background
+    backgroundColor: "transparent",
     borderRadius: 0,
   },
   input: {
     color: TEXT_COLOR,
-    fontWeight: "bold",
+    fontWeight: "normal",
     textAlign: "center",
   },
 });
