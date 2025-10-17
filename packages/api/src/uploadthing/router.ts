@@ -4,7 +4,6 @@ import { z } from "zod/v4";
 
 import { db } from "@acme/db/client";
 import { Message, MessageDelivery } from "@acme/db/schema";
-import { AnnotationsSchema } from "@acme/validators";
 
 import { notifyNewMessage } from "../utils/send-notification";
 
@@ -31,7 +30,6 @@ export function createUploadRouter({ getSession }: CreateDeps) {
           recipients: z.array(z.string().min(1)).min(1),
           mimeType: z.string().optional(),
           thumbhash: z.string().optional(),
-          annotations: AnnotationsSchema,
         }),
       )
       .middleware(async ({ input }) => {
@@ -43,7 +41,6 @@ export function createUploadRouter({ getSession }: CreateDeps) {
           recipients: input.recipients,
           mimeType: input.mimeType,
           thumbhash: input.thumbhash,
-          annotations: input.annotations,
         };
       })
       .onUploadComplete(async ({ metadata, file }) => {
@@ -56,9 +53,6 @@ export function createUploadRouter({ getSession }: CreateDeps) {
           fileKey: (file as unknown as { ufsKey?: string }).ufsKey ?? undefined,
           mimeType: metadata.mimeType,
           thumbhash: metadata.thumbhash,
-          annotations: metadata.annotations
-            ? JSON.stringify(metadata.annotations)
-            : undefined,
         });
 
         // Create deliveries and track recipient -> deliveryId mapping
@@ -78,9 +72,6 @@ export function createUploadRouter({ getSession }: CreateDeps) {
 
         // Send notifications to all recipients with their specific deliveryId
         if (sender) {
-          const annotationsStr = metadata.annotations
-            ? JSON.stringify(metadata.annotations)
-            : undefined;
           for (const delivery of deliveries) {
             void notifyNewMessage(
               db,
@@ -92,7 +83,6 @@ export function createUploadRouter({ getSession }: CreateDeps) {
               metadata.mimeType,
               delivery.id, // Pass the real deliveryId!
               metadata.thumbhash,
-              annotationsStr,
             );
           }
         }

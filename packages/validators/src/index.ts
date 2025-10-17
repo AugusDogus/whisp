@@ -6,17 +6,3 @@ export const unused = z.string().describe(
    with back and frontend, you can put them in here
   `,
 );
-
-// Annotation schemas for media captions
-export const AnnotationSchema = z.object({
-  id: z.string(),
-  type: z.literal("caption"),
-  text: z.string(),
-  x: z.number().min(0).max(1),
-  y: z.number().min(0).max(1),
-  fontSize: z.number().positive(),
-  color: z.string().optional().default("#FFFFFF"),
-});
-
-export const AnnotationsSchema = z.array(AnnotationSchema).optional();
-export type Annotation = z.infer<typeof AnnotationSchema>;

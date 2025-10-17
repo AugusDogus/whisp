@@ -1,7 +1,5 @@
 import type { ParamListBase } from "@react-navigation/native";
 
-import type { Annotation } from "@acme/validators";
-
 export interface RootStackParamList extends ParamListBase {
   Splash: undefined;
   Login: undefined;
@@ -19,15 +17,24 @@ export interface MainTabParamList extends ParamListBase {
         path?: string;
         type?: "photo" | "video";
         defaultRecipientId?: string;
-        annotations?: Annotation[];
         openMessageFromSender?: string;
+        rasterizationPromise?: Promise<string>; // Promise that resolves to rasterized image path
+        captions?: {
+          id: string;
+          text: string;
+          x: number;
+          y: number;
+          fontSize: number;
+          color: string;
+        }[];
+        originalWidth?: number; // Original image width for proper caption scaling
+        originalHeight?: number; // Original image height for proper caption scaling
         instantMessage?: {
           messageId: string;
           senderId: string;
           fileUrl: string;
           mimeType: string;
           thumbhash?: string;
-          annotations?: string;
           deliveryId: string;
         };
       }

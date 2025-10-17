@@ -17,11 +17,16 @@ import { Image } from "expo-image";
 import * as Notifications from "expo-notifications";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation, useRoute } from "@react-navigation/native";
+import {
+  Canvas,
+  Image as SkiaImage,
+  useImage,
+} from "@shopify/react-native-skia";
 
 import type { MainTabParamList, RootStackParamList } from "~/navigation/types";
 import { AddFriendsPanel } from "~/components/add-friends-panel";
-import { CaptionRenderer } from "~/components/caption-renderer";
 import { FriendsListSkeletonVaried } from "~/components/friends-skeleton";
+import { SkiaCaptionRenderer } from "~/components/skia-caption-renderer";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { Text } from "~/components/ui/text";
@@ -75,11 +80,6 @@ export default function FriendsScreen() {
     friendId: string;
     queue: typeof inbox;
     index: number;
-  } | null>(null);
-
-  const [viewerLayout, setViewerLayout] = useState<{
-    width: number;
-    height: number;
   } | null>(null);
 
   const openViewer = (friendId: string) => {
@@ -235,7 +235,6 @@ export default function FriendsScreen() {
             fileUrl: instantMessage.fileUrl,
             mimeType: instantMessage.mimeType,
             thumbhash: instantMessage.thumbhash,
-            annotations: instantMessage.annotations,
             createdAt: new Date(),
           };
 
@@ -363,6 +362,56 @@ export default function FriendsScreen() {
     [mediaParams?.path],
   );
 
+  const thumbnailImage = useImage(
+    mediaParams?.path ? `file://${mediaParams.path}` : null,
+  );
+
+  // Calculate thumbnail caption adjustments if we have captions
+  const thumbnailCaptionData = useMemo(() => {
+    if (
+      !mediaParams?.captions ||
+      mediaParams.captions.length === 0 ||
+      !mediaParams.originalWidth ||
+      !mediaParams.originalHeight ||
+      !thumbnailImage
+    ) {
+      return null;
+    }
+
+    const originalWidth = mediaParams.originalWidth;
+    const originalHeight = mediaParams.originalHeight;
+
+    // Calculate scale to cover the 64x64 space (matching fit="cover" behavior)
+    const scaleX = 64 / originalWidth;
+    const scaleY = 64 / originalHeight;
+    const scale = Math.max(scaleX, scaleY); // Use max to cover
+
+    const scaledWidth = originalWidth * scale;
+    const scaledHeight = originalHeight * scale;
+
+    // Calculate offsets for centering (like fit="cover" does)
+    const offsetY = (scaledHeight - 64) / 2;
+
+    // Adjust caption positions to account for the centering offset
+    const adjustedCaptions = mediaParams.captions.map((caption) => ({
+      ...caption,
+      // Adjust Y position to account for the crop offset
+      y: (caption.y * originalHeight * scale - offsetY) / scaledHeight,
+    }));
+
+    return {
+      adjustedCaptions,
+      scaledWidth,
+      scaledHeight,
+      scale,
+    };
+  }, [
+    mediaParams?.captions,
+    mediaParams?.originalWidth,
+    mediaParams?.originalHeight,
+    thumbnailImage,
+  ]);
+
   const numSelected = selectedFriends.size;
 
   const isLoading = friendsLoading || inboxLoading;
@@ -374,11 +423,39 @@ export default function FriendsScreen() {
         <View className="h-full w-full">
           <View className="flex w-full flex-row items-center gap-4 px-4">
             <View className="h-16 w-16 overflow-hidden rounded-md bg-secondary">
-              <Image
-                source={mediaSource}
-                style={{ width: "100%", height: "100%" }}
-                contentFit="cover"
-              />
+              {thumbnailCaptionData ? (
+                // Show image with captions using Skia Canvas, scaled to thumbnail
+                <Canvas
+                  style={{
+                    width: 64,
+                    height: 64,
+                  }}
+                >
+                  {thumbnailImage && (
+                    <SkiaImage
+                      image={thumbnailImage}
+                      fit="cover"
+                      x={0}
+                      y={0}
+                      width={64}
+                      height={64}
+                    />
+                  )}
+                  <SkiaCaptionRenderer
+                    captions={thumbnailCaptionData.adjustedCaptions}
+                    containerWidth={thumbnailCaptionData.scaledWidth}
+                    containerHeight={thumbnailCaptionData.scaledHeight}
+                    scale={thumbnailCaptionData.scale}
+                  />
+                </Canvas>
+              ) : (
+                // Show image without captions
+                <Image
+                  source={mediaSource}
+                  style={{ width: "100%", height: "100%" }}
+                  contentFit="cover"
+                />
+              )}
             </View>
             <Input
               placeholder="Send to…"
@@ -453,15 +530,38 @@ export default function FriendsScreen() {
             <Button
               className="w-1/2"
               disabled={numSelected === 0}
-              onPress={() => {
+              onPress={async () => {
                 // mediaSource is guaranteed non-null in this block (line 197 condition)
                 // mediaParams.type must exist if we're in send mode
                 if (mediaParams?.type) {
+                  let finalUri = mediaSource.uri;
+
+                  // If there's a rasterization promise, wait for it to complete
+                  if (mediaParams.rasterizationPromise) {
+                    console.log(
+                      "[Friends] Waiting for background rasterization...",
+                    );
+                    try {
+                      const rasterizedPath =
+                        await mediaParams.rasterizationPromise;
+                      finalUri = `file://${rasterizedPath}`;
+                      console.log(
+                        "[Friends] Using rasterized image:",
+                        finalUri,
+                      );
+                    } catch (error) {
+                      console.error(
+                        "[Friends] Rasterization failed, using original:",
+                        error,
+                      );
+                      // Fall back to original if rasterization fails
+                    }
+                  }
+
                   void uploadMedia({
-                    uri: mediaSource.uri,
+                    uri: finalUri,
                     type: mediaParams.type,
                     recipients: Array.from(selectedFriends),
-                    annotations: mediaParams.annotations,
                   });
                   // Navigate immediately, don't wait for upload
                   navigation.reset({ index: 0, routes: [{ name: "Main" }] });
@@ -575,13 +675,7 @@ export default function FriendsScreen() {
         onRequestClose={closeViewer}
       >
         <TouchableWithoutFeedback onPress={onViewerTap}>
-          <View
-            className="flex-1 bg-black"
-            onLayout={(e) => {
-              const { width, height } = e.nativeEvent.layout;
-              setViewerLayout({ width, height });
-            }}
-          >
+          <View className="flex-1 bg-black">
             {viewer?.queue[viewer.index]
               ? (() => {
                   const m = viewer.queue[viewer.index];
@@ -646,14 +740,6 @@ export default function FriendsScreen() {
                   );
                 })()
               : null}
-            {/* Caption Overlay */}
-            {viewer?.queue[viewer.index] && viewerLayout && (
-              <CaptionRenderer
-                annotations={viewer.queue[viewer.index]?.annotations}
-                containerWidth={viewerLayout.width}
-                containerHeight={viewerLayout.height}
-              />
-            )}
           </View>
         </TouchableWithoutFeedback>
       </Modal>

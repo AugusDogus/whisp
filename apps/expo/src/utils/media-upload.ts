@@ -2,15 +2,12 @@ import { Image } from "expo-image";
 import * as VideoThumbnails from "expo-video-thumbnails";
 import { toast } from "sonner-native";
 
-import type { Annotation } from "@acme/validators";
-
 import { createFile, uploadFilesWithInput } from "~/utils/uploadthing";
 
 interface UploadMediaParams {
   uri: string;
   type: "photo" | "video";
   recipients: string[];
-  annotations?: Annotation[];
 }
 
 /**
@@ -51,7 +48,7 @@ async function generateThumbhash(
  * @param params Upload parameters including URI, type, and recipients
  */
 export async function uploadMedia(params: UploadMediaParams): Promise<void> {
-  const { uri, type, recipients, annotations } = params;
+  const { uri, type, recipients } = params;
 
   try {
     // Generate thumbhash before upload
@@ -71,7 +68,7 @@ export async function uploadMedia(params: UploadMediaParams): Promise<void> {
 
     void uploadFilesWithInput("imageUploader", {
       files: [file],
-      input: { recipients, mimeType, thumbhash, annotations },
+      input: { recipients, mimeType, thumbhash },
     })
       .then(() => toast.success("whisper sent"))
       .catch((err: unknown) =>

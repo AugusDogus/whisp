@@ -55,11 +55,10 @@ function AnimatedCaption({
   showText = true,
 }: AnimatedCaptionProps) {
   // Handle word wrapping using Paragraph API for accurate measurements
-  const { displayText, lineCount } = useMemo(() => {
+  const { displayText } = useMemo(() => {
     if (!font)
       return {
         displayText: caption.text.replace(/ /g, "\u00A0"),
-        lineCount: 1,
       };
 
     const maxWidth = containerWidth - PILL_PADDING_H * 2;
@@ -104,7 +103,6 @@ function AnimatedCaption({
 
     return {
       displayText: lines.join("\n").replace(/ /g, "\u00A0"),
-      lineCount: Math.max(1, lines.length),
     };
   }, [caption.text, font, containerWidth]);
 
@@ -456,7 +454,7 @@ export function CaptionEditor({
                     (() => {
                       // Use the calculated caption height from the Skia component
                       const inputHeight =
-                        captionHeights.value[caption.id] ||
+                        captionHeights.value[caption.id] ??
                         FONT_SIZE * 1.2 + PILL_PADDING_V * 2;
                       return (
                         <View
