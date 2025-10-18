@@ -41,7 +41,7 @@ const linking: LinkingOptions<RootStackParamList> = {
 };
 
 function MainTabs() {
-  const { isRecording } = useRecording();
+  const { isRecording, isSendMode } = useRecording();
 
   return (
     <TopTabs.Navigator
@@ -50,7 +50,7 @@ function MainTabs() {
       backBehavior="initialRoute" // Always go back to Camera (initial route)
       screenOptions={{
         tabBarStyle: { display: "none" },
-        swipeEnabled: !isRecording, // Disable swipe when recording
+        swipeEnabled: !isRecording && !isSendMode, // Disable swipe when recording or in send mode
       }}
     >
       <TopTabs.Screen name="Friends" component={FriendsScreen} />

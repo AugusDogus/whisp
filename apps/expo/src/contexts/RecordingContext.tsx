@@ -3,6 +3,8 @@ import React, { createContext, useContext, useState } from "react";
 interface RecordingContextType {
   isRecording: boolean;
   setIsRecording: (recording: boolean) => void;
+  isSendMode: boolean;
+  setIsSendMode: (sendMode: boolean) => void;
 }
 
 const RecordingContext = createContext<RecordingContextType | undefined>(
@@ -11,9 +13,12 @@ const RecordingContext = createContext<RecordingContextType | undefined>(
 
 export function RecordingProvider({ children }: { children: React.ReactNode }) {
   const [isRecording, setIsRecording] = useState(false);
+  const [isSendMode, setIsSendMode] = useState(false);
 
   return (
-    <RecordingContext.Provider value={{ isRecording, setIsRecording }}>
+    <RecordingContext.Provider
+      value={{ isRecording, setIsRecording, isSendMode, setIsSendMode }}
+    >
       {children}
     </RecordingContext.Provider>
   );

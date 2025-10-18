@@ -11,25 +11,20 @@ import {
   TouchableWithoutFeedback,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ResizeMode, Video } from "expo-av";
 import { Image } from "expo-image";
 import * as Notifications from "expo-notifications";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation, useRoute } from "@react-navigation/native";
-import {
-  Canvas,
-  Image as SkiaImage,
-  useImage,
-} from "@shopify/react-native-skia";
 
 import type { MainTabParamList, RootStackParamList } from "~/navigation/types";
 import { AddFriendsPanel } from "~/components/add-friends-panel";
 import { FriendsListSkeletonVaried } from "~/components/friends-skeleton";
-import { SkiaCaptionRenderer } from "~/components/skia-caption-renderer";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { Text } from "~/components/ui/text";
+import { useRecording } from "~/contexts/RecordingContext";
 import { trpc } from "~/utils/api";
 import { uploadMedia } from "~/utils/media-upload";
 
@@ -48,6 +43,8 @@ export default function FriendsScreen() {
   const route = useRoute<RouteProp<MainTabParamList, "Friends">>();
   const mediaParams = route.params;
   const hasMedia = Boolean(mediaParams?.path);
+  const insets = useSafeAreaInsets();
+  const { setIsSendMode } = useRecording();
 
   const {
     data: friends = [],
@@ -75,6 +72,13 @@ export default function FriendsScreen() {
     await Promise.all([refetchFriends(), refetchInbox()]);
     setIsRefreshing(false);
   };
+
+  // Update send mode when hasMedia changes
+  useEffect(() => {
+    setIsSendMode(hasMedia);
+    // Clean up when component unmounts
+    return () => setIsSendMode(false);
+  }, [hasMedia, setIsSendMode]);
 
   const [viewer, setViewer] = useState<{
     friendId: string;
@@ -119,6 +123,32 @@ export default function FriendsScreen() {
 
     return () => backHandler.remove();
   }, [viewer, closeViewer]);
+
+  // Handle hardware back button when in send mode (has media)
+  useEffect(() => {
+    if (!hasMedia) return;
+
+    const onBackPress = () => {
+      // If we came from the Media screen with media params, go back to Media
+      if (mediaParams?.path && mediaParams.type) {
+        navigation.navigate("Media", {
+          path: mediaParams.path,
+          type: mediaParams.type,
+          defaultRecipientId: mediaParams.defaultRecipientId,
+          captions: mediaParams.captions,
+        });
+        return true; // Prevent default behavior
+      }
+      return false; // Allow default behavior
+    };
+
+    const backHandler = BackHandler.addEventListener(
+      "hardwareBackPress",
+      onBackPress,
+    );
+
+    return () => backHandler.remove();
+  }, [hasMedia, mediaParams, navigation]);
 
   const onViewerTap = () => {
     if (!viewer) return;
@@ -357,105 +387,61 @@ export default function FriendsScreen() {
     return rows.filter((f) => f.name.toLowerCase().includes(q));
   }, [rows, searchQuery]);
 
-  const mediaSource = useMemo(
-    () => (mediaParams?.path ? { uri: `file://${mediaParams.path}` } : null),
-    [mediaParams?.path],
+  // Wait for rasterization to complete and use rasterized image
+  const [rasterizedImagePath, setRasterizedImagePath] = useState<string | null>(
+    null,
   );
 
-  const thumbnailImage = useImage(
-    mediaParams?.path ? `file://${mediaParams.path}` : null,
-  );
-
-  // Calculate thumbnail caption adjustments if we have captions
-  const thumbnailCaptionData = useMemo(() => {
-    if (
-      !mediaParams?.captions ||
-      mediaParams.captions.length === 0 ||
-      !mediaParams.originalWidth ||
-      !mediaParams.originalHeight ||
-      !thumbnailImage
-    ) {
-      return null;
+  useEffect(() => {
+    if (mediaParams?.rasterizationPromise) {
+      void mediaParams.rasterizationPromise.then((path) => {
+        // Use requestAnimationFrame to batch the state update with the next frame
+        requestAnimationFrame(() => {
+          setRasterizedImagePath(path);
+        });
+      });
     }
-
-    const originalWidth = mediaParams.originalWidth;
-    const originalHeight = mediaParams.originalHeight;
-
-    // Calculate scale to cover the 64x64 space (matching fit="cover" behavior)
-    const scaleX = 64 / originalWidth;
-    const scaleY = 64 / originalHeight;
-    const scale = Math.max(scaleX, scaleY); // Use max to cover
-
-    const scaledWidth = originalWidth * scale;
-    const scaledHeight = originalHeight * scale;
-
-    // Calculate offsets for centering (like fit="cover" does)
-    const offsetY = (scaledHeight - 64) / 2;
-
-    // Adjust caption positions to account for the centering offset
-    const adjustedCaptions = mediaParams.captions.map((caption) => ({
-      ...caption,
-      // Adjust Y position to account for the crop offset
-      y: (caption.y * originalHeight * scale - offsetY) / scaledHeight,
-    }));
-
-    return {
-      adjustedCaptions,
-      scaledWidth,
-      scaledHeight,
-      scale,
-    };
-  }, [
-    mediaParams?.captions,
-    mediaParams?.originalWidth,
-    mediaParams?.originalHeight,
-    thumbnailImage,
-  ]);
+  }, [mediaParams?.rasterizationPromise]);
 
   const numSelected = selectedFriends.size;
 
   const isLoading = friendsLoading || inboxLoading;
 
   // Send mode: Show media preview, search, and send button
-  if (hasMedia && mediaSource) {
+  if (hasMedia) {
     return (
-      <SafeAreaView className="bg-background">
-        <View className="h-full w-full">
-          <View className="flex w-full flex-row items-center gap-4 px-4">
-            <View className="h-16 w-16 overflow-hidden rounded-md bg-secondary">
-              {thumbnailCaptionData ? (
-                // Show image with captions using Skia Canvas, scaled to thumbnail
-                <Canvas
-                  style={{
-                    width: 64,
-                    height: 64,
-                  }}
-                >
-                  {thumbnailImage && (
-                    <SkiaImage
-                      image={thumbnailImage}
-                      fit="cover"
-                      x={0}
-                      y={0}
-                      width={64}
-                      height={64}
-                    />
-                  )}
-                  <SkiaCaptionRenderer
-                    captions={thumbnailCaptionData.adjustedCaptions}
-                    containerWidth={thumbnailCaptionData.scaledWidth}
-                    containerHeight={thumbnailCaptionData.scaledHeight}
-                    scale={thumbnailCaptionData.scale}
-                  />
-                </Canvas>
-              ) : (
-                // Show image without captions
-                <Image
-                  source={mediaSource}
-                  style={{ width: "100%", height: "100%" }}
-                  contentFit="cover"
-                />
-              )}
+      <View
+        className="flex-1 bg-background"
+        style={{
+          paddingTop: insets.top,
+          paddingBottom: insets.bottom,
+          paddingLeft: insets.left,
+          paddingRight: insets.right,
+        }}
+      >
+        <View className="flex-1" style={{ minHeight: 0 }}>
+          <View
+            className="flex w-full flex-row items-center gap-4 px-4 py-4"
+            style={{ flexShrink: 0 }}
+          >
+            <View className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-md bg-secondary">
+              <Image
+                source={
+                  rasterizedImagePath
+                    ? { uri: `file://${rasterizedImagePath}` }
+                    : mediaParams?.captions && mediaParams.captions.length > 0
+                      ? mediaParams.thumbhash
+                        ? { thumbhash: mediaParams.thumbhash }
+                        : undefined
+                      : mediaParams?.path
+                        ? { uri: `file://${mediaParams.path}` }
+                        : undefined
+                }
+                style={{ width: 64, height: 64 }}
+                contentFit="cover"
+                cachePolicy="memory-disk"
+                transition={200}
+              />
             </View>
             <Input
               placeholder="Send to…"
@@ -471,7 +457,7 @@ export default function FriendsScreen() {
             </View>
           ) : (
             <FlatList
-              className="mt-4"
+              className="flex-1"
               data={filteredRows}
               keyExtractor={(item) => item.id}
               renderItem={({ item }) => (
@@ -523,7 +509,19 @@ export default function FriendsScreen() {
             <Button
               variant="secondary"
               className="w-1/2"
-              onPress={() => navigation.goBack()}
+              onPress={() => {
+                // If we came from the Media screen with media params, go back to Media
+                if (mediaParams?.path && mediaParams.type) {
+                  navigation.navigate("Media", {
+                    path: mediaParams.path,
+                    type: mediaParams.type,
+                    defaultRecipientId: mediaParams.defaultRecipientId,
+                    captions: mediaParams.captions,
+                  });
+                } else {
+                  navigation.goBack();
+                }
+              }}
             >
               <Text>Back</Text>
             </Button>
@@ -531,10 +529,9 @@ export default function FriendsScreen() {
               className="w-1/2"
               disabled={numSelected === 0}
               onPress={async () => {
-                // mediaSource is guaranteed non-null in this block (line 197 condition)
-                // mediaParams.type must exist if we're in send mode
-                if (mediaParams?.type) {
-                  let finalUri = mediaSource.uri;
+                // mediaParams.type and path must exist if we're in send mode
+                if (mediaParams?.type && mediaParams.path) {
+                  let finalUri = `file://${mediaParams.path}`;
 
                   // If there's a rasterization promise, wait for it to complete
                   if (mediaParams.rasterizationPromise) {
@@ -572,14 +569,22 @@ export default function FriendsScreen() {
             </Button>
           </View>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
   // Normal mode: Show friends list with inbox counts
   return (
     <>
-      <SafeAreaView className="bg-background">
+      <View
+        className="flex-1 bg-background"
+        style={{
+          paddingTop: insets.top,
+          paddingBottom: insets.bottom,
+          paddingLeft: insets.left,
+          paddingRight: insets.right,
+        }}
+      >
         <View className="h-full w-full">
           <View className="relative items-center px-4 py-3 pb-4">
             <Text className="text-lg font-semibold">Friends</Text>
@@ -665,9 +670,9 @@ export default function FriendsScreen() {
             />
           )}
         </View>
-      </SafeAreaView>
+      </View>
 
-      {/* Message viewer modal - outside SafeAreaView to avoid safe area padding */}
+      {/* Message viewer modal */}
       <Modal
         visible={Boolean(viewer)}
         transparent={false}

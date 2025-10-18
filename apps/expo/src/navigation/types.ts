@@ -6,7 +6,19 @@ export interface RootStackParamList extends ParamListBase {
   Onboarding: undefined;
   Main: { screen?: string; params?: Record<string, unknown> } | undefined;
   Post: { id: string };
-  Media: { path: string; type: "photo" | "video"; defaultRecipientId?: string };
+  Media: {
+    path: string;
+    type: "photo" | "video";
+    defaultRecipientId?: string;
+    captions?: {
+      id: string;
+      text: string;
+      x: number;
+      y: number;
+      fontSize: number;
+      color: string;
+    }[];
+  };
 }
 
 export type AppScreenName = keyof RootStackParamList;
@@ -19,6 +31,7 @@ export interface MainTabParamList extends ParamListBase {
         defaultRecipientId?: string;
         openMessageFromSender?: string;
         rasterizationPromise?: Promise<string>; // Promise that resolves to rasterized image path
+        thumbhash?: string; // Thumbhash for placeholder while rasterizing
         captions?: {
           id: string;
           text: string;

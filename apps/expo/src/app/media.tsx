@@ -37,7 +37,12 @@ export default function MediaScreen() {
   const route = useRoute<RouteProp<RootStackParamList, "Media">>();
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { path, type, defaultRecipientId } = route.params;
+  const {
+    path,
+    type,
+    defaultRecipientId,
+    captions: initialCaptions,
+  } = route.params;
 
   const source = useMemo(() => ({ uri: `file://${path}` }), [path]);
   const isFocused = useIsFocused();
@@ -48,12 +53,30 @@ export default function MediaScreen() {
   const skiaImage = useImage(`file://${path}`);
 
   // Caption state - support multiple captions
-  const [captions, setCaptions] = useState<CaptionData[]>([]);
+  // Initialize from route params if coming back from Friends screen
+  const [captions, setCaptions] = useState<CaptionData[]>(
+    initialCaptions ?? [],
+  );
   const [editingCaptionId, setEditingCaptionId] = useState<string | null>(null);
   const [containerLayout, setContainerLayout] = useState<{
     width: number;
     height: number;
   } | null>(null);
+
+  // Generate thumbhash for the image
+  const [thumbhash, setThumbhash] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    async function generateThumbhash() {
+      try {
+        const hash = await Image.generateThumbhashAsync(`file://${path}`);
+        setThumbhash(hash);
+      } catch (err) {
+        console.warn("[Media] Failed to generate thumbhash:", err);
+      }
+    }
+    void generateThumbhash();
+  }, [path]);
 
   // Debug render
   useEffect(() => {
@@ -86,10 +109,20 @@ export default function MediaScreen() {
         setEditingCaptionId(null);
         return true; // Handled
       }
+
+      // If we came back from Friends screen (has initialCaptions), reset to Camera
+      if (initialCaptions) {
+        navigation.reset({
+          index: 0,
+          routes: [{ name: "Main", params: { screen: "Camera" } }],
+        });
+        return true; // Handled
+      }
+
       return false; // Let default behavior (navigate back) happen
     });
     return () => handler.remove();
-  }, [editingCaptionId]);
+  }, [editingCaptionId, initialCaptions, navigation]);
 
   // Handle container layout
   function handleLayout(event: LayoutChangeEvent) {
@@ -147,7 +180,7 @@ export default function MediaScreen() {
     const bytes = snapshot.encodeToBytes();
 
     // Create a File reference in the cache directory
-    const tempFile = new File(Paths.cache, `rasterized-${Date.now()}.jpg`);
+    const tempFile = new File(Paths.cache, `whisp-${Date.now()}.jpg`);
 
     // Write the bytes to the file
     const writableStream = tempFile.writableStream();
@@ -237,6 +270,7 @@ export default function MediaScreen() {
             type,
             defaultRecipientId,
             rasterizationPromise, // Promise for upload
+            thumbhash, // Thumbhash for placeholder
             captions, // Caption data for thumbnail overlay
             originalWidth: containerLayout?.width,
             originalHeight: containerLayout?.height,
@@ -303,8 +337,8 @@ export default function MediaScreen() {
             style={StyleSheet.absoluteFill}
             contentFit="cover"
           />
-          {/* Caption Editor Overlay */}
-          {containerLayout && (
+          {/* Caption Editor Overlay - only render when screen is focused */}
+          {containerLayout && isFocused && (
             <>
               {console.log("[Media] Rendering CaptionEditor with:", {
                 captionCount: captions.length,
@@ -336,8 +370,8 @@ export default function MediaScreen() {
             shouldPlay
             useNativeControls={false}
           />
-          {/* Caption Editor Overlay */}
-          {containerLayout && (
+          {/* Caption Editor Overlay - only render when screen is focused */}
+          {containerLayout && isFocused && (
             <>
               {console.log("[Media] Rendering CaptionEditor with:", {
                 captionCount: captions.length,
@@ -365,7 +399,17 @@ export default function MediaScreen() {
           <Button
             variant="secondary"
             className="px-6"
-            onPress={() => navigation.goBack()}
+            onPress={() => {
+              // If we came back from Friends screen (has initialCaptions), reset to Camera
+              if (initialCaptions) {
+                navigation.reset({
+                  index: 0,
+                  routes: [{ name: "Main", params: { screen: "Camera" } }],
+                });
+              } else {
+                navigation.goBack();
+              }
+            }}
           >
             <Text>Cancel</Text>
           </Button>
