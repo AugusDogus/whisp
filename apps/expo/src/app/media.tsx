@@ -118,19 +118,15 @@ export default function MediaScreen() {
         return true; // Handled
       }
 
-      // If we came back from Friends screen (has initialCaptions), reset to Camera
-      if (initialCaptions) {
-        navigation.reset({
-          index: 0,
-          routes: [{ name: "Main", params: { screen: "Camera" } }],
-        });
-        return true; // Handled
-      }
-
-      return false; // Let default behavior (navigate back) happen
+      // Always reset to Camera
+      navigation.reset({
+        index: 0,
+        routes: [{ name: "Main", params: { screen: "Camera" } }],
+      });
+      return true; // Handled
     });
     return () => handler.remove();
-  }, [editingCaptionId, initialCaptions, navigation]);
+  }, [editingCaptionId, navigation]);
 
   // Handle container layout
   function handleLayout(event: LayoutChangeEvent) {
@@ -406,15 +402,11 @@ export default function MediaScreen() {
       <SafeAreaView edges={["top"]} style={styles.topControlsSafeArea}>
         <Pressable
           onPress={() => {
-            // If we came back from Friends screen (has initialCaptions), reset to Camera
-            if (initialCaptions) {
-              navigation.reset({
-                index: 0,
-                routes: [{ name: "Main", params: { screen: "Camera" } }],
-              });
-            } else {
-              navigation.goBack();
-            }
+            // Always reset to Camera
+            navigation.reset({
+              index: 0,
+              routes: [{ name: "Main", params: { screen: "Camera" } }],
+            });
           }}
           style={styles.closeButton}
         >
