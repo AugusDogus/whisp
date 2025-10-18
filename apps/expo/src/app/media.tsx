@@ -341,8 +341,8 @@ export default function MediaScreen() {
             style={StyleSheet.absoluteFill}
             contentFit="cover"
           />
-          {/* Caption Editor Overlay - only render when screen is focused */}
-          {containerLayout && isFocused && (
+          {/* Caption Editor Overlay */}
+          {containerLayout && (
             <>
               {console.log("[Media] Rendering CaptionEditor with:", {
                 captionCount: captions.length,
@@ -374,8 +374,8 @@ export default function MediaScreen() {
             shouldPlay
             useNativeControls={false}
           />
-          {/* Caption Editor Overlay - only render when screen is focused */}
-          {containerLayout && isFocused && (
+          {/* Caption Editor Overlay */}
+          {containerLayout && (
             <>
               {console.log("[Media] Rendering CaptionEditor with:", {
                 captionCount: captions.length,
