@@ -2,12 +2,20 @@ import type { RouteProp } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { LayoutChangeEvent } from "react-native";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Alert, BackHandler, Keyboard, StyleSheet, View } from "react-native";
+import {
+  Alert,
+  BackHandler,
+  Keyboard,
+  Pressable,
+  StyleSheet,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ResizeMode, Video } from "expo-av";
 import { File, Paths } from "expo-file-system";
 import { Image } from "expo-image";
 import * as MediaLibrary from "expo-media-library";
+import { AntDesign, Ionicons } from "@expo/vector-icons";
 import {
   useIsFocused,
   useNavigation,
@@ -394,43 +402,54 @@ export default function MediaScreen() {
         </>
       )}
 
+      {/* Close button - top left */}
+      <SafeAreaView edges={["top"]} style={styles.topControlsSafeArea}>
+        <Pressable
+          onPress={() => {
+            // If we came back from Friends screen (has initialCaptions), reset to Camera
+            if (initialCaptions) {
+              navigation.reset({
+                index: 0,
+                routes: [{ name: "Main", params: { screen: "Camera" } }],
+              });
+            } else {
+              navigation.goBack();
+            }
+          }}
+          style={styles.closeButton}
+        >
+          <Ionicons name="close" size={32} color="white" />
+        </Pressable>
+      </SafeAreaView>
+
+      {/* Bottom controls */}
       <SafeAreaView edges={["bottom"]} style={styles.controlsSafeArea}>
         <View style={styles.controlsRow}>
-          <Button
-            variant="secondary"
-            className="px-6"
-            onPress={() => {
-              // If we came back from Friends screen (has initialCaptions), reset to Camera
-              if (initialCaptions) {
-                navigation.reset({
-                  index: 0,
-                  routes: [{ name: "Main", params: { screen: "Camera" } }],
-                });
-              } else {
-                navigation.goBack();
-              }
-            }}
-          >
-            <Text>Cancel</Text>
-          </Button>
-          {editingCaptionId && (
-            <Button className="px-6" onPress={handleStopEditing}>
-              <Text>Done</Text>
-            </Button>
-          )}
-          {!editingCaptionId && (
-            <View style={styles.actionButtons}>
+          {editingCaptionId ? (
+            <>
+              <View style={{ flex: 1 }} />
+              <Button className="px-6" onPress={handleStopEditing}>
+                <Text>Done</Text>
+              </Button>
+            </>
+          ) : (
+            <>
               <Button
                 variant="secondary"
-                className="px-6"
+                className="flex-row items-center gap-2 px-6"
                 onPress={() => void handleSave()}
               >
+                <AntDesign name="download" size={18} color="white" />
                 <Text>Save</Text>
               </Button>
-              <Button className="px-6" onPress={() => void handleSend()}>
+              <Button
+                className="flex-row items-center gap-2 px-6"
+                onPress={() => void handleSend()}
+              >
                 <Text>Send</Text>
+                <AntDesign name="send" size={18} color="black" />
               </Button>
-            </View>
+            </>
           )}
         </View>
       </SafeAreaView>
@@ -442,6 +461,16 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "black",
+  },
+  topControlsSafeArea: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+  },
+  closeButton: {
+    padding: 16,
+    alignSelf: "flex-start",
   },
   controlsSafeArea: {
     position: "absolute",
@@ -455,10 +484,5 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: 16,
     paddingVertical: 16,
-  },
-  actionButtons: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
   },
 });
