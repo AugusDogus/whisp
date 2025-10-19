@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BackHandler,
   FlatList,
+  Linking,
   Modal,
   Pressable,
   RefreshControl,
@@ -17,7 +18,7 @@ import { ResizeMode, Video } from "expo-av";
 import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
 import * as Notifications from "expo-notifications";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import {
   BottomSheetBackdrop,
   BottomSheetModal,
@@ -49,6 +50,7 @@ interface FriendRow {
   id: string;
   name: string;
   image: string | null;
+  discordId: string | null;
   hasUnread: boolean;
   unreadCount: number;
   isSelected: boolean;
@@ -76,10 +78,7 @@ export default function FriendsScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [showAddFriends, setShowAddFriends] = useState(false);
-  const [selectedFriend, setSelectedFriend] = useState<{
-    id: string;
-    name: string;
-  } | null>(null);
+  const [selectedFriend, setSelectedFriend] = useState<FriendRow | null>(null);
   const [showRemoveDialog, setShowRemoveDialog] = useState(false);
   const isShowingDialogRef = useRef(false);
   const videoRef = useRef<VideoType>(null);
@@ -248,6 +247,8 @@ export default function FriendsScreen() {
       id: f.id,
       name: f.name,
       image: (f as unknown as { image?: string | null }).image ?? null,
+      discordId:
+        (f as unknown as { discordId?: string | null }).discordId ?? null,
       hasUnread: (senderToMessages.get(f.id) ?? 0) > 0,
       unreadCount: senderToMessages.get(f.id) ?? 0,
       isSelected:
@@ -706,7 +707,7 @@ export default function FriendsScreen() {
                     void Haptics.impactAsync(
                       Haptics.ImpactFeedbackStyle.Medium,
                     );
-                    setSelectedFriend({ id: item.id, name: item.name });
+                    setSelectedFriend(item);
                     bottomSheetRef.current?.present();
                   }}
                 >
@@ -858,6 +859,24 @@ export default function FriendsScreen() {
           <Text className="mb-3 px-2 text-sm font-medium text-muted-foreground">
             {selectedFriend?.name}
           </Text>
+
+          {selectedFriend?.discordId && (
+            <Pressable
+              className="flex-row items-center gap-3 rounded-lg px-3 py-3 active:bg-accent"
+              onPress={() => {
+                if (selectedFriend.discordId) {
+                  void Linking.openURL(
+                    `https://discord.com/users/${selectedFriend.discordId}`,
+                  );
+                  bottomSheetRef.current?.close();
+                }
+              }}
+            >
+              <MaterialIcons name="discord" size={22} color="#666" />
+              <Text className="text-base">View Discord Profile</Text>
+            </Pressable>
+          )}
+
           <Pressable
             className="flex-row items-center gap-3 rounded-lg px-3 py-3 active:bg-accent"
             onPress={() => {

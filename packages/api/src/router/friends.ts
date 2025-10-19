@@ -2,7 +2,12 @@ import type { TRPCRouterRecord } from "@trpc/server";
 import { z } from "zod/v4";
 
 import { and, eq, inArray, like, ne, or } from "@acme/db";
-import { FriendRequest, Friendship, user as User } from "@acme/db/schema";
+import {
+  account as Account,
+  FriendRequest,
+  Friendship,
+  user as User,
+} from "@acme/db/schema";
 
 import { protectedProcedure } from "../trpc";
 import {
@@ -110,15 +115,32 @@ export const friendsRouter = {
     }
 
     if (friendIds.length === 0)
-      return [] as { id: string; name: string; image: string | null }[];
+      return [] as {
+        id: string;
+        name: string;
+        image: string | null;
+        discordId: string | null;
+      }[];
+
     const friends = await ctx.db
-      .select()
+      .select({
+        id: User.id,
+        name: User.name,
+        image: User.image,
+        discordId: Account.accountId,
+      })
       .from(User)
+      .leftJoin(
+        Account,
+        and(eq(Account.userId, User.id), eq(Account.providerId, "discord")),
+      )
       .where(or(...friendIds.map((id) => eq(User.id, id))));
+
     return friends.map((u) => ({
       id: u.id,
       name: u.name,
       image: u.image ?? null,
+      discordId: u.discordId ?? null,
     }));
   }),
 
