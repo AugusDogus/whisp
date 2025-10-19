@@ -348,7 +348,7 @@ interface CaptionEditorProps {
   useSkiaRendering?: boolean; // If true, show Skia version; if false, show TextInput
 }
 
-const FONT_SIZE = 16;
+const FONT_SIZE = 18;
 const PILL_PADDING_H = 12;
 const PILL_PADDING_V = 6;
 const PILL_BG_COLOR = "rgba(0, 0, 0, 0.6)";
