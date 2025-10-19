@@ -5,6 +5,17 @@ import Constants from "expo-constants";
 import { Image } from "expo-image";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "~/components/ui/alert-dialog";
 import { Button } from "~/components/ui/button";
 import {
   Dialog,
@@ -72,10 +83,16 @@ export default function ProfileScreen() {
     },
   });
 
+  const deleteAccount = trpc.auth.deleteAccount.useMutation();
+
   const handleToggle = (key: keyof typeof preferences) => {
     updatePreferences.mutate({
       [key]: !preferences[key],
     });
+  };
+
+  const handleDeleteAccount = async () => {
+    await deleteAccount.mutateAsync();
   };
 
   return (
@@ -194,8 +211,37 @@ export default function ProfileScreen() {
           </View>
         </ScrollView>
 
-        {/* Bottom section - Sign out */}
-        <View className="px-4 pb-4">
+        {/* Bottom section - Delete Account & Sign out */}
+        <View className="gap-3 px-4 pb-4">
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="ghost" className="w-full">
+                <Text>Delete Account</Text>
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete Account</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Are you sure you want to delete your Whisp account? This will
+                  permanently delete all your messages, friend connections, and
+                  account data. This action cannot be undone.
+                  {"\n\n"}
+                  Note: This only deletes your Whisp account. Your Discord
+                  account will remain active.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>
+                  <Text>Cancel</Text>
+                </AlertDialogCancel>
+                <AlertDialogAction onPress={handleDeleteAccount}>
+                  <Text>Delete Account</Text>
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
           <Button
             variant="destructive"
             onPress={async () => {
