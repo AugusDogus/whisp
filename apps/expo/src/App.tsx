@@ -5,6 +5,7 @@ import {
   SafeAreaProvider,
 } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
+import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { PortalHost } from "@rn-primitives/portal";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { PostHogProvider } from "posthog-react-native";
@@ -25,11 +26,13 @@ function AppContent() {
   usePushNotifications(session?.user != null);
 
   return (
-    <View style={{ flex: 1 }}>
-      <RootNavigator />
-      <StatusBar />
-      <PortalHost />
-    </View>
+    <BottomSheetModalProvider>
+      <View style={{ flex: 1 }}>
+        <RootNavigator />
+        <StatusBar />
+        <PortalHost />
+      </View>
+    </BottomSheetModalProvider>
   );
 }
 

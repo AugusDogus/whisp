@@ -1,3 +1,4 @@
+import type { BottomSheetBackdropProps } from "@gorhom/bottom-sheet";
 import type { RouteProp } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { Video as VideoType } from "expo-av";
@@ -13,14 +14,30 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ResizeMode, Video } from "expo-av";
+import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
 import * as Notifications from "expo-notifications";
 import { Ionicons } from "@expo/vector-icons";
+import {
+  BottomSheetBackdrop,
+  BottomSheetModal,
+  BottomSheetView,
+} from "@gorhom/bottom-sheet";
 import { useNavigation, useRoute } from "@react-navigation/native";
 
 import type { MainTabParamList, RootStackParamList } from "~/navigation/types";
 import { AddFriendsPanel } from "~/components/add-friends-panel";
 import { FriendsListSkeletonVaried } from "~/components/friends-skeleton";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "~/components/ui/alert-dialog";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { Text } from "~/components/ui/text";
@@ -59,11 +76,54 @@ export default function FriendsScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [showAddFriends, setShowAddFriends] = useState(false);
+  const [selectedFriend, setSelectedFriend] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+  const [showRemoveDialog, setShowRemoveDialog] = useState(false);
+  const isShowingDialogRef = useRef(false);
   const videoRef = useRef<VideoType>(null);
+  const bottomSheetRef = useRef<BottomSheetModal>(null);
   const utils = trpc.useUtils();
   const markRead = trpc.messages.markRead.useMutation({
     onSuccess: async () => {
       await utils.messages.inbox.invalidate();
+    },
+  });
+
+  const removeFriend = trpc.friends.removeFriend.useMutation({
+    onMutate: async (variables) => {
+      // Cancel any outgoing refetches
+      await utils.friends.list.cancel();
+
+      // Snapshot the previous value
+      const previousFriends = utils.friends.list.getData();
+
+      // Optimistically update to remove the friend
+      utils.friends.list.setData(undefined, (old) => {
+        if (!old) return old;
+        return old.filter((friend) => friend.id !== variables.friendId);
+      });
+
+      // Return context with the snapshot
+      return { previousFriends };
+    },
+    onError: (err, variables, context) => {
+      // If the mutation fails, roll back to the previous value
+      if (context?.previousFriends) {
+        utils.friends.list.setData(undefined, context.previousFriends);
+      }
+    },
+    onSuccess: () => {
+      setShowRemoveDialog(false);
+      // Clear selected friend after dialog closes
+      setTimeout(() => {
+        setSelectedFriend(null);
+      }, 300);
+    },
+    onSettled: async () => {
+      // Always refetch after error or success to ensure we're in sync
+      await utils.friends.list.invalidate();
     },
   });
 
@@ -72,6 +132,20 @@ export default function FriendsScreen() {
     await Promise.all([refetchFriends(), refetchInbox()]);
     setIsRefreshing(false);
   };
+
+  // Render backdrop for bottom sheet modal
+  const renderBackdrop = useCallback(
+    (props: BottomSheetBackdropProps) => (
+      <BottomSheetBackdrop
+        {...props}
+        disappearsOnIndex={-1}
+        appearsOnIndex={0}
+        opacity={0.3}
+        pressBehavior="close"
+      />
+    ),
+    [],
+  );
 
   // Update send mode when hasMedia changes
   useEffect(() => {
@@ -627,6 +701,14 @@ export default function FriendsScreen() {
                       });
                     }
                   }}
+                  delayLongPress={300}
+                  onLongPress={() => {
+                    void Haptics.impactAsync(
+                      Haptics.ImpactFeedbackStyle.Medium,
+                    );
+                    setSelectedFriend({ id: item.id, name: item.name });
+                    bottomSheetRef.current?.present();
+                  }}
                 >
                   <View className="flex-row items-center gap-3">
                     <View className="h-10 w-10 overflow-hidden rounded-full bg-secondary">
@@ -748,6 +830,97 @@ export default function FriendsScreen() {
           </View>
         </TouchableWithoutFeedback>
       </Modal>
+
+      {/* Friend actions bottom sheet */}
+      <BottomSheetModal
+        ref={bottomSheetRef}
+        enableDynamicSizing
+        enablePanDownToClose
+        enableDismissOnClose
+        backdropComponent={renderBackdrop}
+        onDismiss={() => {
+          console.log(
+            "BottomSheet onDismiss, isShowingDialog:",
+            isShowingDialogRef.current,
+            "selectedFriend:",
+            selectedFriend,
+          );
+          // Only clear if dialog is not showing (use ref for synchronous check)
+          if (!isShowingDialogRef.current) {
+            console.log("Clearing selectedFriend in onDismiss");
+            setSelectedFriend(null);
+          }
+        }}
+        backgroundStyle={{ backgroundColor: "#171717" }}
+        handleIndicatorStyle={{ backgroundColor: "#525252" }}
+      >
+        <BottomSheetView className="px-4 pb-8 pt-2">
+          <Text className="mb-3 px-2 text-sm font-medium text-muted-foreground">
+            {selectedFriend?.name}
+          </Text>
+          <Pressable
+            className="flex-row items-center gap-3 rounded-lg px-3 py-3 active:bg-accent"
+            onPress={() => {
+              console.log(
+                "Remove Friend pressed, selectedFriend:",
+                selectedFriend,
+              );
+              // Use ref to track dialog state synchronously
+              isShowingDialogRef.current = true;
+              setShowRemoveDialog(true);
+              bottomSheetRef.current?.close();
+            }}
+          >
+            <Ionicons name="person-remove-outline" size={22} color="#ef4444" />
+            <Text className="text-base text-destructive">Remove Friend</Text>
+          </Pressable>
+        </BottomSheetView>
+      </BottomSheetModal>
+
+      {/* Remove friend confirmation dialog */}
+      <AlertDialog
+        open={showRemoveDialog}
+        onOpenChange={(open) => {
+          console.log(
+            "AlertDialog onOpenChange:",
+            open,
+            "selectedFriend:",
+            selectedFriend,
+          );
+          setShowRemoveDialog(open);
+          isShowingDialogRef.current = open;
+          // Clear selected friend when dialog closes
+          if (!open) {
+            setTimeout(() => {
+              setSelectedFriend(null);
+            }, 300);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove Friend</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to remove {selectedFriend?.name} from your
+              friends list? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>
+              <Text>Cancel</Text>
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onPress={() => {
+                if (selectedFriend) {
+                  removeFriend.mutate({ friendId: selectedFriend.id });
+                }
+              }}
+            >
+              <Text>Remove</Text>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

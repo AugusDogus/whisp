@@ -232,4 +232,29 @@ export const friendsRouter = {
 
       return { ok: true };
     }),
+
+  removeFriend: protectedProcedure
+    .input(z.object({ friendId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const me = ctx.session.user.id;
+      if (me === input.friendId) return { ok: false };
+
+      // Delete the friendship (handles both userIdA and userIdB cases)
+      await ctx.db
+        .delete(Friendship)
+        .where(
+          or(
+            and(
+              eq(Friendship.userIdA, me),
+              eq(Friendship.userIdB, input.friendId),
+            ),
+            and(
+              eq(Friendship.userIdB, me),
+              eq(Friendship.userIdA, input.friendId),
+            ),
+          ),
+        );
+
+      return { ok: true };
+    }),
 } satisfies TRPCRouterRecord;
