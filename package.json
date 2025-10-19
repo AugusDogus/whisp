@@ -21,6 +21,7 @@
     "lint:ws": "bun x sherif@latest",
     "postinstall": "bun lint:ws",
     "typecheck": "turbo run typecheck",
+    "check": "bun run typecheck && bun run lint:fix && bun run format:fix",
     "ui-add": "turbo run ui-add",
     "android": "expo run:android",
     "ios": "expo run:ios"
