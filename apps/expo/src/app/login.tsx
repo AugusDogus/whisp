@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
+import { usePostHog } from "posthog-react-native";
 
 import type { RootStackParamList } from "~/navigation/types";
 import { Button } from "~/components/ui/button";
@@ -21,12 +22,17 @@ export default function LoginPage() {
   const [isSigningIn, setIsSigningIn] = useState(false);
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const posthog = usePostHog();
 
   useEffect(() => {
     if (session) {
+      posthog.identify(session.user.id, {
+        email: session.user.email,
+        name: session.user.name,
+      });
       navigation.reset({ index: 0, routes: [{ name: "Onboarding" }] });
     }
-  }, [session, navigation]);
+  }, [session, navigation, posthog]);
 
   return (
     <SafeAreaView className="bg-background">

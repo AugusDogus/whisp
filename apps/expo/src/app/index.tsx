@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { ActivityIndicator, View } from "react-native";
 import * as SecureStore from "expo-secure-store";
 import { useNavigation } from "@react-navigation/native";
+import { usePostHog } from "posthog-react-native";
 
 import type { RootStackParamList } from "~/navigation/types";
 import { authClient } from "~/utils/auth";
@@ -11,6 +12,16 @@ export default function SplashScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { data: session, isPending } = authClient.useSession();
+  const posthog = usePostHog();
+
+  useEffect(() => {
+    if (session?.user) {
+      posthog.identify(session.user.id, {
+        email: session.user.email,
+        name: session.user.name,
+      });
+    }
+  }, [session, posthog]);
 
   useEffect(() => {
     async function checkAuth() {

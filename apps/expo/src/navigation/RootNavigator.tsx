@@ -2,10 +2,11 @@ import type {
   LinkingOptions,
   NavigationContainerRef,
 } from "@react-navigation/native";
-import { createRef } from "react";
+import { createRef, useRef } from "react";
 import { createMaterialTopTabNavigator } from "@react-navigation/material-top-tabs";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import { usePostHog } from "posthog-react-native";
 import { Toaster } from "sonner-native";
 
 import type { RootStackParamList } from "./types";
@@ -61,9 +62,29 @@ function MainTabs() {
 }
 
 export function RootNavigator() {
+  const routeNameRef = useRef<string | undefined>(undefined);
+  const posthog = usePostHog();
+
   return (
     <RecordingProvider>
-      <NavigationContainer linking={linking} ref={navigationRef}>
+      <NavigationContainer
+        linking={linking}
+        ref={navigationRef}
+        onReady={() => {
+          routeNameRef.current = navigationRef.current?.getCurrentRoute()?.name;
+        }}
+        onStateChange={() => {
+          const previousRouteName = routeNameRef.current;
+          const currentRouteName =
+            navigationRef.current?.getCurrentRoute()?.name;
+
+          if (previousRouteName !== currentRouteName && currentRouteName) {
+            void posthog.screen(currentRouteName);
+          }
+
+          routeNameRef.current = currentRouteName;
+        }}
+      >
         <Stack.Navigator
           initialRouteName="Splash"
           screenOptions={{ headerShown: false, animation: "none" }}

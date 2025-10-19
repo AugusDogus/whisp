@@ -48,6 +48,18 @@ export const CONTROL_BUTTON_SIZE = 40;
 export const ALLOW_SELF_MESSAGES =
   process.env.EXPO_PUBLIC_ALLOW_SELF_MESSAGES === "true";
 
+// PostHog Analytics
+function getRequiredEnv(key: string): string {
+  const value = process.env[key] as string | undefined;
+  if (!value) {
+    throw new Error(`Missing required environment variable: ${key}`);
+  }
+  return value;
+}
+
+export const POSTHOG_API_KEY = getRequiredEnv("EXPO_PUBLIC_POSTHOG_API_KEY");
+export const POSTHOG_HOST = getRequiredEnv("EXPO_PUBLIC_POSTHOG_HOST");
+
 // Expo Push Notifications - read from app.config.ts via Constants
 interface ExpoConfigExtra {
   eas?: {
