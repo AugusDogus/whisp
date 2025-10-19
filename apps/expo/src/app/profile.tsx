@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { Linking, Pressable, ScrollView, Switch, View } from "react-native";
+import { Linking, Pressable, ScrollView, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Constants from "expo-constants";
 import { Image } from "expo-image";
@@ -26,6 +26,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "~/components/ui/dialog";
+import { Switch } from "~/components/ui/switch";
 import { Text } from "~/components/ui/text";
 import { trpc } from "~/utils/api";
 import { authClient } from "~/utils/auth";
@@ -136,7 +137,7 @@ export default function ProfileScreen() {
               onPress={() => {
                 void Linking.openURL("https://discord.gg/DkFmaDDqgW");
               }}
-              className="rounded-lg bg-secondary p-4 active:opacity-70"
+              className="rounded-lg border border-border bg-background p-4 shadow-sm shadow-black/5 active:opacity-70"
             >
               <View className="flex-row items-center gap-3">
                 <View className="h-10 w-10 items-center justify-center rounded-full bg-primary/10">
@@ -155,7 +156,7 @@ export default function ProfileScreen() {
             </Pressable>
 
             {/* Notifications Card */}
-            <View className="rounded-lg bg-secondary p-4">
+            <View className="rounded-lg border border-border bg-background p-4 shadow-sm shadow-black/5">
               <View className="flex-row items-center gap-3 pb-3">
                 <View className="h-10 w-10 items-center justify-center rounded-full bg-primary/10">
                   <Ionicons name="notifications" size={20} color="#666" />
@@ -186,7 +187,7 @@ export default function ProfileScreen() {
             </View>
 
             {/* About Card */}
-            <View className="rounded-lg bg-secondary p-4">
+            <View className="rounded-lg border border-border bg-background p-4 shadow-sm shadow-black/5">
               <View className="flex-row items-center gap-3 pb-3">
                 <View className="h-10 w-10 items-center justify-center rounded-full bg-primary/10">
                   <Ionicons name="information-circle" size={20} color="#666" />
