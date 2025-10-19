@@ -1,128 +1,27 @@
-import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { useState } from "react";
-import { Pressable, Switch, View } from "react-native";
+import { useRef, useState } from "react";
+import { Linking, Pressable, ScrollView, Switch, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import Constants from "expo-constants";
 import { Image } from "expo-image";
-import { Ionicons } from "@expo/vector-icons";
-import { useNavigation } from "@react-navigation/native";
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 
-import type { RootStackParamList } from "~/navigation/types";
 import { Button } from "~/components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "~/components/ui/dialog";
 import { Text } from "~/components/ui/text";
 import { trpc } from "~/utils/api";
 import { authClient } from "~/utils/auth";
+import { getBaseUrl } from "~/utils/base-url";
 
 export default function ProfileScreen() {
   const { data: session } = authClient.useSession();
-  const navigation =
-    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const [showSettings, setShowSettings] = useState(false);
-
-  return (
-    <SafeAreaView className="bg-background">
-      <View className="h-full w-full">
-        <View className="items-center px-4 py-3 pb-4">
-          <Text className="text-lg font-semibold">Profile</Text>
-        </View>
-
-        <View className="flex-1 px-4">
-          {/* Top section - Avatar and info */}
-          <View className="items-center gap-4 pt-8">
-            <View className="h-24 w-24 items-center justify-center overflow-hidden rounded-full bg-secondary">
-              {session?.user.image ? (
-                <Image
-                  source={{ uri: session.user.image }}
-                  style={{ width: 96, height: 96 }}
-                  contentFit="cover"
-                />
-              ) : (
-                <Ionicons name="person" size={48} color="#666" />
-              )}
-            </View>
-
-            <View className="items-center gap-1">
-              <Text className="text-2xl font-bold">
-                {session?.user.name ?? "User"}
-              </Text>
-              {session?.user.email && (
-                <Text variant="muted" className="text-sm">
-                  {session.user.email}
-                </Text>
-              )}
-            </View>
-          </View>
-
-          {/* Cards section */}
-          {!showSettings ? (
-            <View className="mt-8 gap-3">
-              {/* Friends Card */}
-              <Pressable
-                onPress={() => {
-                  navigation.navigate("Main", {
-                    screen: "Friends",
-                  });
-                }}
-                className="rounded-lg bg-secondary p-4 active:opacity-70"
-              >
-                <View className="flex-row items-center gap-3">
-                  <View className="h-10 w-10 items-center justify-center rounded-full bg-primary/10">
-                    <Ionicons name="people" size={20} color="#666" />
-                  </View>
-                  <View className="flex-1">
-                    <Text className="text-base font-semibold">Friends</Text>
-                    <Text variant="muted" className="text-xs">
-                      Manage your connections
-                    </Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={20} color="#666" />
-                </View>
-              </Pressable>
-
-              {/* Settings Card */}
-              <Pressable
-                onPress={() => setShowSettings(true)}
-                className="rounded-lg bg-secondary p-4 active:opacity-70"
-              >
-                <View className="flex-row items-center gap-3">
-                  <View className="h-10 w-10 items-center justify-center rounded-full bg-primary/10">
-                    <Ionicons name="settings" size={20} color="#666" />
-                  </View>
-                  <View className="flex-1">
-                    <Text className="text-base font-semibold">Settings</Text>
-                    <Text variant="muted" className="text-xs">
-                      Customize your experience
-                    </Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={20} color="#666" />
-                </View>
-              </Pressable>
-            </View>
-          ) : (
-            <SettingsPanel onBack={() => setShowSettings(false)} />
-          )}
-
-          {/* Bottom section - Sign out */}
-          {!showSettings && (
-            <View className="flex-1 justify-end pb-4">
-              <Button
-                variant="destructive"
-                onPress={async () => {
-                  console.log("[ProfileScreen] Signing out");
-                  await authClient.signOut();
-                }}
-                className="w-full"
-              >
-                <Text>Sign Out</Text>
-              </Button>
-            </View>
-          )}
-        </View>
-      </View>
-    </SafeAreaView>
-  );
-}
-
-function SettingsPanel({ onBack }: { onBack: () => void }) {
   const utils = trpc.useUtils();
   const { data: preferences } = trpc.notifications.getPreferences.useQuery(
     undefined,
@@ -180,75 +79,243 @@ function SettingsPanel({ onBack }: { onBack: () => void }) {
   };
 
   return (
-    <View className="mt-8 flex-1 gap-3">
-      {/* Back button */}
+    <SafeAreaView className="bg-background">
+      <View className="h-full w-full">
+        <View className="items-center px-4 py-3 pb-4">
+          <Text className="text-lg font-semibold">Profile</Text>
+        </View>
+
+        <ScrollView className="flex-1 px-4">
+          {/* Top section - Avatar and info */}
+          <View className="items-center gap-4 pt-8">
+            <View className="h-24 w-24 items-center justify-center overflow-hidden rounded-full bg-secondary">
+              {session?.user.image ? (
+                <Image
+                  source={{ uri: session.user.image }}
+                  style={{ width: 96, height: 96 }}
+                  contentFit="cover"
+                />
+              ) : (
+                <Ionicons name="person" size={48} color="#666" />
+              )}
+            </View>
+
+            <View className="items-center gap-1">
+              <Text className="text-2xl font-bold">
+                {session?.user.name ?? "User"}
+              </Text>
+              {session?.user.email && (
+                <Text variant="muted" className="text-sm">
+                  {session.user.email}
+                </Text>
+              )}
+            </View>
+          </View>
+
+          {/* Cards section */}
+          <View className="mt-8 gap-3 pb-4">
+            {/* Discord Card */}
+            <Pressable
+              onPress={() => {
+                void Linking.openURL("https://discord.gg/DkFmaDDqgW");
+              }}
+              className="rounded-lg bg-secondary p-4 active:opacity-70"
+            >
+              <View className="flex-row items-center gap-3">
+                <View className="h-10 w-10 items-center justify-center rounded-full bg-primary/10">
+                  <MaterialIcons name="discord" size={20} color="#666" />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-base font-semibold">
+                    Join our Discord
+                  </Text>
+                  <Text variant="muted" className="text-xs">
+                    Connect with the community
+                  </Text>
+                </View>
+                <Ionicons name="open-outline" size={20} color="#666" />
+              </View>
+            </Pressable>
+
+            {/* Notifications Card */}
+            <View className="rounded-lg bg-secondary p-4">
+              <View className="flex-row items-center gap-3 pb-3">
+                <View className="h-10 w-10 items-center justify-center rounded-full bg-primary/10">
+                  <Ionicons name="notifications" size={20} color="#666" />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-base font-semibold">Notifications</Text>
+                  <Text variant="muted" className="text-xs">
+                    Manage push notifications
+                  </Text>
+                </View>
+              </View>
+              <View className="gap-3 pt-2">
+                <View className="flex-row items-center justify-between">
+                  <Text className="text-sm">New whispers</Text>
+                  <Switch
+                    value={preferences.notifyOnMessages}
+                    onValueChange={() => handleToggle("notifyOnMessages")}
+                  />
+                </View>
+                <View className="flex-row items-center justify-between">
+                  <Text className="text-sm">Friend requests</Text>
+                  <Switch
+                    value={preferences.notifyOnFriendActivity}
+                    onValueChange={() => handleToggle("notifyOnFriendActivity")}
+                  />
+                </View>
+              </View>
+            </View>
+
+            {/* About Card */}
+            <View className="rounded-lg bg-secondary p-4">
+              <View className="flex-row items-center gap-3 pb-3">
+                <View className="h-10 w-10 items-center justify-center rounded-full bg-primary/10">
+                  <Ionicons name="information-circle" size={20} color="#666" />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-base font-semibold">About</Text>
+                  <Text variant="muted" className="text-xs">
+                    App information and legal
+                  </Text>
+                </View>
+              </View>
+              <View className="gap-3 pt-2">
+                <BuildInfo />
+                <Pressable className="active:opacity-70">
+                  <Text className="text-sm text-primary">Terms of Service</Text>
+                </Pressable>
+                <Pressable className="active:opacity-70">
+                  <Text className="text-sm text-primary">Privacy Policy</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </ScrollView>
+
+        {/* Bottom section - Sign out */}
+        <View className="px-4 pb-4">
+          <Button
+            variant="destructive"
+            onPress={async () => {
+              console.log("[ProfileScreen] Signing out");
+              await authClient.signOut();
+            }}
+            className="w-full"
+          >
+            <Text>Sign Out</Text>
+          </Button>
+        </View>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+function BuildInfo() {
+  const tapCount = useRef(0);
+  const tapTimeout = useRef<NodeJS.Timeout | undefined>(undefined);
+  const [showDialog, setShowDialog] = useState(false);
+
+  function handleTap() {
+    // Clear existing timeout
+    if (tapTimeout.current) {
+      clearTimeout(tapTimeout.current);
+    }
+
+    // Increment tap count
+    tapCount.current += 1;
+
+    // If we hit 3 taps, show env vars
+    if (tapCount.current === 3) {
+      setShowDialog(true);
+      tapCount.current = 0;
+    } else {
+      // Reset tap count after 500ms
+      tapTimeout.current = setTimeout(() => {
+        tapCount.current = 0;
+      }, 500);
+    }
+  }
+
+  function getEnvVars() {
+    const envVarMap: Record<string, string> = {
+      EXPO_PUBLIC_API_URL: "API Server",
+      EXPO_PUBLIC_POSTHOG_API_KEY: "PostHog API Key",
+      EXPO_PUBLIC_POSTHOG_HOST: "PostHog Host",
+      EXPO_PUBLIC_ALLOW_SELF_MESSAGES: "Allow Self Messages",
+    };
+
+    const envVars = Object.entries(process.env)
+      .filter(([key]) => key.startsWith("EXPO_PUBLIC_"))
+      .map(([key, value]) => ({
+        key: envVarMap[key] ?? key,
+        value: (value as string | undefined) ?? "undefined",
+      }));
+
+    // Add computed API Server at the end
+    envVars.push({
+      key: "API Server",
+      value: getBaseUrl(),
+    });
+
+    return envVars;
+  }
+
+  const buildNumber = Constants.expoConfig?.version ?? "1.0.0";
+  const nativeBuildVersion =
+    Constants.expoConfig?.ios?.buildNumber ??
+    Constants.expoConfig?.android?.versionCode ??
+    "1";
+
+  return (
+    <>
       <Pressable
-        onPress={onBack}
-        className="mb-2 flex-row items-center gap-2 active:opacity-70"
+        onPress={handleTap}
+        className="flex-row items-center justify-between active:opacity-70"
       >
-        <Ionicons name="chevron-back" size={20} color="#666" />
-        <Text className="text-base font-semibold">Back</Text>
+        <Text className="text-sm">Version</Text>
+        <Text variant="muted" className="text-sm">
+          {buildNumber} ({nativeBuildVersion})
+        </Text>
       </Pressable>
 
-      {/* Notifications Card */}
-      <View className="rounded-lg bg-secondary p-4">
-        <View className="flex-row items-center gap-3 pb-3">
-          <View className="h-10 w-10 items-center justify-center rounded-full bg-primary/10">
-            <Ionicons name="notifications" size={20} color="#666" />
-          </View>
-          <View className="flex-1">
-            <Text className="text-base font-semibold">Notifications</Text>
-            <Text variant="muted" className="text-xs">
-              Manage push notifications
-            </Text>
-          </View>
-        </View>
-        <View className="gap-3 pt-2">
-          <View className="flex-row items-center justify-between">
-            <Text className="text-sm">New whispers</Text>
-            <Switch
-              value={preferences.notifyOnMessages}
-              onValueChange={() => handleToggle("notifyOnMessages")}
-            />
-          </View>
-          <View className="flex-row items-center justify-between">
-            <Text className="text-sm">Friend requests</Text>
-            <Switch
-              value={preferences.notifyOnFriendActivity}
-              onValueChange={() => handleToggle("notifyOnFriendActivity")}
-            />
-          </View>
-        </View>
-      </View>
-
-      {/* About Card */}
-      <View className="rounded-lg bg-secondary p-4">
-        <View className="flex-row items-center gap-3 pb-3">
-          <View className="h-10 w-10 items-center justify-center rounded-full bg-primary/10">
-            <Ionicons name="information-circle" size={20} color="#666" />
-          </View>
-          <View className="flex-1">
-            <Text className="text-base font-semibold">About</Text>
-            <Text variant="muted" className="text-xs">
-              App information and legal
-            </Text>
-          </View>
-        </View>
-        <View className="gap-3 pt-2">
-          <View className="flex-row items-center justify-between">
-            <Text className="text-sm">Version</Text>
-            <Text variant="muted" className="text-sm">
-              1.0.0
-            </Text>
-          </View>
-          <Pressable className="active:opacity-70">
-            <Text className="text-sm text-primary">Terms of Service</Text>
-          </Pressable>
-          <Pressable className="active:opacity-70">
-            <Text className="text-sm text-primary">Privacy Policy</Text>
-          </Pressable>
-        </View>
-      </View>
-    </View>
+      <Dialog open={showDialog} onOpenChange={setShowDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Environment</DialogTitle>
+            <DialogDescription>
+              Current environment configuration
+            </DialogDescription>
+          </DialogHeader>
+          <ScrollView className="max-h-96">
+            <View className="overflow-hidden rounded-lg border border-border">
+              {getEnvVars().map((item, index) => (
+                <View
+                  key={item.key}
+                  className={`p-3 ${
+                    index % 2 === 0 ? "bg-secondary/50" : "bg-background"
+                  }`}
+                >
+                  <Text className="text-xs font-semibold text-foreground">
+                    {item.key}
+                  </Text>
+                  <Text className="mt-1 text-xs text-muted-foreground">
+                    {item.value}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </ScrollView>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button>
+                <Text>Close</Text>
+              </Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
