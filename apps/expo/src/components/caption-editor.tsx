@@ -41,6 +41,7 @@ interface AnimatedCaptionProps {
   captionHeights: SharedValue<Record<string, number>>;
   font: ReturnType<typeof matchFont> | null;
   showText?: boolean; // If false, only show background
+  showBackground?: boolean; // If false, hide background
 }
 
 function AnimatedCaption({
@@ -53,7 +54,10 @@ function AnimatedCaption({
   captionHeights,
   font,
   showText = true,
+  showBackground = true,
 }: AnimatedCaptionProps) {
+  // Always render but control opacity for instant transitions
+  const shouldShow = showText && showBackground;
   // Handle word wrapping using Paragraph API for accurate measurements
   const { displayText } = useMemo(() => {
     if (!font)
@@ -197,6 +201,7 @@ function AnimatedCaption({
           left: 0,
           right: 0,
           width: containerWidth,
+          opacity: shouldShow ? 1 : 0,
         },
         animatedStyle,
       ]}
@@ -217,7 +222,7 @@ function AnimatedCaption({
             r={0}
             color={PILL_BG_COLOR}
           />
-          {showText && paragraph && (
+          {paragraph && (
             <Paragraph
               paragraph={paragraph}
               x={PILL_PADDING_H}
@@ -525,6 +530,7 @@ export function CaptionEditor({
                     captionHeights={captionHeights}
                     font={font}
                     showText={!isEditing}
+                    showBackground={!isEditing}
                   />
 
                   {/* TextInput overlay for editing */}
@@ -591,5 +597,6 @@ const styles = StyleSheet.create({
     color: TEXT_COLOR,
     fontWeight: "normal",
     textAlign: "center",
+    backgroundColor: PILL_BG_COLOR,
   },
 });
