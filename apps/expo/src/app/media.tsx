@@ -344,11 +344,6 @@ export default function MediaScreen() {
           {/* Caption Editor Overlay */}
           {containerLayout && (
             <>
-              {console.log("[Media] Rendering CaptionEditor with:", {
-                captionCount: captions.length,
-                editingId: editingCaptionId,
-                containerLayout,
-              })}
               <CaptionEditor
                 captions={captions}
                 editingCaptionId={editingCaptionId}
@@ -377,11 +372,6 @@ export default function MediaScreen() {
           {/* Caption Editor Overlay */}
           {containerLayout && (
             <>
-              {console.log("[Media] Rendering CaptionEditor with:", {
-                captionCount: captions.length,
-                editingId: editingCaptionId,
-                containerLayout,
-              })}
               <CaptionEditor
                 captions={captions}
                 editingCaptionId={editingCaptionId}

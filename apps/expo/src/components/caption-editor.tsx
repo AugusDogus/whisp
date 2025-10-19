@@ -1,6 +1,12 @@
 import type { SharedValue } from "react-native-reanimated";
-import React, { useEffect, useMemo, useRef } from "react";
-import { Keyboard, Platform, StyleSheet, TextInput, View } from "react-native";
+import React, { useCallback, useEffect, useMemo, useRef } from "react";
+import {
+  InteractionManager,
+  Keyboard,
+  Platform,
+  StyleSheet,
+  TextInput,
+} from "react-native";
 import {
   Gesture,
   GestureDetector,
@@ -42,6 +48,99 @@ interface AnimatedCaptionProps {
   font: ReturnType<typeof matchFont> | null;
   showText?: boolean; // If false, only show background
   showBackground?: boolean; // If false, hide background
+}
+
+// Animated TextInput wrapper component
+interface AnimatedTextInputProps {
+  caption: CaptionData;
+  containerWidth: number;
+  containerHeight: number;
+  draggingCaptionIdShared: SharedValue<string | null>;
+  translateY: SharedValue<number>;
+  actualYPositions: SharedValue<Record<string, number>>;
+  captionHeight: number;
+  isEditing: boolean;
+  setInputRef: (captionId: string) => (ref: TextInput | null) => void;
+  onUpdate: (caption: CaptionData) => void;
+  onStartEditing: (id: string) => void;
+  handleSubmit: () => void;
+}
+
+function AnimatedTextInputCaption({
+  caption,
+  containerWidth,
+  containerHeight,
+  draggingCaptionIdShared,
+  translateY,
+  actualYPositions,
+  captionHeight,
+  isEditing,
+  setInputRef,
+  onUpdate,
+  onStartEditing,
+  handleSubmit,
+}: AnimatedTextInputProps) {
+  const animatedStyle = useAnimatedStyle(() => {
+    const isDragging = draggingCaptionIdShared.value === caption.id;
+    const actualY = actualYPositions.value[caption.id];
+    const baseTop =
+      actualY !== undefined
+        ? actualY * containerHeight
+        : caption.y * containerHeight;
+
+    return {
+      top: baseTop,
+      transform: isDragging ? [{ translateY: translateY.value }] : [],
+    };
+  });
+
+  return (
+    <Animated.View
+      pointerEvents={isEditing ? "auto" : "none"}
+      style={[
+        styles.inputContainer,
+        {
+          left: 0,
+          right: 0,
+          width: containerWidth,
+          height: captionHeight,
+        },
+        animatedStyle,
+      ]}
+    >
+      <TextInput
+        key={`${caption.id}-${isEditing ? "editing" : "display"}`}
+        ref={setInputRef(caption.id)}
+        value={caption.text}
+        onFocus={() => {
+          if (!isEditing) {
+            onStartEditing(caption.id);
+          }
+        }}
+        onChangeText={(text) => {
+          onUpdate({ ...caption, text });
+        }}
+        onSubmitEditing={handleSubmit}
+        onBlur={handleSubmit}
+        autoFocus={isEditing}
+        multiline={true}
+        scrollEnabled={false}
+        editable={isEditing}
+        style={[
+          styles.input,
+          {
+            fontSize: FONT_SIZE,
+            height: captionHeight,
+            paddingHorizontal: PILL_PADDING_H,
+            paddingVertical: PILL_PADDING_V,
+            width: "100%",
+            textAlignVertical: "top",
+          },
+        ]}
+        maxLength={280}
+      />
+    </Animated.View>
+  );
 }
 
 function AnimatedCaption({
@@ -246,6 +345,7 @@ interface CaptionEditorProps {
   onTapCreate: (x: number, y: number) => void;
   containerWidth: number;
   containerHeight: number;
+  useSkiaRendering?: boolean; // If true, show Skia version; if false, show TextInput
 }
 
 const FONT_SIZE = 16;
@@ -254,6 +354,7 @@ const PILL_PADDING_V = 6;
 const PILL_BG_COLOR = "rgba(0, 0, 0, 0.6)";
 const TEXT_COLOR = "#FFFFFF";
 const MARGIN = 20; // Keep caption away from edges
+const TOUCH_TARGET_EXPANSION = 10; // Extra pixels for easier touch detection
 
 export function CaptionEditor({
   captions,
@@ -265,12 +366,25 @@ export function CaptionEditor({
   onTapCreate,
   containerWidth,
   containerHeight,
+  useSkiaRendering = false,
 }: CaptionEditorProps) {
   const editingCaption = captions.find((c) => c.id === editingCaptionId);
 
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
-  const inputRef = useRef<TextInput>(null);
+  const inputRefs = useRef<Map<string, TextInput>>(new Map());
+
+  // Ref callback that stores refs for all captions
+  const setInputRef = useCallback(
+    (captionId: string) => (ref: TextInput | null) => {
+      if (ref) {
+        inputRefs.current.set(captionId, ref);
+      } else {
+        inputRefs.current.delete(captionId);
+      }
+    },
+    [],
+  );
 
   // Use system font for Skia rendering - matches across platforms
   const font = useMemo(() => {
@@ -286,70 +400,73 @@ export function CaptionEditor({
     });
   }, []);
 
-  // Calculate height for editing caption to ensure it updates immediately
-  const editingCaptionHeight = useMemo(() => {
-    const maxWidth = containerWidth - PILL_PADDING_H * 2;
-    const explicitLines = editingCaption?.text.split("\n") ?? [""];
-    const wrappedLines: string[] = [];
+  // Helper function to calculate caption height
+  const calculateCaptionHeight = useCallback(
+    (text: string): number => {
+      const maxWidth = containerWidth - PILL_PADDING_H * 2;
+      const explicitLines = text.split("\n");
+      const wrappedLines: string[] = [];
 
-    const paragraphStyle = { textAlign: TextAlign.Center };
-    const textStyle = {
-      color: Skia.Color(TEXT_COLOR),
-      fontSize: FONT_SIZE,
-      fontFamilies: [
-        Platform.select({
-          ios: "Helvetica Neue",
-          android: "sans-serif",
-          default: "sans-serif",
-        }),
-      ],
-      fontStyle: { weight: 400 },
-    };
+      const paragraphStyle = { textAlign: TextAlign.Center };
+      const textStyle = {
+        color: Skia.Color(TEXT_COLOR),
+        fontSize: FONT_SIZE,
+        fontFamilies: [
+          Platform.select({
+            ios: "Helvetica Neue",
+            android: "sans-serif",
+            default: "sans-serif",
+          }),
+        ],
+        fontStyle: { weight: 400 },
+      };
 
-    // Process each explicit line for word wrapping
-    for (const line of explicitLines) {
-      if (line.trim() === "") {
-        wrappedLines.push("");
-        continue;
-      }
-
-      const words = line.split(" ");
-      let currentLine = "";
-
-      for (const word of words) {
-        const testLine = currentLine ? `${currentLine} ${word}` : word;
-
-        const testParagraph = Skia.ParagraphBuilder.Make(paragraphStyle);
-        testParagraph.pushStyle(textStyle);
-        testParagraph.addText(testLine);
-        testParagraph.pop();
-        const p = testParagraph.build();
-        p.layout(999999);
-        const testWidth = p.getLongestLine();
-
-        if (testWidth > maxWidth && currentLine) {
-          wrappedLines.push(currentLine);
-          currentLine = word;
-        } else {
-          currentLine = testLine;
+      // Process each explicit line for word wrapping
+      for (const line of explicitLines) {
+        if (line.trim() === "") {
+          wrappedLines.push("");
+          continue;
         }
+
+        const words = line.split(" ");
+        let currentLine = "";
+
+        for (const word of words) {
+          const testLine = currentLine ? `${currentLine} ${word}` : word;
+
+          const testParagraph = Skia.ParagraphBuilder.Make(paragraphStyle);
+          testParagraph.pushStyle(textStyle);
+          testParagraph.addText(testLine);
+          testParagraph.pop();
+          const p = testParagraph.build();
+          p.layout(999999);
+          const testWidth = p.getLongestLine();
+
+          if (testWidth > maxWidth && currentLine) {
+            wrappedLines.push(currentLine);
+            currentLine = word;
+          } else {
+            currentLine = testLine;
+          }
+        }
+        if (currentLine) wrappedLines.push(currentLine);
       }
-      if (currentLine) wrappedLines.push(currentLine);
-    }
 
-    const displayText = wrappedLines.join("\n").replace(/ /g, "\u00A0");
+      const displayText = wrappedLines.join("\n").replace(/ /g, "\u00A0");
 
-    // Create paragraph to measure height
-    const builder = Skia.ParagraphBuilder.Make(paragraphStyle);
-    builder.pushStyle(textStyle);
-    builder.addText(displayText);
-    builder.pop();
-    const paragraph = builder.build();
-    paragraph.layout(containerWidth - PILL_PADDING_H * 2);
+      // Create paragraph to measure height
+      const builder = Skia.ParagraphBuilder.Make(paragraphStyle);
+      builder.pushStyle(textStyle);
+      builder.addText(displayText);
+      builder.pop();
+      const paragraph = builder.build();
+      paragraph.layout(containerWidth - PILL_PADDING_H * 2);
 
-    const minHeight = FONT_SIZE * 1.2 + PILL_PADDING_V * 2;
-    return Math.max(minHeight, paragraph.getHeight() + PILL_PADDING_V * 2);
-  }, [editingCaption?.text, containerWidth]);
+      const minHeight = FONT_SIZE * 1.2 + PILL_PADDING_V * 2;
+      return Math.max(minHeight, paragraph.getHeight() + PILL_PADDING_V * 2);
+    },
+    [containerWidth],
+  );
 
   // Reset translation when not editing
   useEffect(() => {
@@ -358,6 +475,31 @@ export function CaptionEditor({
       translateY.value = 0;
     }
   }, [editingCaptionId, translateX, translateY]);
+
+  // Focus input when editing starts (for programmatic editing triggers like gesture tap)
+  useEffect(() => {
+    if (editingCaptionId) {
+      // Try to focus immediately
+      const ref = inputRefs.current.get(editingCaptionId);
+      if (ref) {
+        ref.focus();
+      } else {
+        // If ref doesn't exist yet, wait for next frame
+        requestAnimationFrame(() => {
+          const ref = inputRefs.current.get(editingCaptionId);
+          if (ref) {
+            ref.focus();
+          } else {
+            // Last resort - wait for interactions
+            InteractionManager.runAfterInteractions(() => {
+              const ref = inputRefs.current.get(editingCaptionId);
+              ref?.focus();
+            });
+          }
+        });
+      }
+    }
+  }, [editingCaptionId]);
 
   // Pan gesture for dragging captions - use shared value for reactive animation
   const draggingCaptionIdShared = useSharedValue<string | null>(null);
@@ -375,6 +517,24 @@ export function CaptionEditor({
     actualYPositions.value = positions;
   }, [captions, actualYPositions]);
 
+  // Update caption heights for gesture detection
+  useEffect(() => {
+    const heights: Record<string, number> = {};
+    captions
+      .filter((c) => c.text.length > 0 || c.id === editingCaptionId)
+      .forEach((caption) => {
+        const captionHeight = calculateCaptionHeight(caption.text);
+        heights[caption.id] = captionHeight;
+      });
+    captionHeights.value = heights;
+  }, [
+    captions,
+    editingCaptionId,
+    containerWidth,
+    captionHeights,
+    calculateCaptionHeight,
+  ]);
+
   const panGesture = Gesture.Pan()
     .enabled(!editingCaptionId) // Only allow dragging when not editing
     .onStart((event) => {
@@ -386,8 +546,10 @@ export function CaptionEditor({
         const barHeight =
           captionHeights.value[caption.id] ??
           FONT_SIZE * 1.2 + PILL_PADDING_V * 2;
-        const barTop = caption.y * containerHeight;
-        const barBottom = barTop + barHeight;
+        // Use actualYPositions if available, otherwise use caption.y
+        const actualY = actualYPositions.value[caption.id] ?? caption.y;
+        const barTop = actualY * containerHeight - TOUCH_TARGET_EXPANSION;
+        const barBottom = barTop + barHeight + TOUCH_TARGET_EXPANSION * 2;
 
         if (tapY >= barTop && tapY <= barBottom) {
           draggingCaptionIdShared.value = caption.id;
@@ -455,8 +617,9 @@ export function CaptionEditor({
         const barHeight =
           captionHeights.value[editingPos.id] ??
           FONT_SIZE * 1.2 + PILL_PADDING_V * 2;
-        const barTop = editingPos.y * containerHeight;
-        const barBottom = barTop + barHeight;
+        const actualY = actualYPositions.value[editingPos.id] ?? editingPos.y;
+        const barTop = actualY * containerHeight - TOUCH_TARGET_EXPANSION;
+        const barBottom = barTop + barHeight + TOUCH_TARGET_EXPANSION * 2;
 
         if (tapY < barTop || tapY > barBottom) {
           runOnJS(handleSubmit)();
@@ -470,11 +633,11 @@ export function CaptionEditor({
       const barHeight =
         captionHeights.value[caption.id] ??
         FONT_SIZE * 1.2 + PILL_PADDING_V * 2;
-      const barTop = caption.y * containerHeight;
-      const barBottom = barTop + barHeight;
+      const actualY = actualYPositions.value[caption.id] ?? caption.y;
+      const barTop = actualY * containerHeight - TOUCH_TARGET_EXPANSION;
+      const barBottom = barTop + barHeight + TOUCH_TARGET_EXPANSION * 2;
 
       if (tapY >= barTop && tapY <= barBottom) {
-        console.log("[CaptionEditor] Tapped on caption", caption.id);
         runOnJS(onStartEditing)(caption.id);
         return;
       }
@@ -484,10 +647,6 @@ export function CaptionEditor({
     if (!editingCaptionId) {
       const normalizedX = event.x / containerWidth;
       const normalizedY = event.y / containerHeight;
-      console.log("[CaptionEditor] Creating caption at", {
-        normalizedX,
-        normalizedY,
-      });
       runOnJS(onTapCreate)(normalizedX, normalizedY);
     }
   });
@@ -497,7 +656,9 @@ export function CaptionEditor({
 
   // Handle text input submission
   function handleSubmit() {
-    inputRef.current?.blur();
+    if (editingCaptionId) {
+      inputRefs.current.get(editingCaptionId)?.blur();
+    }
     Keyboard.dismiss();
     if (editingCaption && !editingCaption.text.trim()) {
       onDelete(editingCaption.id);
@@ -515,64 +676,42 @@ export function CaptionEditor({
             .filter((c) => c.text.length > 0 || c.id === editingCaptionId)
             .map((caption) => {
               const isEditing = caption.id === editingCaptionId;
-              const captionY = caption.y * containerHeight;
+              const captionHeight = calculateCaptionHeight(caption.text);
 
               return (
                 <React.Fragment key={caption.id}>
-                  {/* Skia caption background + text */}
-                  <AnimatedCaption
-                    caption={caption}
-                    containerWidth={containerWidth}
-                    containerHeight={containerHeight}
-                    draggingCaptionIdShared={draggingCaptionIdShared}
-                    translateY={translateY}
-                    actualYPositions={actualYPositions}
-                    captionHeights={captionHeights}
-                    font={font}
-                    showText={!isEditing}
-                    showBackground={!isEditing}
-                  />
+                  {/* Skia caption background + text - only show when useSkiaRendering is true AND not editing */}
+                  {useSkiaRendering && !isEditing && (
+                    <AnimatedCaption
+                      caption={caption}
+                      containerWidth={containerWidth}
+                      containerHeight={containerHeight}
+                      draggingCaptionIdShared={draggingCaptionIdShared}
+                      translateY={translateY}
+                      actualYPositions={actualYPositions}
+                      captionHeights={captionHeights}
+                      font={font}
+                      showText={true}
+                      showBackground={true}
+                    />
+                  )}
 
-                  {/* TextInput overlay for editing */}
-                  {isEditing && (
-                    <View
-                      style={[
-                        styles.inputContainer,
-                        {
-                          top: captionY,
-                          left: 0,
-                          right: 0,
-                          width: containerWidth,
-                          height: editingCaptionHeight,
-                        },
-                      ]}
-                    >
-                      <TextInput
-                        key={caption.id}
-                        ref={inputRef}
-                        value={caption.text}
-                        onChangeText={(text) => {
-                          onUpdate({ ...caption, text });
-                        }}
-                        onSubmitEditing={handleSubmit}
-                        onBlur={handleSubmit}
-                        autoFocus
-                        multiline={true}
-                        scrollEnabled={false}
-                        style={[
-                          styles.input,
-                          {
-                            fontSize: FONT_SIZE,
-                            height: editingCaptionHeight,
-                            paddingHorizontal: PILL_PADDING_H,
-                            paddingVertical: PILL_PADDING_V,
-                            width: "100%",
-                            textAlignVertical: "top",
-                          },
-                        ]}
-                        maxLength={280}
-                      />
-                    </View>
+                  {/* TextInput overlay - show when not using Skia rendering OR when actively editing */}
+                  {(!useSkiaRendering || isEditing) && (
+                    <AnimatedTextInputCaption
+                      caption={caption}
+                      containerWidth={containerWidth}
+                      containerHeight={containerHeight}
+                      draggingCaptionIdShared={draggingCaptionIdShared}
+                      translateY={translateY}
+                      actualYPositions={actualYPositions}
+                      captionHeight={captionHeight}
+                      isEditing={isEditing}
+                      setInputRef={setInputRef}
+                      onUpdate={onUpdate}
+                      onStartEditing={onStartEditing}
+                      handleSubmit={handleSubmit}
+                    />
                   )}
                 </React.Fragment>
               );
