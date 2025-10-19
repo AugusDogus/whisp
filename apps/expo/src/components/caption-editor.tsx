@@ -62,9 +62,10 @@ function AnimatedCaption({
       };
 
     const maxWidth = containerWidth - PILL_PADDING_H * 2;
-    const words = caption.text.split(" ");
-    const lines: string[] = [];
-    let currentLine = "";
+
+    // Split by explicit newlines first to preserve user's line breaks
+    const explicitLines = caption.text.split("\n");
+    const wrappedLines: string[] = [];
 
     const paragraphStyle = { textAlign: TextAlign.Left };
     const textStyle = {
@@ -80,29 +81,41 @@ function AnimatedCaption({
       fontStyle: { weight: 400 },
     };
 
-    for (const word of words) {
-      const testLine = currentLine ? `${currentLine} ${word}` : word;
-
-      // Use Paragraph API to measure the actual width
-      const testParagraph = Skia.ParagraphBuilder.Make(paragraphStyle);
-      testParagraph.pushStyle(textStyle);
-      testParagraph.addText(testLine);
-      testParagraph.pop();
-      const p = testParagraph.build();
-      p.layout(999999); // Layout without constraint to get natural width
-      const testWidth = p.getLongestLine();
-
-      if (testWidth > maxWidth && currentLine) {
-        lines.push(currentLine);
-        currentLine = word;
-      } else {
-        currentLine = testLine;
+    // Process each explicit line for word wrapping
+    for (const line of explicitLines) {
+      // Handle empty lines (from pressing Enter on empty line)
+      if (line.trim() === "") {
+        wrappedLines.push("");
+        continue;
       }
+
+      const words = line.split(" ");
+      let currentLine = "";
+
+      for (const word of words) {
+        const testLine = currentLine ? `${currentLine} ${word}` : word;
+
+        // Use Paragraph API to measure the actual width
+        const testParagraph = Skia.ParagraphBuilder.Make(paragraphStyle);
+        testParagraph.pushStyle(textStyle);
+        testParagraph.addText(testLine);
+        testParagraph.pop();
+        const p = testParagraph.build();
+        p.layout(999999); // Layout without constraint to get natural width
+        const testWidth = p.getLongestLine();
+
+        if (testWidth > maxWidth && currentLine) {
+          wrappedLines.push(currentLine);
+          currentLine = word;
+        } else {
+          currentLine = testLine;
+        }
+      }
+      if (currentLine) wrappedLines.push(currentLine);
     }
-    if (currentLine) lines.push(currentLine);
 
     return {
-      displayText: lines.join("\n").replace(/ /g, "\u00A0"),
+      displayText: wrappedLines.join("\n").replace(/ /g, "\u00A0"),
     };
   }, [caption.text, font, containerWidth]);
 
@@ -267,6 +280,71 @@ export function CaptionEditor({
       fontWeight: "normal",
     });
   }, []);
+
+  // Calculate height for editing caption to ensure it updates immediately
+  const editingCaptionHeight = useMemo(() => {
+    const maxWidth = containerWidth - PILL_PADDING_H * 2;
+    const explicitLines = editingCaption?.text.split("\n") ?? [""];
+    const wrappedLines: string[] = [];
+
+    const paragraphStyle = { textAlign: TextAlign.Center };
+    const textStyle = {
+      color: Skia.Color(TEXT_COLOR),
+      fontSize: FONT_SIZE,
+      fontFamilies: [
+        Platform.select({
+          ios: "Helvetica Neue",
+          android: "sans-serif",
+          default: "sans-serif",
+        }),
+      ],
+      fontStyle: { weight: 400 },
+    };
+
+    // Process each explicit line for word wrapping
+    for (const line of explicitLines) {
+      if (line.trim() === "") {
+        wrappedLines.push("");
+        continue;
+      }
+
+      const words = line.split(" ");
+      let currentLine = "";
+
+      for (const word of words) {
+        const testLine = currentLine ? `${currentLine} ${word}` : word;
+
+        const testParagraph = Skia.ParagraphBuilder.Make(paragraphStyle);
+        testParagraph.pushStyle(textStyle);
+        testParagraph.addText(testLine);
+        testParagraph.pop();
+        const p = testParagraph.build();
+        p.layout(999999);
+        const testWidth = p.getLongestLine();
+
+        if (testWidth > maxWidth && currentLine) {
+          wrappedLines.push(currentLine);
+          currentLine = word;
+        } else {
+          currentLine = testLine;
+        }
+      }
+      if (currentLine) wrappedLines.push(currentLine);
+    }
+
+    const displayText = wrappedLines.join("\n").replace(/ /g, "\u00A0");
+
+    // Create paragraph to measure height
+    const builder = Skia.ParagraphBuilder.Make(paragraphStyle);
+    builder.pushStyle(textStyle);
+    builder.addText(displayText);
+    builder.pop();
+    const paragraph = builder.build();
+    paragraph.layout(containerWidth - PILL_PADDING_H * 2);
+
+    const minHeight = FONT_SIZE * 1.2 + PILL_PADDING_V * 2;
+    return Math.max(minHeight, paragraph.getHeight() + PILL_PADDING_V * 2);
+  }, [editingCaption?.text, containerWidth]);
 
   // Reset translation when not editing
   useEffect(() => {
@@ -450,54 +528,46 @@ export function CaptionEditor({
                   />
 
                   {/* TextInput overlay for editing */}
-                  {isEditing &&
-                    (() => {
-                      // Use the calculated caption height from the Skia component
-                      const inputHeight =
-                        captionHeights.value[caption.id] ??
-                        FONT_SIZE * 1.2 + PILL_PADDING_V * 2;
-                      return (
-                        <View
-                          style={[
-                            styles.inputContainer,
-                            {
-                              top: captionY,
-                              left: 0,
-                              right: 0,
-                              width: containerWidth,
-                              height: inputHeight,
-                            },
-                          ]}
-                        >
-                          <TextInput
-                            key={caption.id}
-                            ref={inputRef}
-                            value={caption.text}
-                            onChangeText={(text) => {
-                              onUpdate({ ...caption, text });
-                            }}
-                            onSubmitEditing={handleSubmit}
-                            onBlur={handleSubmit}
-                            autoFocus
-                            multiline={true}
-                            scrollEnabled={false}
-                            style={[
-                              styles.input,
-                              {
-                                fontSize: FONT_SIZE - 0,
-                                lineHeight: FONT_SIZE * 1.2,
-                                height: inputHeight,
-                                paddingHorizontal: PILL_PADDING_H,
-                                paddingVertical: PILL_PADDING_V,
-                                width: "100%",
-                                textAlignVertical: "top",
-                              },
-                            ]}
-                            maxLength={280}
-                          />
-                        </View>
-                      );
-                    })()}
+                  {isEditing && (
+                    <View
+                      style={[
+                        styles.inputContainer,
+                        {
+                          top: captionY,
+                          left: 0,
+                          right: 0,
+                          width: containerWidth,
+                          height: editingCaptionHeight,
+                        },
+                      ]}
+                    >
+                      <TextInput
+                        key={caption.id}
+                        ref={inputRef}
+                        value={caption.text}
+                        onChangeText={(text) => {
+                          onUpdate({ ...caption, text });
+                        }}
+                        onSubmitEditing={handleSubmit}
+                        onBlur={handleSubmit}
+                        autoFocus
+                        multiline={true}
+                        scrollEnabled={false}
+                        style={[
+                          styles.input,
+                          {
+                            fontSize: FONT_SIZE,
+                            height: editingCaptionHeight,
+                            paddingHorizontal: PILL_PADDING_H,
+                            paddingVertical: PILL_PADDING_V,
+                            width: "100%",
+                            textAlignVertical: "top",
+                          },
+                        ]}
+                        maxLength={280}
+                      />
+                    </View>
+                  )}
                 </React.Fragment>
               );
             })}
