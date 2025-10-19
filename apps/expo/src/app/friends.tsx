@@ -860,6 +860,25 @@ export default function FriendsScreen() {
             {selectedFriend?.name}
           </Text>
 
+          <Pressable
+            className="flex-row items-center gap-3 rounded-lg px-3 py-3 active:bg-accent"
+            onPress={() => {
+              if (selectedFriend) {
+                if (selectedFriend.unreadCount > 0) {
+                  openViewer(selectedFriend.id);
+                } else {
+                  navigation.navigate("Camera", {
+                    defaultRecipientId: selectedFriend.id,
+                  });
+                }
+                bottomSheetRef.current?.close();
+              }
+            }}
+          >
+            <Ionicons name="camera" size={22} color="#666" />
+            <Text className="text-base">Send whisper</Text>
+          </Pressable>
+
           {selectedFriend?.discordId && (
             <Pressable
               className="flex-row items-center gap-3 rounded-lg px-3 py-3 active:bg-accent"
