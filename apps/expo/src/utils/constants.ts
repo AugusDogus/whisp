@@ -44,17 +44,10 @@ export const CAPTURE_BUTTON_SIZE = 78;
 // Control Button like Flash
 export const CONTROL_BUTTON_SIZE = 40;
 
-// PostHog Analytics
-function getRequiredEnv(key: string): string {
-  const value = process.env[key] as string | undefined;
-  if (!value) {
-    throw new Error(`Missing required environment variable: ${key}`);
-  }
-  return value;
-}
-
-export const POSTHOG_API_KEY = getRequiredEnv("EXPO_PUBLIC_POSTHOG_API_KEY");
-export const POSTHOG_HOST = getRequiredEnv("EXPO_PUBLIC_POSTHOG_HOST");
+// PostHog Analytics (optional - gracefully degrades if not available)
+export const POSTHOG_API_KEY = process.env
+  .EXPO_PUBLIC_POSTHOG_API_KEY as string;
+export const POSTHOG_HOST = process.env.EXPO_PUBLIC_POSTHOG_HOST as string;
 
 // Expo Push Notifications - read from app.config.ts via Constants
 interface ExpoConfigExtra {
