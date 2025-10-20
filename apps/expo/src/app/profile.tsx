@@ -201,10 +201,20 @@ export default function ProfileScreen() {
               </View>
               <View className="gap-3 pt-2">
                 <BuildInfo />
-                <Pressable className="active:opacity-70">
+                <Pressable
+                  onPress={() => {
+                    void Linking.openURL("https://whisp.chat/terms");
+                  }}
+                  className="active:opacity-70"
+                >
                   <Text className="text-sm text-primary">Terms of Service</Text>
                 </Pressable>
-                <Pressable className="active:opacity-70">
+                <Pressable
+                  onPress={() => {
+                    void Linking.openURL("https://whisp.chat/privacy");
+                  }}
+                  className="active:opacity-70"
+                >
                   <Text className="text-sm text-primary">Privacy Policy</Text>
                 </Pressable>
               </View>
