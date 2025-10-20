@@ -114,8 +114,8 @@ function AnimatedGroup({
     item: addDefaultVariants(preset ? presetVariants[preset] : {}),
     container: addDefaultVariants(defaultContainerVariants),
   };
-  const containerVariants = variants?.container || selectedVariants.container;
-  const itemVariants = variants?.item || selectedVariants.item;
+  const containerVariants = variants?.container ?? selectedVariants.container;
+  const itemVariants = variants?.item ?? selectedVariants.item;
 
   const MotionComponent = useMemo(
     () => motion.create(as as keyof JSX.IntrinsicElements),
