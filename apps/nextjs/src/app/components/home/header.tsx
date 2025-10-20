@@ -41,7 +41,7 @@ export default function Header() {
   return (
     <header>
       <nav
-        data-state={menuState && "active"}
+        data-state={menuState ? "active" : undefined}
         className="fixed left-0 right-0 top-0 z-20 w-full px-2 pt-4"
       >
         <div
@@ -67,12 +67,27 @@ export default function Header() {
                 aria-label={menuState ? "Close Menu" : "Open Menu"}
                 className="relative z-20 -m-2.5 -mr-4 block cursor-pointer p-2.5 lg:hidden"
               >
-                <Menu className="in-data-[state=active]:scale-0 in-data-[state=active]:rotate-180 in-data-[state=active]:opacity-0 m-auto size-6 duration-200" />
-                <X className="in-data-[state=active]:scale-100 in-data-[state=active]:rotate-0 in-data-[state=active]:opacity-100 absolute inset-0 m-auto size-6 -rotate-180 scale-0 opacity-0 duration-200" />
+                <Menu
+                  className={cn(
+                    "m-auto size-6 duration-200",
+                    menuState && "rotate-180 scale-0 opacity-0",
+                  )}
+                />
+                <X
+                  className={cn(
+                    "absolute inset-0 m-auto size-6 -rotate-180 scale-0 opacity-0 duration-200",
+                    menuState && "rotate-0 scale-100 opacity-100",
+                  )}
+                />
               </button>
             </div>
 
-            <div className="in-data-[state=active]:block lg:in-data-[state=active]:flex mb-6 hidden w-full flex-wrap items-center justify-end space-y-8 rounded-3xl border bg-background p-6 shadow-2xl shadow-zinc-300/20 dark:shadow-none md:flex-nowrap lg:m-0 lg:flex lg:w-fit lg:gap-6 lg:space-y-0 lg:border-transparent lg:bg-transparent lg:p-0 lg:shadow-none dark:lg:bg-transparent">
+            <div
+              className={cn(
+                "mb-6 hidden w-full flex-wrap items-center justify-end space-y-8 rounded-3xl border bg-background p-6 shadow-2xl shadow-zinc-300/20 dark:shadow-none md:flex-nowrap lg:m-0 lg:flex lg:w-fit lg:gap-6 lg:space-y-0 lg:border-transparent lg:bg-transparent lg:p-0 lg:shadow-none dark:lg:bg-transparent",
+                menuState && "block lg:flex",
+              )}
+            >
               <div className="flex w-full flex-col space-y-6 sm:flex-row sm:gap-3 sm:space-y-0 md:w-fit">
                 <div className="flex flex-row items-center justify-around gap-8 px-8 sm:pl-0">
                   {socialItems.map((item) => (
