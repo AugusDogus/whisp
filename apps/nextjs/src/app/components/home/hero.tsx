@@ -3,10 +3,10 @@ import Image from "next/image";
 
 import { AnimatedGroup } from "@acme/ui/animated-group";
 
-import HeroImage from "~/../public/hero.jpg";
 import Footer from "~/app/components/home/footer";
 import Header from "~/app/components/home/header";
 import { WaitlistForm } from "~/app/components/home/waitlist";
+import HeroImage from "../../../../public/hero.jpg";
 
 const transitionVariants: { item: Variants } = {
   item: {

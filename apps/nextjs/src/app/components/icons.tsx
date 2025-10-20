@@ -1,8 +1,8 @@
 import type { SVGProps } from "react";
 import Image from "next/image";
 
-import iconDark from "~/../public/icon-dark.png";
-import iconLight from "~/../public/icon-light.png";
+import iconDark from "../../../public/icon-dark.png";
+import iconLight from "../../../public/icon-light.png";
 
 export function Logo({ className }: { className?: string }) {
   return (
