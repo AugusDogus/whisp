@@ -33,11 +33,11 @@ export const metadata: Metadata = {
     description: "Ephemeral messages and photos",
     url: "https://whisp.chat",
     siteName: "whisp",
-    images: ["/icon-dark.png"],
+    images: ["/hero.jpg"],
   },
   twitter: {
     card: "summary_large_image",
-    images: ["/icon-dark.png"],
+    images: ["/hero.jpg"],
     site: "@AugusDogus",
     creator: "@AugusDogus",
   },
