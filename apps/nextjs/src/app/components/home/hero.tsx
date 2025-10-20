@@ -6,7 +6,6 @@ import { AnimatedGroup } from "@acme/ui/animated-group";
 import Footer from "~/app/components/home/footer";
 import Header from "~/app/components/home/header";
 import { WaitlistForm } from "~/app/components/home/waitlist";
-import HeroImage from "../../../../public/hero.jpg";
 
 const transitionVariants: { item: Variants } = {
   item: {
@@ -65,12 +64,13 @@ export default function Hero() {
       >
         <div className="backdrop-blur-xs mx-auto w-full max-w-3xl rounded-xl border border-border bg-gray-50/5 p-2 sm:min-w-0 sm:max-w-4xl sm:translate-x-0">
           <Image
-            src={HeroImage}
+            src="/hero.jpg"
             alt="Hero"
             className="z-10 ml-0 block h-auto w-full rounded-lg object-cover sm:mx-auto"
+            width={1200}
+            height={800}
             unoptimized
             loading="lazy"
-            placeholder="blur"
             sizes="(max-width: 768px) 100vw, 80vw"
           />
         </div>

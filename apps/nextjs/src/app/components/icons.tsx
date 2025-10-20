@@ -1,21 +1,18 @@
 import type { SVGProps } from "react";
 import Image from "next/image";
 
-import iconDark from "../../../public/icon-dark.png";
-import iconLight from "../../../public/icon-light.png";
-
 export function Logo({ className }: { className?: string }) {
   return (
     <>
       <Image
-        src={iconDark}
+        src="/icon-dark.png"
         alt="Whisp Logo"
         className={`w-auto dark:hidden ${className ?? ""}`}
         width={32}
         height={32}
       />
       <Image
-        src={iconLight}
+        src="/icon-light.png"
         alt="Whisp Logo"
         className={`hidden w-auto dark:block ${className ?? ""}`}
         width={32}
