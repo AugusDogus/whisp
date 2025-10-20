@@ -23,10 +23,13 @@
     "@trpc/client": "catalog:",
     "@trpc/server": "catalog:",
     "@trpc/tanstack-react-query": "catalog:",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.546.0",
     "next": "^15.5.2",
     "react": "catalog:react19",
     "react-dom": "catalog:react19",
     "superjson": "2.2.2",
+    "tailwind-merge": "^3.3.1",
     "uploadthing": "catalog:",
     "zod": "catalog:"
   },

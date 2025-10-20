@@ -16,7 +16,6 @@ import SplashScreen from "~/app/index";
 import LoginScreen from "~/app/login";
 import MediaScreen from "~/app/media";
 import OnboardingScreen from "~/app/onboarding";
-import PostScreen from "~/app/post/[id]";
 import ProfileScreen from "~/app/profile";
 import { RecordingProvider, useRecording } from "~/contexts/RecordingContext";
 
@@ -35,7 +34,6 @@ const linking: LinkingOptions<RootStackParamList> = {
       Login: "login",
       Onboarding: "onboarding",
       Main: "main",
-      Post: "post/:id",
       Media: "media",
     },
   },
@@ -93,7 +91,6 @@ export function RootNavigator() {
           <Stack.Screen name="Login" component={LoginScreen} />
           <Stack.Screen name="Onboarding" component={OnboardingScreen} />
           <Stack.Screen name="Main" component={MainTabs} />
-          <Stack.Screen name="Post" component={PostScreen} />
           <Stack.Screen name="Media" component={MediaScreen} />
         </Stack.Navigator>
         <Toaster />

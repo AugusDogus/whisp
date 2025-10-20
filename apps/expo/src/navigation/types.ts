@@ -5,7 +5,6 @@ export interface RootStackParamList extends ParamListBase {
   Login: undefined;
   Onboarding: undefined;
   Main: { screen?: string; params?: Record<string, unknown> } | undefined;
-  Post: { id: string };
   Media: {
     path: string;
     type: "photo" | "video";
