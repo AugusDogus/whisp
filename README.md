@@ -148,6 +148,13 @@ The app includes an automated cleanup system that runs daily via Vercel Cron to 
 - **Soft-deleted messages** (30+ days old) are permanently purged
 - **Old unread messages** (90+ days old) are automatically removed
 
+## 🏥 Backend Monitoring
+
+The app includes health check endpoints for uptime monitoring:
+
+- **`/api/health`** - API server uptime check
+- **`/api/health/db`** - Database connectivity check
+
 ## 🛠️ Available Scripts
 
 ```bash
