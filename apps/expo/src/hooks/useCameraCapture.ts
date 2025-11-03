@@ -16,6 +16,8 @@ interface UseCameraCaptureProps {
   ) => void;
   isPressingButton: ReturnType<typeof useSharedValue<boolean>>;
   setIsPressingButton: (isPressed: boolean) => void;
+  cameraPosition: "front" | "back";
+  onTriggerFrontFlash: () => void;
 }
 
 export function useCameraCapture({
@@ -24,6 +26,8 @@ export function useCameraCapture({
   onMediaCaptured,
   isPressingButton,
   setIsPressingButton,
+  cameraPosition,
+  onTriggerFrontFlash,
 }: UseCameraCaptureProps) {
   const { setIsRecording } = useRecording();
   const captureState = useRef<CaptureState>("idle");
@@ -59,8 +63,17 @@ export function useCameraCapture({
           photoAnimationTimeout.current = null;
         }, 180); // Safely before auto-repeat (which starts ~200ms+), still snappy
 
+        // Trigger front flash if using front camera with flash enabled
+        const useFrontFlash = cameraPosition === "front" && flash === "on";
+        if (useFrontFlash) {
+          onTriggerFrontFlash();
+          // Wait for the flash to reach peak brightness before capturing
+          // 100ms: 50ms fade in + 50ms into the hold period = peak brightness
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+
         const photo = await camera.current.takePhoto({
-          flash: flash,
+          flash: useFrontFlash ? "off" : flash, // Use hardware flash only for back camera
           enableShutterSound: false,
         });
 
@@ -73,7 +86,15 @@ export function useCameraCapture({
         setIsPressingButton(false);
       }
     },
-    [camera, flash, onMediaCaptured, isPressingButton, setIsPressingButton],
+    [
+      camera,
+      flash,
+      onMediaCaptured,
+      isPressingButton,
+      setIsPressingButton,
+      cameraPosition,
+      onTriggerFrontFlash,
+    ],
   );
 
   // Core recording start logic
@@ -105,8 +126,11 @@ export function useCameraCapture({
         // Update global recording state
         setIsRecording(true);
 
+        // Front camera doesn't support hardware flash for video, so disable it
+        const useFrontFlash = cameraPosition === "front" && flash === "on";
+
         camera.current.startRecording({
-          flash: flash,
+          flash: useFrontFlash ? "off" : flash, // Use hardware flash only for back camera
           onRecordingError: (error) => {
             if (error.code !== "capture/recording-canceled") {
               console.error("Recording failed!", error);
@@ -142,6 +166,7 @@ export function useCameraCapture({
       isPressingButton,
       setIsPressingButton,
       setIsRecording,
+      cameraPosition,
     ],
   );
 

@@ -35,6 +35,9 @@ interface Props extends ViewProps {
   enabled: boolean;
 
   setIsPressingButton: (isPressingButton: boolean) => void;
+
+  cameraPosition: "front" | "back";
+  onTriggerFrontFlash: () => void;
 }
 
 export interface CaptureButtonRef {
@@ -56,6 +59,8 @@ const CaptureButtonComponent = React.forwardRef<CaptureButtonRef, Props>(
       flash,
       enabled,
       setIsPressingButton,
+      cameraPosition,
+      onTriggerFrontFlash,
       style,
       ...props
     },
@@ -71,6 +76,8 @@ const CaptureButtonComponent = React.forwardRef<CaptureButtonRef, Props>(
       onMediaCaptured,
       isPressingButton,
       setIsPressingButton,
+      cameraPosition,
+      onTriggerFrontFlash,
     });
 
     const panStartY = useSharedValue(0);

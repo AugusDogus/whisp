@@ -46,6 +46,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { CaptureButtonRef } from "~/components/capture-button";
 import type { MainTabParamList, RootStackParamList } from "~/navigation/types";
 import { CaptureButton } from "~/components/capture-button";
+import { FrontFlashOverlay } from "~/components/front-flash-overlay";
 import { StatusBarBlurBackground } from "~/components/status-bar-blur-background";
 import { useIsForeground } from "~/hooks/useIsForeground";
 import { usePreferredCameraDevice } from "~/hooks/usePreferredCameraDevice";
@@ -141,6 +142,7 @@ export default function CameraPage(): React.ReactElement {
   const [enableHdr, setEnableHdr] = useState(false);
   const [flash, setFlash] = useState<"off" | "on">("off");
   const [enableNightMode, setEnableNightMode] = useState(false);
+  const [isFrontFlashActive, setIsFrontFlashActive] = useState(false);
 
   // camera device settings
   const [preferredDevice] = usePreferredCameraDevice();
@@ -195,6 +197,14 @@ export default function CameraPage(): React.ReactElement {
     console.log("Camera initialized!");
     setIsCameraInitialized(true);
   }, []);
+  const triggerFrontFlash = useCallback(() => {
+    setIsFrontFlashActive(true);
+    // Reset after animation completes (50ms fade in + 300ms hold + 200ms fade out = 550ms)
+    setTimeout(() => {
+      setIsFrontFlashActive(false);
+    }, 600);
+  }, []);
+
   const onMediaCaptured = useCallback(
     (media: PhotoFile | VideoFile, type: "photo" | "video") => {
       try {
@@ -571,10 +581,15 @@ export default function CameraPage(): React.ReactElement {
         cameraZoom={zoom}
         minZoom={minZoom}
         maxZoom={maxZoom}
-        flash={supportsFlash ? flash : "off"}
+        flash={flash}
         enabled={isCameraInitialized && isActive}
         setIsPressingButton={setIsPressingButton}
+        cameraPosition={cameraPosition}
+        onTriggerFrontFlash={triggerFrontFlash}
       />
+
+      {/* Front flash overlay - shown when taking photos with front camera */}
+      <FrontFlashOverlay isActive={isFrontFlashActive} />
 
       <StatusBarBlurBackground />
 
@@ -625,7 +640,8 @@ export default function CameraPage(): React.ReactElement {
         <Pressable style={styles.button} onPress={onFlipCameraPressed}>
           <Ionicons name="camera-reverse" color="white" size={24} />
         </Pressable>
-        {supportsFlash && (
+        {/* Show flash button for both front (software flash) and back (hardware flash) cameras */}
+        {(supportsFlash || cameraPosition === "front") && (
           <Pressable style={styles.button} onPress={onFlashPressed}>
             <Ionicons
               name={flash === "on" ? "flash" : "flash-off"}
