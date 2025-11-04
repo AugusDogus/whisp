@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ResizeMode, Video } from "expo-av";
 import { File, Paths } from "expo-file-system";
+import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
 import * as MediaLibrary from "expo-media-library";
 import { AntDesign, Ionicons } from "@expo/vector-icons";
@@ -199,6 +200,9 @@ export default function MediaScreen() {
 
   async function handleSave() {
     try {
+      // Haptic feedback on button press
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
       // Request permissions
       const { status } = await MediaLibrary.requestPermissionsAsync();
       if (status !== MediaLibrary.PermissionStatus.GRANTED) {
