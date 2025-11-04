@@ -50,6 +50,7 @@ import { FrontFlashOverlay } from "~/components/front-flash-overlay";
 import { StatusBarBlurBackground } from "~/components/status-bar-blur-background";
 import { useIsForeground } from "~/hooks/useIsForeground";
 import { usePreferredCameraDevice } from "~/hooks/usePreferredCameraDevice";
+import { usePreferredCameraPosition } from "~/hooks/usePreferredCameraPosition";
 import { useCookieStore } from "~/stores/cookie-store";
 import { trpc } from "~/utils/api";
 import { authClient } from "~/utils/auth";
@@ -136,9 +137,7 @@ export default function CameraPage(): React.ReactElement {
   const isFocused = useIsFocused();
   const isActive = isForeground && isFocused;
 
-  const [cameraPosition, setCameraPosition] = useState<"front" | "back">(
-    "back",
-  );
+  const [cameraPosition, setCameraPosition] = usePreferredCameraPosition();
   const [enableHdr, setEnableHdr] = useState(false);
   const [flash, setFlash] = useState<"off" | "on">("off");
   const [enableNightMode, setEnableNightMode] = useState(false);
@@ -227,8 +226,8 @@ export default function CameraPage(): React.ReactElement {
     [navigation, defaultRecipientId],
   );
   const onFlipCameraPressed = useCallback(() => {
-    setCameraPosition((p) => (p === "back" ? "front" : "back"));
-  }, []);
+    setCameraPosition(cameraPosition === "back" ? "front" : "back");
+  }, [cameraPosition, setCameraPosition]);
   const onFlashPressed = useCallback(() => {
     setFlash((f) => (f === "off" ? "on" : "off"));
   }, []);
