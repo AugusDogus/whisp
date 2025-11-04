@@ -49,4 +49,3 @@ export function usePreferredCameraPosition(): [
 
   return [position, setPosition];
 }
-

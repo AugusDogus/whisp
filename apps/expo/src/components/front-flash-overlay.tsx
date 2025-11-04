@@ -20,7 +20,7 @@ export function FrontFlashOverlay({ isActive }: FrontFlashOverlayProps) {
       opacity.value = withSequence(
         withTiming(1, { duration: 50 }), // Flash on very quickly
         withTiming(1, { duration: 300 }), // Hold at full brightness longer for photo capture
-        withTiming(0, { duration: 200 }) // Then fade out
+        withTiming(0, { duration: 200 }), // Then fade out
       );
     }
   }, [isActive, opacity]);
