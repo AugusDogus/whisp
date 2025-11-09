@@ -1,14 +1,18 @@
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useEffect } from "react";
-import { ActivityIndicator, View } from "react-native";
+import { View } from "react-native";
 import * as SecureStore from "expo-secure-store";
+import * as SplashScreen from "expo-splash-screen";
 import { useNavigation } from "@react-navigation/native";
 import { usePostHog } from "posthog-react-native";
 
 import type { RootStackParamList } from "~/navigation/types";
 import { authClient } from "~/utils/auth";
 
-export default function SplashScreen() {
+// Keep the native splash screen visible while we load
+void SplashScreen.preventAutoHideAsync();
+
+export default function Splash() {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { data: session, isPending } = authClient.useSession();
@@ -25,56 +29,66 @@ export default function SplashScreen() {
 
   useEffect(() => {
     async function checkAuth() {
-      // First check if we have a cookie (optimistic)
-      const cookieRaw = await SecureStore.getItemAsync("whisp_cookie");
-      let cookieExists = false;
-      if (cookieRaw) {
-        try {
-          const parsed: unknown = JSON.parse(cookieRaw);
-          if (
-            parsed &&
-            typeof parsed === "object" &&
-            "__Secure-better-auth.session_token" in parsed
-          ) {
-            const tokenObj = (parsed as Record<string, unknown>)[
-              "__Secure-better-auth.session_token"
-            ];
-            if (tokenObj && typeof tokenObj === "object") {
-              const rec = tokenObj as Record<string, unknown>;
-              const value = typeof rec.value === "string" ? rec.value : "";
-              const expiresIso =
-                typeof rec.expires === "string" ? rec.expires : undefined;
-              const notExpired =
-                !expiresIso || new Date(expiresIso).getTime() > Date.now();
-              cookieExists = value.length > 0 && notExpired;
+      try {
+        // First check if we have a cookie (optimistic)
+        const cookieRaw = await SecureStore.getItemAsync("whisp_cookie");
+        let cookieExists = false;
+        if (cookieRaw) {
+          try {
+            const parsed: unknown = JSON.parse(cookieRaw);
+            if (
+              parsed &&
+              typeof parsed === "object" &&
+              "__Secure-better-auth.session_token" in parsed
+            ) {
+              const tokenObj = (parsed as Record<string, unknown>)[
+                "__Secure-better-auth.session_token"
+              ];
+              if (tokenObj && typeof tokenObj === "object") {
+                const rec = tokenObj as Record<string, unknown>;
+                const value = typeof rec.value === "string" ? rec.value : "";
+                const expiresIso =
+                  typeof rec.expires === "string" ? rec.expires : undefined;
+                const notExpired =
+                  !expiresIso || new Date(expiresIso).getTime() > Date.now();
+                cookieExists = value.length > 0 && notExpired;
+              }
             }
+          } catch {
+            cookieExists = false;
           }
-        } catch {
-          cookieExists = false;
         }
-      }
 
-      if (cookieExists) {
-        // Check if user has completed onboarding
-        const onboardingComplete = await SecureStore.getItemAsync(
-          "whisp_onboarding_complete",
-        );
-
-        if (onboardingComplete === "true") {
-          console.log(
-            "[Splash] Cookie found, onboarding complete, redirecting to main",
+        if (cookieExists) {
+          // Check if user has completed onboarding
+          const onboardingComplete = await SecureStore.getItemAsync(
+            "whisp_onboarding_complete",
           );
-          navigation.replace("Main");
-        } else {
-          console.log("[Splash] Cookie found, redirecting to onboarding");
-          navigation.replace("Onboarding");
-        }
-        return;
-      }
 
-      // No cookie, wait for session check
-      if (!isPending && !session) {
-        console.log("[Splash] No session, redirecting to login");
+          if (onboardingComplete === "true") {
+            console.log(
+              "[Splash] Cookie found, onboarding complete, redirecting to main",
+            );
+            await SplashScreen.hideAsync();
+            navigation.replace("Main");
+          } else {
+            console.log("[Splash] Cookie found, redirecting to onboarding");
+            await SplashScreen.hideAsync();
+            navigation.replace("Onboarding");
+          }
+          return;
+        }
+
+        // No cookie, wait for session check
+        if (!isPending && !session) {
+          console.log("[Splash] No session, redirecting to login");
+          await SplashScreen.hideAsync();
+          navigation.replace("Login");
+        }
+      } catch (error) {
+        console.error("[Splash] Error during auth check:", error);
+        // Hide splash screen even on error to prevent infinite loading
+        await SplashScreen.hideAsync();
         navigation.replace("Login");
       }
     }
@@ -82,9 +96,6 @@ export default function SplashScreen() {
     void checkAuth();
   }, [isPending, session, navigation]);
 
-  return (
-    <View className="flex-1 items-center justify-center bg-background">
-      <ActivityIndicator size="large" color="#0ea5e9" />
-    </View>
-  );
+  // Return an empty view - the native splash screen is still visible
+  return <View className="flex-1" />;
 }
