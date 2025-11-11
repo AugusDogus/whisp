@@ -29,7 +29,34 @@ export function AddFriendsPanel() {
 
   const utils = trpc.useUtils();
   const sendReq = trpc.friends.sendRequest.useMutation({
-    onSuccess: async () => {
+    onMutate: async (variables) => {
+      // Cancel any outgoing refetches
+      await utils.friends.searchUsers.cancel();
+
+      // Snapshot the previous value
+      const previousResults = utils.friends.searchUsers.getData({ query });
+
+      // Optimistically update to show "Pending" status
+      utils.friends.searchUsers.setData({ query }, (old) => {
+        if (!old) return old;
+        return old.map((user) =>
+          user.id === variables.toUserId
+            ? { ...user, hasPendingRequest: true }
+            : user,
+        );
+      });
+
+      // Return context with the snapshot
+      return { previousResults };
+    },
+    onError: (err, variables, context) => {
+      // If the mutation fails, roll back to the previous value
+      if (context?.previousResults) {
+        utils.friends.searchUsers.setData({ query }, context.previousResults);
+      }
+    },
+    onSettled: async () => {
+      // Always refetch after error or success to ensure we're in sync
       await utils.friends.searchUsers.invalidate();
       await utils.friends.incomingRequests.invalidate();
       await utils.friends.list.invalidate();
