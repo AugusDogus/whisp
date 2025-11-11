@@ -95,7 +95,7 @@ export default function FriendsScreen() {
       // Optimistically remove the message from inbox
       utils.messages.inbox.setData(undefined, (old) => {
         if (!old) return old;
-        return old.filter((msg) => msg.deliveryId !== variables.deliveryId);
+        return old.filter((msg) => msg?.deliveryId !== variables.deliveryId);
       });
 
       // Return context with the snapshot

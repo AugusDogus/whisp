@@ -73,7 +73,7 @@ export function AddFriendsPanel() {
       // Optimistically remove the request
       utils.friends.incomingRequests.setData(undefined, (old) => {
         if (!old) return old;
-        return old.filter((req) => req.requestId !== variables.requestId);
+        return old.filter((req) => req?.requestId !== variables.requestId);
       });
 
       // Return context with the snapshot
@@ -106,7 +106,7 @@ export function AddFriendsPanel() {
       // Optimistically remove the request
       utils.friends.incomingRequests.setData(undefined, (old) => {
         if (!old) return old;
-        return old.filter((req) => req.requestId !== variables.requestId);
+        return old.filter((req) => req?.requestId !== variables.requestId);
       });
 
       // Return context with the snapshot
