@@ -103,7 +103,7 @@ export function AddFriendsPanel() {
   return (
     <View className="gap-4">
       <Input
-        placeholder="Search by name or email"
+        placeholder="Search by username"
         value={query}
         onChangeText={setQuery}
       />

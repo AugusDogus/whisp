@@ -21,13 +21,11 @@ export const friendsRouter = {
     .query(async ({ ctx, input }) => {
       const q = `%${input.query.trim()}%`;
       const me = ctx.session.user.id;
-      // Simple search by name or email, excluding self
+      // Simple search by name, excluding self
       const users = await ctx.db
         .select()
         .from(User)
-        .where(
-          and(or(like(User.name, q), like(User.email, q)), ne(User.id, me)),
-        );
+        .where(and(like(User.name, q), ne(User.id, me)));
 
       // Determine friendship/request status for each user
       const userIds = users.map((u) => u.id);
