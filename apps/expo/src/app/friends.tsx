@@ -85,7 +85,30 @@ export default function FriendsScreen() {
   const bottomSheetRef = useRef<BottomSheetModal>(null);
   const utils = trpc.useUtils();
   const markRead = trpc.messages.markRead.useMutation({
-    onSuccess: async () => {
+    onMutate: async (variables) => {
+      // Cancel any outgoing refetches
+      await utils.messages.inbox.cancel();
+
+      // Snapshot the previous value
+      const previousInbox = utils.messages.inbox.getData();
+
+      // Optimistically remove the message from inbox
+      utils.messages.inbox.setData(undefined, (old) => {
+        if (!old) return old;
+        return old.filter((msg) => msg.deliveryId !== variables.deliveryId);
+      });
+
+      // Return context with the snapshot
+      return { previousInbox };
+    },
+    onError: (err, variables, context) => {
+      // If the mutation fails, roll back to the previous value
+      if (context?.previousInbox) {
+        utils.messages.inbox.setData(undefined, context.previousInbox);
+      }
+    },
+    onSettled: async () => {
+      // Always refetch after error or success to ensure we're in sync
       await utils.messages.inbox.invalidate();
     },
   });
