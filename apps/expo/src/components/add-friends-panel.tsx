@@ -36,13 +36,66 @@ export function AddFriendsPanel() {
     },
   });
   const acceptReq = trpc.friends.acceptRequest.useMutation({
-    onSuccess: async () => {
+    onMutate: async (variables) => {
+      // Cancel any outgoing refetches
+      await utils.friends.incomingRequests.cancel();
+
+      // Snapshot the previous value
+      const previousRequests = utils.friends.incomingRequests.getData();
+
+      // Optimistically remove the request
+      utils.friends.incomingRequests.setData(undefined, (old) => {
+        if (!old) return old;
+        return old.filter((req) => req.requestId !== variables.requestId);
+      });
+
+      // Return context with the snapshot
+      return { previousRequests };
+    },
+    onError: (err, variables, context) => {
+      // If the mutation fails, roll back to the previous value
+      if (context?.previousRequests) {
+        utils.friends.incomingRequests.setData(
+          undefined,
+          context.previousRequests,
+        );
+      }
+    },
+    onSettled: async () => {
+      // Always refetch after error or success to ensure we're in sync
       await utils.friends.incomingRequests.invalidate();
       await utils.friends.list.invalidate();
     },
   });
+
   const declineReq = trpc.friends.declineRequest.useMutation({
-    onSuccess: async () => {
+    onMutate: async (variables) => {
+      // Cancel any outgoing refetches
+      await utils.friends.incomingRequests.cancel();
+
+      // Snapshot the previous value
+      const previousRequests = utils.friends.incomingRequests.getData();
+
+      // Optimistically remove the request
+      utils.friends.incomingRequests.setData(undefined, (old) => {
+        if (!old) return old;
+        return old.filter((req) => req.requestId !== variables.requestId);
+      });
+
+      // Return context with the snapshot
+      return { previousRequests };
+    },
+    onError: (err, variables, context) => {
+      // If the mutation fails, roll back to the previous value
+      if (context?.previousRequests) {
+        utils.friends.incomingRequests.setData(
+          undefined,
+          context.previousRequests,
+        );
+      }
+    },
+    onSettled: async () => {
+      // Always refetch after error or success to ensure we're in sync
       await utils.friends.incomingRequests.invalidate();
     },
   });
