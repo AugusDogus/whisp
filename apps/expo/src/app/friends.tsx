@@ -195,6 +195,12 @@ export default function FriendsScreen() {
     void Notifications.dismissAllNotificationsAsync();
 
     setViewer({ friendId, queue, index: 0 });
+
+    // Mark the first message as read immediately
+    const firstMessage = queue[0];
+    if (firstMessage?.deliveryId) {
+      markRead.mutate({ deliveryId: firstMessage.deliveryId });
+    }
   };
 
   const closeViewer = useCallback(() => {
@@ -248,15 +254,17 @@ export default function FriendsScreen() {
 
   const onViewerTap = () => {
     if (!viewer) return;
-    const current = viewer.queue[viewer.index];
-    if (current?.deliveryId) {
-      // Mark as read
-      markRead.mutate({ deliveryId: current.deliveryId });
-    }
     const nextIndex = viewer.index + 1;
-    if (nextIndex < viewer.queue.length)
+    if (nextIndex < viewer.queue.length) {
       setViewer({ ...viewer, index: nextIndex });
-    else closeViewer();
+      // Mark the next message as read when advancing
+      const nextMessage = viewer.queue[nextIndex];
+      if (nextMessage?.deliveryId) {
+        markRead.mutate({ deliveryId: nextMessage.deliveryId });
+      }
+    } else {
+      closeViewer();
+    }
   };
 
   const rows = useMemo<FriendRow[]>(() => {
