@@ -1,4 +1,6 @@
+import { eq } from "@acme/db";
 import type { db } from "@acme/db/client";
+import { PushToken } from "@acme/db/schema";
 
 interface NotificationPayload {
   to: string; // Expo push token
@@ -7,7 +9,16 @@ interface NotificationPayload {
   data?: Record<string, unknown>;
 }
 
-export async function sendPushNotification(payload: NotificationPayload) {
+interface PushNotificationResult {
+  success: boolean;
+  isInvalidToken?: boolean;
+  data?: unknown;
+  error?: unknown;
+}
+
+export async function sendPushNotification(
+  payload: NotificationPayload,
+): Promise<PushNotificationResult> {
   const message = {
     to: payload.to,
     sound: "default",
@@ -27,7 +38,22 @@ export async function sendPushNotification(payload: NotificationPayload) {
       body: JSON.stringify(message),
     });
 
-    const data = await response.json();
+    const data = (await response.json()) as {
+      data?: Array<{ status?: string; details?: { error?: string } }>;
+    };
+
+    // Check if Expo rejected the token as invalid
+    // Expo returns errors like "DeviceNotRegistered" or "InvalidCredentials"
+    const firstResult = data.data?.[0];
+    if (
+      firstResult?.status === "error" &&
+      (firstResult.details?.error === "DeviceNotRegistered" ||
+        firstResult.details?.error === "InvalidCredentials")
+    ) {
+      console.log(`Invalid push token detected: ${payload.to}`);
+      return { success: false, isInvalidToken: true, data };
+    }
+
     return { success: true, data };
   } catch (error) {
     console.error("Error sending push notification:", error);
@@ -64,10 +90,32 @@ export async function sendNotificationToUser(
     ),
   );
 
+  // Clean up invalid tokens
+  const invalidTokens: string[] = [];
+  results.forEach((result, index) => {
+    if (
+      result.status === "fulfilled" &&
+      result.value.isInvalidToken &&
+      tokens[index]
+    ) {
+      invalidTokens.push(tokens[index].token);
+    }
+  });
+
+  if (invalidTokens.length > 0) {
+    console.log(`Removing ${invalidTokens.length} invalid push tokens`);
+    await Promise.all(
+      invalidTokens.map((token) =>
+        database.delete(PushToken).where(eq(PushToken.token, token)),
+      ),
+    );
+  }
+
   return {
     success: true,
     sent: results.filter((r) => r.status === "fulfilled").length,
     failed: results.filter((r) => r.status === "rejected").length,
+    invalidTokensRemoved: invalidTokens.length,
   };
 }
 
