@@ -1,5 +1,5 @@
-import { eq } from "@acme/db";
 import type { db } from "@acme/db/client";
+import { eq } from "@acme/db";
 import { PushToken } from "@acme/db/schema";
 
 interface NotificationPayload {
@@ -39,7 +39,7 @@ export async function sendPushNotification(
     });
 
     const data = (await response.json()) as {
-      data?: Array<{ status?: string; details?: { error?: string } }>;
+      data?: { status?: string; details?: { error?: string } }[];
     };
 
     // Check if Expo rejected the token as invalid
