@@ -41,6 +41,11 @@ export function AddFriendsPanel() {
       await utils.friends.list.invalidate();
     },
   });
+  const declineReq = trpc.friends.declineRequest.useMutation({
+    onSuccess: async () => {
+      await utils.friends.incomingRequests.invalidate();
+    },
+  });
 
   return (
     <View className="gap-4">
@@ -103,12 +108,21 @@ export function AddFriendsPanel() {
               className="flex-row items-center justify-between rounded-md bg-secondary px-3 py-2"
             >
               <UIText>{r.fromUser.name}</UIText>
-              <Button
-                size="sm"
-                onPress={() => acceptReq.mutate({ requestId: r.requestId })}
-              >
-                <UIText>Accept</UIText>
-              </Button>
+              <View className="flex-row gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onPress={() => declineReq.mutate({ requestId: r.requestId })}
+                >
+                  <UIText>Decline</UIText>
+                </Button>
+                <Button
+                  size="sm"
+                  onPress={() => acceptReq.mutate({ requestId: r.requestId })}
+                >
+                  <UIText>Accept</UIText>
+                </Button>
+              </View>
             </View>
           ))
         )}

@@ -240,9 +240,10 @@ export const friendsRouter = {
           ? request.toUserId
           : request.fromUserId;
       await ctx.db.insert(Friendship).values({ userIdA: a, userIdB: b });
+
+      // Delete the friend request now that it's been accepted
       await ctx.db
-        .update(FriendRequest)
-        .set({ status: "accepted" })
+        .delete(FriendRequest)
         .where(eq(FriendRequest.id, input.requestId));
 
       // Send notification to the person who sent the request (fire-and-forget)
@@ -251,6 +252,27 @@ export const friendsRouter = {
         request.fromUserId,
         ctx.session.user.name,
       );
+
+      return { ok: true };
+    }),
+
+  declineRequest: protectedProcedure
+    .input(z.object({ requestId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const me = ctx.session.user.id;
+      const request = (
+        await ctx.db
+          .select()
+          .from(FriendRequest)
+          .where(eq(FriendRequest.id, input.requestId))
+      )[0];
+      if (!request || request.toUserId !== me || request.status !== "pending")
+        return { ok: false };
+
+      // Delete the friend request
+      await ctx.db
+        .delete(FriendRequest)
+        .where(eq(FriendRequest.id, input.requestId));
 
       return { ok: true };
     }),
