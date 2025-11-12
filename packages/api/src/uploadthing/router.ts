@@ -2,7 +2,7 @@ import type { FileRouter } from "uploadthing/types";
 import { createUploadthing, UploadThingError } from "uploadthing/server";
 import { z } from "zod/v4";
 
-import { and, eq, or } from "@acme/db";
+import { and, eq } from "@acme/db";
 import { db } from "@acme/db/client";
 import { Friendship, Message, MessageDelivery } from "@acme/db/schema";
 
@@ -36,8 +36,6 @@ async function updateStreak(
 
   // Determine which user is sending
   const isSenderA = senderId === userA;
-  const senderDateField = isSenderA ? "lastActivityDateA" : "lastActivityDateB";
-  const otherDateField = isSenderA ? "lastActivityDateB" : "lastActivityDateA";
   const senderLastActivity = isSenderA
     ? friendship.lastActivityDateA
     : friendship.lastActivityDateB;
@@ -49,16 +47,17 @@ async function updateStreak(
   if (senderLastActivity === today) return;
 
   // Update sender's last activity date
-  const updates: {
-    lastActivityDateA?: string;
-    lastActivityDateB?: string;
-    currentStreak?: number;
-    streakUpdatedAt?: Date;
-  } = {
-    [senderDateField]: today,
-  };
+  const updates: Partial<typeof Friendship.$inferInsert> = {};
+  
+  if (isSenderA) {
+    updates.lastActivityDateA = today;
+  } else {
+    updates.lastActivityDateB = today;
+  }
 
   // Calculate new streak
+  const currentStreak = friendship.currentStreak ?? 0;
+  
   if (!otherLastActivity) {
     // Other user hasn't sent yet, keep current streak
     updates.streakUpdatedAt = new Date();
@@ -76,7 +75,7 @@ async function updateStreak(
     if (otherSentToday) {
       // Both sent today - increment streak if this is a new day for sender
       if (senderSentYesterday) {
-        updates.currentStreak = friendship.currentStreak + 1;
+        updates.currentStreak = currentStreak + 1;
       } else if (!senderLastActivity) {
         // First time sender is sending, start streak
         updates.currentStreak = 1;
@@ -87,7 +86,7 @@ async function updateStreak(
       updates.streakUpdatedAt = new Date();
     } else if (otherSentYesterday && !senderSentYesterday) {
       // Other sent yesterday, sender sending today continues streak
-      updates.currentStreak = friendship.currentStreak + 1;
+      updates.currentStreak = currentStreak + 1;
       updates.streakUpdatedAt = new Date();
     } else {
       // Gap detected - reset streak
