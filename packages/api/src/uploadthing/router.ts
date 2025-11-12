@@ -48,7 +48,7 @@ async function updateStreak(
 
   // Update sender's last activity date
   const updates: Partial<typeof Friendship.$inferInsert> = {};
-  
+
   if (isSenderA) {
     updates.lastActivityDateA = today;
   } else {
@@ -56,8 +56,8 @@ async function updateStreak(
   }
 
   // Calculate new streak
-  const currentStreak = friendship.currentStreak ?? 0;
-  
+  const currentStreak = friendship.currentStreak;
+
   if (!otherLastActivity) {
     // Other user hasn't sent yet, keep current streak
     updates.streakUpdatedAt = new Date();
@@ -163,8 +163,10 @@ export function createUploadRouter({ getSession }: CreateDeps) {
 
         // Update streak for each recipient
         const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD format
-        for (const recipientId of metadata.recipients) {
-          await updateStreak(metadata.userId, recipientId, today);
+        if (today) {
+          for (const recipientId of metadata.recipients) {
+            await updateStreak(metadata.userId, recipientId, today);
+          }
         }
 
         // Get sender name for notification
