@@ -54,6 +54,7 @@ interface FriendRow {
   hasUnread: boolean;
   unreadCount: number;
   isSelected: boolean;
+  streak: number;
 }
 
 export default function FriendsScreen() {
@@ -286,6 +287,7 @@ export default function FriendsScreen() {
         hasMedia && mediaParams?.defaultRecipientId
           ? f.id === mediaParams.defaultRecipientId
           : false,
+      streak: (f as unknown as { streak?: number }).streak ?? 0,
     }));
   }, [friends, inbox, hasMedia, mediaParams?.defaultRecipientId]);
 
@@ -767,7 +769,17 @@ export default function FriendsScreen() {
                         </View>
                       )}
                     </View>
-                    <Text className="text-base">{item.name}</Text>
+                    <View className="flex-row items-center gap-2">
+                      <Text className="text-base">{item.name}</Text>
+                      {item.streak > 0 && (
+                        <View className="flex-row items-center gap-1">
+                          <Ionicons name="flame" size={16} color="#f97316" />
+                          <Text className="text-sm font-semibold text-orange-500">
+                            {item.streak}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
                   </View>
                   {item.hasUnread ? (
                     <View className="items-center justify-center rounded-full bg-primary px-2 py-1">

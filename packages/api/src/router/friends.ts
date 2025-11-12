@@ -118,6 +118,7 @@ export const friendsRouter = {
         name: string;
         image: string | null;
         discordId: string | null;
+        streak: number;
       }[];
 
     const friends = await ctx.db
@@ -134,11 +135,20 @@ export const friendsRouter = {
       )
       .where(or(...friendIds.map((id) => eq(User.id, id))));
 
+    // Create a map of friend ID to streak
+    const friendshipMap = new Map(
+      rows.map((r) => [
+        r.userIdA === me ? r.userIdB : r.userIdA,
+        r.currentStreak,
+      ]),
+    );
+
     return friends.map((u) => ({
       id: u.id,
       name: u.name,
       image: u.image ?? null,
       discordId: u.discordId ?? null,
+      streak: friendshipMap.get(u.id) ?? 0,
     }));
   }),
 
