@@ -2,13 +2,111 @@ import type { FileRouter } from "uploadthing/types";
 import { createUploadthing, UploadThingError } from "uploadthing/server";
 import { z } from "zod/v4";
 
+import { and, eq, or } from "@acme/db";
 import { db } from "@acme/db/client";
-import { Message, MessageDelivery } from "@acme/db/schema";
+import { Friendship, Message, MessageDelivery } from "@acme/db/schema";
 
 import { notifyNewMessage } from "../utils/send-notification";
 
 interface CreateDeps {
   getSession: () => Promise<{ user: { id: string } } | null>;
+}
+
+/**
+ * Updates the streak between two users when a message is sent
+ * Streak increments when both users send messages on the same day or consecutive days
+ */
+async function updateStreak(
+  senderId: string,
+  recipientId: string,
+  today: string,
+) {
+  // Normalize the friendship pair (lexicographically sorted)
+  const [userA, userB] =
+    senderId < recipientId ? [senderId, recipientId] : [recipientId, senderId];
+
+  // Find the friendship
+  const [friendship] = await db
+    .select()
+    .from(Friendship)
+    .where(and(eq(Friendship.userIdA, userA), eq(Friendship.userIdB, userB)))
+    .limit(1);
+
+  if (!friendship) return;
+
+  // Determine which user is sending
+  const isSenderA = senderId === userA;
+  const senderDateField = isSenderA ? "lastActivityDateA" : "lastActivityDateB";
+  const otherDateField = isSenderA ? "lastActivityDateB" : "lastActivityDateA";
+  const senderLastActivity = isSenderA
+    ? friendship.lastActivityDateA
+    : friendship.lastActivityDateB;
+  const otherLastActivity = isSenderA
+    ? friendship.lastActivityDateB
+    : friendship.lastActivityDateA;
+
+  // If sender already sent today, no need to update
+  if (senderLastActivity === today) return;
+
+  // Update sender's last activity date
+  const updates: {
+    lastActivityDateA?: string;
+    lastActivityDateB?: string;
+    currentStreak?: number;
+    streakUpdatedAt?: Date;
+  } = {
+    [senderDateField]: today,
+  };
+
+  // Calculate new streak
+  if (!otherLastActivity) {
+    // Other user hasn't sent yet, keep current streak
+    updates.streakUpdatedAt = new Date();
+  } else {
+    // Both users have activity - check if we should update streak
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().split("T")[0];
+
+    // Check if both sent today or if other sent yesterday/today and this completes the streak
+    const otherSentToday = otherLastActivity === today;
+    const otherSentYesterday = otherLastActivity === yesterdayStr;
+    const senderSentYesterday = senderLastActivity === yesterdayStr;
+
+    if (otherSentToday) {
+      // Both sent today - increment streak if this is a new day for sender
+      if (senderSentYesterday) {
+        updates.currentStreak = friendship.currentStreak + 1;
+      } else if (!senderLastActivity) {
+        // First time sender is sending, start streak
+        updates.currentStreak = 1;
+      } else {
+        // Sender's last activity was more than 1 day ago, reset to 1
+        updates.currentStreak = 1;
+      }
+      updates.streakUpdatedAt = new Date();
+    } else if (otherSentYesterday && !senderSentYesterday) {
+      // Other sent yesterday, sender sending today continues streak
+      updates.currentStreak = friendship.currentStreak + 1;
+      updates.streakUpdatedAt = new Date();
+    } else {
+      // Gap detected - reset streak
+      if (
+        senderLastActivity &&
+        senderLastActivity !== yesterdayStr &&
+        otherLastActivity !== yesterdayStr
+      ) {
+        updates.currentStreak = 0;
+        updates.streakUpdatedAt = new Date();
+      }
+    }
+  }
+
+  // Apply updates
+  await db
+    .update(Friendship)
+    .set(updates)
+    .where(and(eq(Friendship.userIdA, userA), eq(Friendship.userIdB, userB)));
 }
 
 export function createUploadRouter({ getSession }: CreateDeps) {
@@ -63,6 +161,12 @@ export function createUploadRouter({ getSession }: CreateDeps) {
         }));
 
         await db.insert(MessageDelivery).values(deliveries);
+
+        // Update streak for each recipient
+        const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD format
+        for (const recipientId of metadata.recipients) {
+          await updateStreak(metadata.userId, recipientId, today);
+        }
 
         // Get sender name for notification
         const sender = await db.query.user.findFirst({

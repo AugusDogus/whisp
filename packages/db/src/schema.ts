@@ -56,6 +56,11 @@ export const Friendship = sqliteTable("friendship", (t) => ({
     .integer({ mode: "timestamp" })
     .$defaultFn(() => new Date())
     .notNull(),
+  // Streak tracking
+  currentStreak: t.integer().notNull().default(0),
+  lastActivityDateA: t.text(), // YYYY-MM-DD format for userA's last activity
+  lastActivityDateB: t.text(), // YYYY-MM-DD format for userB's last activity
+  streakUpdatedAt: t.integer({ mode: "timestamp" }),
 }));
 
 export const Message = sqliteTable("message", (t) => ({
