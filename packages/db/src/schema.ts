@@ -56,10 +56,10 @@ export const Friendship = sqliteTable("friendship", (t) => ({
     .integer({ mode: "timestamp" })
     .$defaultFn(() => new Date())
     .notNull(),
-  // Streak tracking
+  // Streak tracking - uses 24-hour rolling windows from last activity
   currentStreak: t.integer().notNull().default(0),
-  lastActivityDateA: t.text(), // YYYY-MM-DD format for userA's last activity
-  lastActivityDateB: t.text(), // YYYY-MM-DD format for userB's last activity
+  lastActivityTimestampA: t.integer({ mode: "timestamp" }), // Full timestamp for userA's last activity
+  lastActivityTimestampB: t.integer({ mode: "timestamp" }), // Full timestamp for userB's last activity
   streakUpdatedAt: t.integer({ mode: "timestamp" }),
 }));
 

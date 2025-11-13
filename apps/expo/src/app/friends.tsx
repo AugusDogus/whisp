@@ -58,6 +58,9 @@ interface FriendRow {
   unreadCount: number;
   isSelected: boolean;
   streak: number;
+  lastActivityTimestamp: Date | null;
+  partnerLastActivityTimestamp: Date | null;
+  hoursRemaining: number | null;
 }
 
 export default function FriendsScreen() {
@@ -282,21 +285,54 @@ export default function FriendsScreen() {
       const count = senderToMessages.get(m.senderId) ?? 0;
       senderToMessages.set(m.senderId, count + 1);
     }
-    return friends.map((f) => ({
-      id: f.id,
-      name: f.name,
-      image: (f as unknown as { image?: string | null }).image ?? null,
-      discordId:
-        (f as unknown as { discordId?: string | null }).discordId ?? null,
-      hasUnread: (senderToMessages.get(f.id) ?? 0) > 0,
-      unreadCount: senderToMessages.get(f.id) ?? 0,
-      isSelected:
-        hasMedia && mediaParams?.defaultRecipientId
-          ? f.id === mediaParams.defaultRecipientId
-          : false,
-      streak: (f as unknown as { streak?: number }).streak ?? 0,
-    }));
+
+    return friends.map((f) => {
+      const streak = (f as unknown as { streak?: number }).streak ?? 0;
+      const lastActivity = (
+        f as unknown as { lastActivityTimestamp?: Date | null }
+      ).lastActivityTimestamp;
+      const partnerLastActivity = (
+        f as unknown as { partnerLastActivityTimestamp?: Date | null }
+      ).partnerLastActivityTimestamp;
+
+      return {
+        id: f.id,
+        name: f.name,
+        image: (f as unknown as { image?: string | null }).image ?? null,
+        discordId:
+          (f as unknown as { discordId?: string | null }).discordId ?? null,
+        hasUnread: (senderToMessages.get(f.id) ?? 0) > 0,
+        unreadCount: senderToMessages.get(f.id) ?? 0,
+        isSelected:
+          hasMedia && mediaParams?.defaultRecipientId
+            ? f.id === mediaParams.defaultRecipientId
+            : false,
+        streak,
+        lastActivityTimestamp: lastActivity ?? null,
+        partnerLastActivityTimestamp: partnerLastActivity ?? null,
+        // Calculate hoursRemaining separately on each render for accuracy
+        hoursRemaining: null, // Will be calculated during render
+      };
+    });
   }, [friends, inbox, hasMedia, mediaParams?.defaultRecipientId]);
+
+  // Calculate hoursRemaining fresh on every render (cheap calculation)
+  const now = new Date();
+  const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+
+  const rowsWithTimeRemaining = rows.map((row) => {
+    if (row.streak === 0 || !row.partnerLastActivityTimestamp) {
+      return row;
+    }
+
+    const timeSincePartner =
+      now.getTime() - new Date(row.partnerLastActivityTimestamp).getTime();
+    const timeRemaining = TWENTY_FOUR_HOURS_MS - timeSincePartner;
+    const hoursRemaining =
+      timeRemaining > 0 ? timeRemaining / (60 * 60 * 1000) : 0;
+
+    return { ...row, hoursRemaining };
+  });
 
   const [selectedFriends, setSelectedFriends] = useState<Set<string>>(
     new Set(
@@ -498,9 +534,11 @@ export default function FriendsScreen() {
 
   const filteredRows = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (q.length === 0) return rows;
-    return rows.filter((f) => f.name.toLowerCase().includes(q));
-  }, [rows, searchQuery]);
+    if (q.length === 0) return rowsWithTimeRemaining;
+    return rowsWithTimeRemaining.filter((f) =>
+      f.name.toLowerCase().includes(q),
+    );
+  }, [rowsWithTimeRemaining, searchQuery]);
 
   // Wait for rasterization to complete and use rasterized image
   const [rasterizedImagePath, setRasterizedImagePath] = useState<string | null>(
@@ -723,7 +761,7 @@ export default function FriendsScreen() {
             </View>
           ) : (
             <FlatList
-              data={rows}
+              data={filteredRows}
               keyExtractor={(item) => item.id}
               refreshControl={
                 <RefreshControl
@@ -792,6 +830,16 @@ export default function FriendsScreen() {
                               source={whispLogo}
                               contentFit="contain"
                             />
+                            {item.hoursRemaining !== null &&
+                              item.hoursRemaining < 4 && (
+                                <Ionicons
+                                  name="hourglass"
+                                  size={14}
+                                  color={
+                                    colorScheme === "dark" ? "#fff" : "#000"
+                                  }
+                                />
+                              )}
                           </View>
                         </>
                       )}
