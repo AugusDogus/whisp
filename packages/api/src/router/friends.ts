@@ -119,6 +119,8 @@ export const friendsRouter = {
         image: string | null;
         discordId: string | null;
         streak: number;
+        lastActivityTimestamp: Date | null;
+        partnerLastActivityTimestamp: Date | null;
       }[];
 
     const friends = await ctx.db
@@ -135,21 +137,38 @@ export const friendsRouter = {
       )
       .where(or(...friendIds.map((id) => eq(User.id, id))));
 
-    // Create a map of friend ID to streak
+    // Create a map of friend ID to streak info
     const friendshipMap = new Map(
-      rows.map((r) => [
-        r.userIdA === me ? r.userIdB : r.userIdA,
-        r.currentStreak,
-      ]),
+      rows.map((r) => {
+        const isUserA = r.userIdA === me;
+        const friendId = isUserA ? r.userIdB : r.userIdA;
+        return [
+          friendId,
+          {
+            streak: r.currentStreak,
+            myLastActivity: isUserA
+              ? r.lastActivityTimestampA
+              : r.lastActivityTimestampB,
+            partnerLastActivity: isUserA
+              ? r.lastActivityTimestampB
+              : r.lastActivityTimestampA,
+          },
+        ];
+      }),
     );
 
-    return friends.map((u) => ({
-      id: u.id,
-      name: u.name,
-      image: u.image ?? null,
-      discordId: u.discordId ?? null,
-      streak: friendshipMap.get(u.id) ?? 0,
-    }));
+    return friends.map((u) => {
+      const streakInfo = friendshipMap.get(u.id);
+      return {
+        id: u.id,
+        name: u.name,
+        image: u.image ?? null,
+        discordId: u.discordId ?? null,
+        streak: streakInfo?.streak ?? 0,
+        lastActivityTimestamp: streakInfo?.myLastActivity ?? null,
+        partnerLastActivityTimestamp: streakInfo?.partnerLastActivity ?? null,
+      };
+    });
   }),
 
   incomingRequests: protectedProcedure.query(async ({ ctx }) => {

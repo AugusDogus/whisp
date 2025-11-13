@@ -14,13 +14,9 @@ interface CreateDeps {
 
 /**
  * Updates the streak between two users when a message is sent
- * Streak increments when both users send messages on the same day or consecutive days
+ * Uses 24-hour rolling windows - both users must send within 24 hours of each other
  */
-async function updateStreak(
-  senderId: string,
-  recipientId: string,
-  today: string,
-) {
+async function updateStreak(senderId: string, recipientId: string) {
   // Normalize the friendship pair (lexicographically sorted)
   const [userA, userB] =
     senderId < recipientId ? [senderId, recipientId] : [recipientId, senderId];
@@ -34,69 +30,58 @@ async function updateStreak(
 
   if (!friendship) return;
 
-  // Determine which user is sending
+  const now = new Date();
   const isSenderA = senderId === userA;
-  const senderLastActivity = isSenderA
-    ? friendship.lastActivityDateA
-    : friendship.lastActivityDateB;
-  const otherLastActivity = isSenderA
-    ? friendship.lastActivityDateB
-    : friendship.lastActivityDateA;
 
-  // If sender already sent today, no need to update
-  if (senderLastActivity === today) return;
+  // Get timestamps for both users
+  const senderLastTimestamp = isSenderA
+    ? friendship.lastActivityTimestampA
+    : friendship.lastActivityTimestampB;
+  const otherLastTimestamp = isSenderA
+    ? friendship.lastActivityTimestampB
+    : friendship.lastActivityTimestampA;
 
-  // Update sender's last activity date
   const updates: Partial<typeof Friendship.$inferInsert> = {};
 
+  // Update sender's timestamp
   if (isSenderA) {
-    updates.lastActivityDateA = today;
+    updates.lastActivityTimestampA = now;
   } else {
-    updates.lastActivityDateB = today;
+    updates.lastActivityTimestampB = now;
   }
 
-  // Calculate new streak
   const currentStreak = friendship.currentStreak;
+  const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
 
-  if (!otherLastActivity) {
-    // Other user hasn't sent yet, keep current streak
-    updates.streakUpdatedAt = new Date();
+  if (!otherLastTimestamp) {
+    // Other user hasn't sent yet - start at 0, waiting for them
+    updates.currentStreak = 0;
+    updates.streakUpdatedAt = now;
   } else {
-    // Both users have activity - check if we should update streak
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = yesterday.toISOString().split("T")[0];
+    // Check time elapsed since other user's last activity
+    const timeSinceOther = now.getTime() - otherLastTimestamp.getTime();
 
-    // Check if both sent today or if other sent yesterday/today and this completes the streak
-    const otherSentToday = otherLastActivity === today;
-    const otherSentYesterday = otherLastActivity === yesterdayStr;
-    const senderSentYesterday = senderLastActivity === yesterdayStr;
-
-    if (otherSentToday) {
-      // Both sent today - increment streak if this is a new day for sender
-      if (senderSentYesterday) {
-        updates.currentStreak = currentStreak + 1;
-      } else if (!senderLastActivity) {
+    if (timeSinceOther <= TWENTY_FOUR_HOURS_MS) {
+      // Other user sent within last 24 hours - continue/increment streak
+      if (senderLastTimestamp) {
+        const timeSinceSender = now.getTime() - senderLastTimestamp.getTime();
+        // Only increment if this is a new 24-hour period for the sender
+        if (timeSinceSender > TWENTY_FOUR_HOURS_MS) {
+          updates.currentStreak = currentStreak + 1;
+          updates.streakUpdatedAt = now;
+        } else {
+          // Both sent recently, just update timestamp
+          updates.streakUpdatedAt = now;
+        }
+      } else {
         // First time sender is sending, start streak
         updates.currentStreak = 1;
-      } else {
-        // Sender's last activity was more than 1 day ago, reset to 1
-        updates.currentStreak = 1;
+        updates.streakUpdatedAt = now;
       }
-      updates.streakUpdatedAt = new Date();
-    } else if (otherSentYesterday && !senderSentYesterday) {
-      // Other sent yesterday, sender sending today continues streak
-      updates.currentStreak = currentStreak + 1;
-      updates.streakUpdatedAt = new Date();
     } else {
-      // Gap detected - reset streak if other user hasn't sent today or yesterday
-      if (
-        !otherLastActivity ||
-        (otherLastActivity !== today && otherLastActivity !== yesterdayStr)
-      ) {
-        updates.currentStreak = 0;
-        updates.streakUpdatedAt = new Date();
-      }
+      // Gap detected - other user hasn't sent in 24+ hours, reset streak
+      updates.currentStreak = 0;
+      updates.streakUpdatedAt = now;
     }
   }
 
@@ -161,11 +146,8 @@ export function createUploadRouter({ getSession }: CreateDeps) {
         await db.insert(MessageDelivery).values(deliveries);
 
         // Update streak for each recipient
-        const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD format
-        if (today) {
-          for (const recipientId of metadata.recipients) {
-            await updateStreak(metadata.userId, recipientId, today);
-          }
+        for (const recipientId of metadata.recipients) {
+          await updateStreak(metadata.userId, recipientId);
         }
 
         // Get sender name for notification
