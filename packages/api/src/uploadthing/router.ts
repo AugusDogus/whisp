@@ -84,7 +84,7 @@ async function updateStreak(senderId: string, recipientId: string) {
     } else {
       // Gap detected - other user hasn't sent in 24+ hours, reset streak
       updates.currentStreak = 0;
-      updates.streakUpdatedAt = now;
+      updates.streakUpdatedAt = null;
     }
   }
 
