@@ -89,11 +89,10 @@ async function updateStreak(
       updates.currentStreak = currentStreak + 1;
       updates.streakUpdatedAt = new Date();
     } else {
-      // Gap detected - reset streak
+      // Gap detected - reset streak if other user hasn't sent today or yesterday
       if (
-        senderLastActivity &&
-        senderLastActivity !== yesterdayStr &&
-        otherLastActivity !== yesterdayStr
+        !otherLastActivity ||
+        (otherLastActivity !== today && otherLastActivity !== yesterdayStr)
       ) {
         updates.currentStreak = 0;
         updates.streakUpdatedAt = new Date();
