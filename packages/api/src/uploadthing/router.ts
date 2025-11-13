@@ -108,6 +108,13 @@ async function updateStreak(
     .where(and(eq(Friendship.userIdA, userA), eq(Friendship.userIdB, userB)));
 }
 
+/**
+ * Creates an upload router exposing an authenticated image/video uploader that persists messages, creates deliveries, updates conversation streaks, and notifies recipients.
+ *
+ * The uploader requires a valid session (throws an UploadThingError with "Unauthorized" when absent), validates input (recipients, optional mimeType and thumbhash), stores a Message and MessageDelivery rows for each recipient, calls updateStreak for each recipient with today's date, and invokes notifyNewMessage per delivery. Metadata returned from the upload handler includes the uploader's user id.
+ *
+ * @returns A FileRouter object containing an `imageUploader` route that enforces authentication, accepts image/video uploads, persists message and delivery records, updates per-recipient streaks, and dispatches notifications; upload completion returns `{ uploadedBy: <userId> }`.
+ */
 export function createUploadRouter({ getSession }: CreateDeps) {
   const f = createUploadthing();
 

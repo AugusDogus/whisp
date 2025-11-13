@@ -60,6 +60,16 @@ interface FriendRow {
   streak: number;
 }
 
+/**
+ * Renders the Friends screen, handling both normal messaging and media-send flows.
+ *
+ * Shows a friends list with inbox counts, a modal message viewer, friend action bottom sheet,
+ * and a send-mode UI when media is provided via navigation params. Manages optimistic updates
+ * for marking messages read and removing friends, deep-link handling to open a sender's messages,
+ * hardware back handling for viewer and send flows, and selection state for sending media.
+ *
+ * @returns The rendered Friends screen component (JSX element).
+ */
 export default function FriendsScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
