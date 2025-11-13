@@ -51,30 +51,33 @@ async function updateStreak(senderId: string, recipientId: string) {
   }
 
   const currentStreak = friendship.currentStreak;
+  const streakUpdatedAt = friendship.streakUpdatedAt;
   const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
 
   if (!otherLastTimestamp) {
-    // Other user hasn't sent yet - start at 0, waiting for them
-    updates.currentStreak = 0;
-    updates.streakUpdatedAt = now;
+    // Other user hasn't sent yet - keep streak at 0, just update timestamp
+    // Don't set streakUpdatedAt until both have participated
   } else {
     // Check time elapsed since other user's last activity
     const timeSinceOther = now.getTime() - otherLastTimestamp.getTime();
 
     if (timeSinceOther <= TWENTY_FOUR_HOURS_MS) {
-      // Other user sent within last 24 hours - continue/increment streak
+      // Other user sent within last 24 hours - check if we should increment
       if (senderLastTimestamp) {
-        const timeSinceSender = now.getTime() - senderLastTimestamp.getTime();
-        // Only increment if this is a new 24-hour period for the sender
-        if (timeSinceSender > TWENTY_FOUR_HOURS_MS) {
+        // Check if sender has sent since the last streak update
+        const senderSentSinceUpdate =
+          !streakUpdatedAt ||
+          senderLastTimestamp.getTime() > streakUpdatedAt.getTime();
+
+        if (senderSentSinceUpdate) {
+          // Both parties have sent since last update - this completes a "day"
+          // Increment streak
           updates.currentStreak = currentStreak + 1;
           updates.streakUpdatedAt = now;
-        } else {
-          // Both sent recently, just update timestamp
-          updates.streakUpdatedAt = now;
         }
+        // Otherwise, sender already sent since last update - waiting for next day cycle
       } else {
-        // First time sender is sending, start streak
+        // First time sender is sending, and other has already sent - complete first day
         updates.currentStreak = 1;
         updates.streakUpdatedAt = now;
       }
