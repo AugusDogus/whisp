@@ -46,9 +46,8 @@ import { Text } from "~/components/ui/text";
 import { useRecording } from "~/contexts/RecordingContext";
 import { trpc } from "~/utils/api";
 import { uploadMedia } from "~/utils/media-upload";
-
-const WhispLogoLight = require("../../assets/splash-icon.png");
-const WhispLogoDark = require("../../assets/splash-icon-dark.png");
+import WhispLogoDark from "../../assets/splash-icon-dark.png";
+import WhispLogoLight from "../../assets/splash-icon.png";
 
 interface FriendRow {
   id: string;
