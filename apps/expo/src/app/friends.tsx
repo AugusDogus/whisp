@@ -11,6 +11,7 @@ import {
   Pressable,
   RefreshControl,
   TouchableWithoutFeedback,
+  useColorScheme,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -46,6 +47,9 @@ import { useRecording } from "~/contexts/RecordingContext";
 import { trpc } from "~/utils/api";
 import { uploadMedia } from "~/utils/media-upload";
 
+const WhispLogoLight = require("../../assets/splash-icon.png");
+const WhispLogoDark = require("../../assets/splash-icon-dark.png");
+
 interface FriendRow {
   id: string;
   name: string;
@@ -65,6 +69,10 @@ export default function FriendsScreen() {
   const hasMedia = Boolean(mediaParams?.path);
   const insets = useSafeAreaInsets();
   const { setIsSendMode } = useRecording();
+  const colorScheme = useColorScheme();
+
+  // Select the appropriate logo based on color scheme
+  const whispLogo = colorScheme === "dark" ? WhispLogoDark : WhispLogoLight;
 
   const {
     data: friends = [],
@@ -772,12 +780,21 @@ export default function FriendsScreen() {
                     <View className="flex-row items-center gap-2">
                       <Text className="text-base">{item.name}</Text>
                       {item.streak > 0 && (
-                        <View className="flex-row items-center gap-1">
-                          <Ionicons name="flame" size={16} color="#f97316" />
-                          <Text className="text-sm font-semibold text-orange-500">
-                            {item.streak}
+                        <>
+                          <Text className="text-sm font-semibold text-foreground">
+                            •
                           </Text>
-                        </View>
+                          <View className="flex-row items-center gap-1">
+                            <Text className="text-sm font-semibold tabular-nums text-foreground">
+                              {item.streak}
+                            </Text>
+                            <Image
+                              style={{ width: 24, height: 24, margin: -6 }}
+                              source={whispLogo}
+                              contentFit="contain"
+                            />
+                          </View>
+                        </>
                       )}
                     </View>
                   </View>
