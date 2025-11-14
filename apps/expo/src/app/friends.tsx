@@ -413,6 +413,7 @@ export default function FriendsScreen() {
             deliveryId: instantMessage.deliveryId, // Real deliveryId from notification!
             messageId: instantMessage.messageId,
             senderId: instantMessage.senderId,
+            groupId: undefined,
             fileUrl: instantMessage.fileUrl,
             mimeType: instantMessage.mimeType,
             thumbhash: instantMessage.thumbhash,

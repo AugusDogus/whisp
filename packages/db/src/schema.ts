@@ -63,6 +63,36 @@ export const Friendship = sqliteTable("friendship", (t) => ({
   streakUpdatedAt: t.integer({ mode: "timestamp" }),
 }));
 
+// Group messaging
+export const Group = sqliteTable("group", (t) => ({
+  id: t
+    .text()
+    .notNull()
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  name: t.text().notNull(),
+  createdBy: t.text().notNull(),
+  createdAt: t
+    .integer({ mode: "timestamp" })
+    .$defaultFn(() => new Date())
+    .notNull(),
+  updatedAt: t.integer({ mode: "timestamp" }).$onUpdateFn(() => new Date()),
+}));
+
+export const GroupMembership = sqliteTable("group_membership", (t) => ({
+  id: t
+    .text()
+    .notNull()
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  groupId: t.text().notNull(),
+  userId: t.text().notNull(),
+  joinedAt: t
+    .integer({ mode: "timestamp" })
+    .$defaultFn(() => new Date())
+    .notNull(),
+}));
+
 export const Message = sqliteTable("message", (t) => ({
   id: t
     .text()
@@ -70,6 +100,8 @@ export const Message = sqliteTable("message", (t) => ({
     .primaryKey()
     .$defaultFn(() => crypto.randomUUID()),
   senderId: t.text().notNull(),
+  // For group messages, groupId will be set; for direct messages, it's null
+  groupId: t.text(),
   fileUrl: t.text().notNull(),
   // Store UploadThing file key for deletion when all recipients have read
   fileKey: t.text(),
@@ -108,6 +140,19 @@ export const CreateMessageSchema = createInsertSchema(Message).omit({
   id: true,
   createdAt: true,
   deletedAt: true,
+});
+
+export const CreateGroupSchema = createInsertSchema(Group).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const CreateGroupMembershipSchema = createInsertSchema(
+  GroupMembership,
+).omit({
+  id: true,
+  joinedAt: true,
 });
 
 // Waitlist for landing page

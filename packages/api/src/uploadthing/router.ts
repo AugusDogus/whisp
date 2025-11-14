@@ -4,7 +4,12 @@ import { z } from "zod/v4";
 
 import { and, eq } from "@acme/db";
 import { db } from "@acme/db/client";
-import { Friendship, Message, MessageDelivery } from "@acme/db/schema";
+import {
+  Friendship,
+  GroupMembership,
+  Message,
+  MessageDelivery,
+} from "@acme/db/schema";
 
 import { notifyNewMessage } from "../utils/send-notification";
 
@@ -111,7 +116,8 @@ export function createUploadRouter({ getSession }: CreateDeps) {
     })
       .input(
         z.object({
-          recipients: z.array(z.string().min(1)).min(1),
+          recipients: z.array(z.string().min(1)).optional(),
+          groupId: z.string().min(1).optional(),
           mimeType: z.string().optional(),
           thumbhash: z.string().optional(),
         }),
@@ -120,9 +126,52 @@ export function createUploadRouter({ getSession }: CreateDeps) {
         const session = await getSession();
         // eslint-disable-next-line @typescript-eslint/only-throw-error -- UploadThingError maps to proper HTTP status in UploadThing
         if (!session) throw new UploadThingError("Unauthorized");
+
+        // Validate that either recipients or groupId is provided
+        if (!input.recipients && !input.groupId) {
+          // eslint-disable-next-line @typescript-eslint/only-throw-error
+          throw new UploadThingError(
+            "Either recipients or groupId must be provided",
+          );
+        }
+
+        // If groupId is provided, fetch group members as recipients
+        let recipients: string[] = input.recipients ?? [];
+        const groupId: string | undefined = input.groupId;
+
+        if (groupId) {
+          // Verify user is a member of the group
+          const membership = await db
+            .select()
+            .from(GroupMembership)
+            .where(
+              and(
+                eq(GroupMembership.groupId, groupId),
+                eq(GroupMembership.userId, session.user.id),
+              ),
+            )
+            .limit(1);
+
+          if (membership.length === 0) {
+            // eslint-disable-next-line @typescript-eslint/only-throw-error
+            throw new UploadThingError("Not a member of this group");
+          }
+
+          // Get all group members except the sender
+          const memberships = await db
+            .select()
+            .from(GroupMembership)
+            .where(eq(GroupMembership.groupId, groupId));
+
+          recipients = memberships
+            .map((m) => m.userId)
+            .filter((id) => id !== session.user.id);
+        }
+
         return {
           userId: session.user.id,
-          recipients: input.recipients,
+          recipients,
+          groupId,
           mimeType: input.mimeType,
           thumbhash: input.thumbhash,
         };
@@ -133,6 +182,7 @@ export function createUploadRouter({ getSession }: CreateDeps) {
         await db.insert(Message).values({
           id: messageId,
           senderId: metadata.userId,
+          groupId: metadata.groupId,
           fileUrl: file.ufsUrl,
           fileKey: (file as unknown as { ufsKey?: string }).ufsKey ?? undefined,
           mimeType: metadata.mimeType,
@@ -148,9 +198,11 @@ export function createUploadRouter({ getSession }: CreateDeps) {
 
         await db.insert(MessageDelivery).values(deliveries);
 
-        // Update streak for each recipient
-        for (const recipientId of metadata.recipients) {
-          await updateStreak(metadata.userId, recipientId);
+        // Update streak for each recipient (only for direct messages, not groups)
+        if (!metadata.groupId) {
+          for (const recipientId of metadata.recipients) {
+            await updateStreak(metadata.userId, recipientId);
+          }
         }
 
         // Get sender name for notification
