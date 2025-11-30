@@ -134,8 +134,13 @@ export function useMessageFromNotification(
         return updated;
       });
 
-      // Invalidate inbox to fetch real data in background (will merge/replace)
-      void utils.messages.inbox.invalidate();
+      // Don't invalidate here! The markRead mutation will invalidate after marking
+      // as read, ensuring we don't refetch and show the message as unread again.
+      // This prevents race condition:
+      // 1. Seed cache with instant message
+      // 2. Invalidate (refetch starts)
+      // 3. Open viewer & mark as read
+      // 4. Refetch completes BEFORE markRead → message reappears as unread ❌
     }
 
     // Step 2: Check if we have messages from this sender in the current inbox
