@@ -467,6 +467,12 @@ export default function FriendsScreen() {
           index: 0,
         });
 
+        // Mark the first message as read immediately
+        const firstMessage = messagesFromSender[0];
+        if (firstMessage?.deliveryId) {
+          markRead.mutate({ deliveryId: firstMessage.deliveryId });
+        }
+
         // Clear the param after handling
         navigation.setParams({ openMessageFromSender: undefined });
       } else {
@@ -496,6 +502,12 @@ export default function FriendsScreen() {
                 queue: freshMessages,
                 index: 0,
               });
+
+              // Mark the first message as read immediately
+              const firstMessage = freshMessages[0];
+              if (firstMessage?.deliveryId) {
+                markRead.mutate({ deliveryId: firstMessage.deliveryId });
+              }
             } else {
               console.log("Still no messages found after refetch");
             }
