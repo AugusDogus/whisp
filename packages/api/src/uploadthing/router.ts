@@ -2,100 +2,14 @@ import type { FileRouter } from "uploadthing/types";
 import { createUploadthing, UploadThingError } from "uploadthing/server";
 import { z } from "zod/v4";
 
-import { and, eq } from "@acme/db";
 import { db } from "@acme/db/client";
-import { Friendship, Message, MessageDelivery } from "@acme/db/schema";
+import { Message, MessageDelivery } from "@acme/db/schema";
 
 import { notifyNewMessage } from "../utils/send-notification";
+import { updateStreak } from "../utils/update-streak";
 
 interface CreateDeps {
   getSession: () => Promise<{ user: { id: string } } | null>;
-}
-
-/**
- * Updates the streak between two users when a message is sent
- * Uses 24-hour rolling windows - both users must send within 24 hours of each other
- */
-async function updateStreak(senderId: string, recipientId: string) {
-  // Normalize the friendship pair (lexicographically sorted)
-  const [userA, userB] =
-    senderId < recipientId ? [senderId, recipientId] : [recipientId, senderId];
-
-  // Find the friendship
-  const [friendship] = await db
-    .select()
-    .from(Friendship)
-    .where(and(eq(Friendship.userIdA, userA), eq(Friendship.userIdB, userB)))
-    .limit(1);
-
-  if (!friendship) return;
-
-  const now = new Date();
-  const isSenderA = senderId === userA;
-
-  // Get timestamps for both users
-  const senderLastTimestamp = isSenderA
-    ? friendship.lastActivityTimestampA
-    : friendship.lastActivityTimestampB;
-  const otherLastTimestamp = isSenderA
-    ? friendship.lastActivityTimestampB
-    : friendship.lastActivityTimestampA;
-
-  const updates: Partial<typeof Friendship.$inferInsert> = {};
-
-  // Update sender's timestamp
-  if (isSenderA) {
-    updates.lastActivityTimestampA = now;
-  } else {
-    updates.lastActivityTimestampB = now;
-  }
-
-  const currentStreak = friendship.currentStreak;
-  const streakUpdatedAt = friendship.streakUpdatedAt;
-  const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
-
-  if (!otherLastTimestamp) {
-    // Other user hasn't sent yet - keep streak at 0, just update timestamp
-    // Don't set streakUpdatedAt until both have participated
-  } else {
-    // Check time elapsed since other user's last activity
-    const timeSinceOther = now.getTime() - otherLastTimestamp.getTime();
-
-    if (timeSinceOther <= TWENTY_FOUR_HOURS_MS) {
-      // Other user sent within last 24 hours - check if we should increment
-      if (senderLastTimestamp) {
-        // Check if BOTH users have sent since the last streak update
-        const otherSentSinceUpdate =
-          !streakUpdatedAt ||
-          otherLastTimestamp.getTime() > streakUpdatedAt.getTime();
-        const senderSentSinceUpdate =
-          !streakUpdatedAt ||
-          senderLastTimestamp.getTime() > streakUpdatedAt.getTime();
-
-        if (otherSentSinceUpdate && !senderSentSinceUpdate) {
-          // Other user has sent since last update, but sender hasn't yet
-          // This completes a "day" - increment streak
-          updates.currentStreak = currentStreak + 1;
-          updates.streakUpdatedAt = now;
-        }
-        // Otherwise, either waiting for other user or sender already sent this cycle
-      } else {
-        // First time sender is sending, and other has already sent - complete first day
-        updates.currentStreak = 1;
-        updates.streakUpdatedAt = now;
-      }
-    } else {
-      // Gap detected - other user hasn't sent in 24+ hours, reset streak
-      updates.currentStreak = 0;
-      updates.streakUpdatedAt = null;
-    }
-  }
-
-  // Apply updates
-  await db
-    .update(Friendship)
-    .set(updates)
-    .where(and(eq(Friendship.userIdA, userA), eq(Friendship.userIdB, userB)));
 }
 
 export function createUploadRouter({ getSession }: CreateDeps) {
@@ -151,9 +65,10 @@ export function createUploadRouter({ getSession }: CreateDeps) {
 
         await db.insert(MessageDelivery).values(deliveries);
 
-        // Update streak for each recipient
+        // Update friendship streak for each recipient
+        // Expected: Increments streak if both users have sent since last update
         for (const recipientId of metadata.recipients) {
-          await updateStreak(metadata.userId, recipientId);
+          await updateStreak(db, metadata.userId, recipientId);
         }
 
         // Get sender name for notification
