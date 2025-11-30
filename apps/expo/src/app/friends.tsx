@@ -83,7 +83,7 @@ export default function FriendsScreen() {
     isLoading: friendsLoading,
   } = trpc.friends.list.useQuery();
   const {
-    data: inbox = [],
+    data: inboxRaw = [],
     refetch: refetchInbox,
     isLoading: inboxLoading,
   } = trpc.messages.inbox.useQuery();
@@ -199,9 +199,36 @@ export default function FriendsScreen() {
    */
   const [viewer, setViewer] = useState<{
     friendId: string;
-    queue: typeof inbox;
+    queue: typeof inboxRaw;
     index: number;
   } | null>(null);
+
+  /**
+   * Filter Inbox to Exclude Messages in Viewer
+   * ===========================================
+   * Expected behavior:
+   * - If viewer is open, filter out all messages in the viewer queue from inbox
+   * - This prevents messages from reappearing during manual refresh
+   * - Race condition protection: Even if server hasn't processed markRead yet,
+   *   we won't show messages that are actively being viewed
+   *
+   * Scenario this fixes:
+   * 1. Open message from notification (optimistically removed from inbox)
+   * 2. markRead mutation starts (async)
+   * 3. User pulls to refresh
+   * 4. Server returns message as unread (markRead not complete yet)
+   * 5. Without this filter: message reappears ❌
+   * 6. With this filter: message stays hidden while in viewer ✅
+   */
+  const inbox = viewer
+    ? inboxRaw.filter((msg) => {
+        if (!msg) return true;
+        // Exclude any message that's in the viewer queue
+        return !viewer.queue.some(
+          (viewerMsg) => viewerMsg?.deliveryId === msg.deliveryId,
+        );
+      })
+    : inboxRaw;
 
   /**
    * Opens the message viewer for a specific friend
