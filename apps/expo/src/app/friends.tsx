@@ -44,6 +44,7 @@ import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { Text } from "~/components/ui/text";
 import { useRecording } from "~/contexts/RecordingContext";
+import { useMessageFromNotification } from "~/hooks/useMessageFromNotification";
 import { trpc } from "~/utils/api";
 import { uploadMedia } from "~/utils/media-upload";
 import WhispLogoDark from "../../assets/splash-icon-dark.png";
@@ -187,12 +188,30 @@ export default function FriendsScreen() {
     return () => setIsSendMode(false);
   }, [hasMedia, setIsSendMode]);
 
+  /**
+   * Message Viewer State
+   * ====================
+   * Expected behavior:
+   * - viewer holds the current message being viewed and the queue of messages
+   * - When a message is opened, it's removed from inbox and added to viewer
+   * - User taps to advance through messages in the queue
+   * - When queue is exhausted, viewer closes automatically
+   */
   const [viewer, setViewer] = useState<{
     friendId: string;
     queue: typeof inbox;
     index: number;
   } | null>(null);
 
+  /**
+   * Opens the message viewer for a specific friend
+   * Expected behavior:
+   * - Filters inbox to get all messages from this friend
+   * - Removes those messages from inbox (optimistic update)
+   * - Clears notifications
+   * - Opens viewer with first message
+   * - Marks first message as read immediately
+   */
   const openViewer = (friendId: string) => {
     const queue = inbox.filter((m) => m && m.senderId === friendId);
     if (queue.length === 0) return;
@@ -213,6 +232,19 @@ export default function FriendsScreen() {
       markRead.mutate({ deliveryId: firstMessage.deliveryId });
     }
   };
+
+  /**
+   * Opens the message viewer with a pre-filtered queue
+   * Used by push notification handler to open messages directly
+   */
+  const openViewerWithQueue = useCallback((messages: typeof inbox) => {
+    if (messages.length === 0) return;
+
+    const senderId = messages[0]?.senderId;
+    if (!senderId) return;
+
+    setViewer({ friendId: senderId, queue: messages, index: 0 });
+  }, []);
 
   const closeViewer = useCallback(() => {
     setViewer(null);
@@ -263,6 +295,14 @@ export default function FriendsScreen() {
     return () => backHandler.remove();
   }, [hasMedia, mediaParams, navigation]);
 
+  /**
+   * Handles taps on the message viewer
+   * Expected behavior:
+   * - Advance to next message in queue
+   * - Mark the new message as read immediately
+   * - If no more messages in queue, close the viewer
+   * - This creates a "story-style" viewing experience
+   */
   const onViewerTap = () => {
     if (!viewer) return;
     const nextIndex = viewer.index + 1;
@@ -278,7 +318,19 @@ export default function FriendsScreen() {
     }
   };
 
+  /**
+   * Friend List Rows - Expected Behavior
+   * =====================================
+   * Combines friend data with inbox data to create the displayed rows
+   *
+   * Expected:
+   * - Shows unread message count for each friend
+   * - Shows current streak and time remaining
+   * - Marks pre-selected friend when in send mode
+   * - Recalculates on every render for real-time updates
+   */
   const rows = useMemo<FriendRow[]>(() => {
+    // Count unread messages per sender
     const senderToMessages = new Map<string, number>();
     for (const m of inbox) {
       if (!m) continue;
@@ -316,7 +368,15 @@ export default function FriendsScreen() {
     });
   }, [friends, inbox, hasMedia, mediaParams?.defaultRecipientId]);
 
-  // Calculate hoursRemaining fresh on every render (cheap calculation)
+  /**
+   * Time Remaining Calculation
+   * ===========================
+   * Expected behavior:
+   * - Calculate hours remaining in the 24-hour window for each streak
+   * - Only show if streak > 0 and partner has sent recently
+   * - Updates on every render for real-time countdown
+   * - Shows hourglass icon if < 4 hours remaining (urgency indicator)
+   */
   const now = new Date();
   const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
 
@@ -349,9 +409,18 @@ export default function FriendsScreen() {
     }
   }, [hasMedia, mediaParams?.defaultRecipientId]);
 
-  // Sync viewer queue with inbox when inbox updates (for instant messages)
-  // When inbox refetches after seeding with instant message, we may get additional messages
-  // or updated data - keep the viewer in sync
+  /**
+   * Sync Viewer Queue with Inbox - Expected Behavior
+   * =================================================
+   * When the inbox updates (e.g., after refetching or receiving new messages),
+   * we need to check if the viewer should be updated with new messages.
+   *
+   * Expected:
+   * - If user is viewing messages and friend sends more, add them to viewer queue
+   * - Preserve current viewing position (don't skip to new messages)
+   * - Remove new messages from inbox since they're now in viewer
+   * - This enables continuous viewing without closing/reopening
+   */
   useEffect(() => {
     if (!viewer || viewer.queue.length === 0) return;
 
@@ -386,151 +455,28 @@ export default function FriendsScreen() {
     }
   }, [inbox, viewer, utils]);
 
-  // Handle deep link to open specific sender's messages
-  useEffect(() => {
-    const senderId = mediaParams?.openMessageFromSender;
-    const instantMessage = mediaParams?.instantMessage;
-
-    console.log("Deep link effect triggered:", {
-      openMessageFromSender: senderId,
-      hasInstantMessage: !!instantMessage,
-      inboxLoading,
-      inboxLength: inbox.length,
-      viewerOpen: !!viewer,
-    });
-
-    if (senderId && !viewer && !inboxLoading) {
-      // If we have instant message data, seed the query cache with it! 🚀
-      if (instantMessage) {
-        console.log(
-          "Seeding inbox cache with instant message data (no fetch needed!)",
-        );
-
-        // Seed the inbox query cache with the instant message
-        // This adds it to the cache as if it came from the server with REAL data!
-        utils.messages.inbox.setData(undefined, (old) => {
-          const instantMsg = {
-            deliveryId: instantMessage.deliveryId, // Real deliveryId from notification!
-            messageId: instantMessage.messageId,
-            senderId: instantMessage.senderId,
-            fileUrl: instantMessage.fileUrl,
-            mimeType: instantMessage.mimeType,
-            thumbhash: instantMessage.thumbhash,
-            createdAt: new Date(),
-          };
-
-          // Add instant message to existing inbox (or create new array)
-          const updated = old ? [...old, instantMsg] : [instantMsg];
-          return updated;
-        });
-
-        // Clear the instant message param (keep openMessageFromSender to trigger normal flow)
-        navigation.setParams({
-          instantMessage: undefined,
-        });
-
-        // Invalidate inbox to fetch real data in background (will merge/replace)
-        void utils.messages.inbox.invalidate();
-
-        // Let the normal flow below handle opening the viewer
-        // (it will find our seeded message and open it)
-      }
-
-      // Fallback: No instant message data, use the old flow
-      // Check if we already have messages from this sender in the current inbox
-      const messagesFromSender = inbox.filter(
-        (m) => m && m.senderId === senderId,
-      );
-
-      console.log("Checking for messages from sender:", {
-        senderId,
-        messagesCount: messagesFromSender.length,
-        inboxSenders: inbox.map((m) => m?.senderId),
-      });
-
-      if (messagesFromSender.length > 0) {
-        // Open the message viewer for this sender
-        console.log("Opening viewer for sender:", senderId);
-
-        // Optimistically update the inbox to remove messages from this friend
-        utils.messages.inbox.setData(undefined, (old) =>
-          old ? old.filter((m) => m && m.senderId !== senderId) : [],
-        );
-
-        // Clear notifications when opening viewer
-        void Notifications.dismissAllNotificationsAsync();
-
-        // Set viewer with messages
-        setViewer({
-          friendId: senderId,
-          queue: messagesFromSender,
-          index: 0,
-        });
-
-        // Mark the first message as read immediately
-        const firstMessage = messagesFromSender[0];
-        if (firstMessage?.deliveryId) {
-          markRead.mutate({ deliveryId: firstMessage.deliveryId });
-        }
-
-        // Clear the param after handling
-        navigation.setParams({ openMessageFromSender: undefined });
-      } else {
-        // No messages found - might be a timing issue, let's refetch once
-        console.log("No messages in current inbox, refetching...");
-        refetchInbox()
-          .then(({ data: freshInbox }) => {
-            const freshMessages = (freshInbox ?? []).filter(
-              (m) => m && m.senderId === senderId,
-            );
-
-            if (freshMessages.length > 0) {
-              console.log(
-                "Found messages after refetch:",
-                freshMessages.length,
-              );
-
-              // Optimistically update the inbox
-              utils.messages.inbox.setData(undefined, (old) =>
-                old ? old.filter((m) => m && m.senderId !== senderId) : [],
-              );
-
-              void Notifications.dismissAllNotificationsAsync();
-
-              setViewer({
-                friendId: senderId,
-                queue: freshMessages,
-                index: 0,
-              });
-
-              // Mark the first message as read immediately
-              const firstMessage = freshMessages[0];
-              if (firstMessage?.deliveryId) {
-                markRead.mutate({ deliveryId: firstMessage.deliveryId });
-              }
-            } else {
-              console.log("Still no messages found after refetch");
-            }
-
-            navigation.setParams({ openMessageFromSender: undefined });
-          })
-          .catch((error) => {
-            console.error("Error refetching inbox:", error);
-            navigation.setParams({ openMessageFromSender: undefined });
-          });
-      }
-    }
-    // refetchInbox and utils are intentionally excluded from deps to avoid infinite loop.
-    // We only want this to run when the deep link parameter or inbox data changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    mediaParams?.openMessageFromSender,
-    mediaParams?.instantMessage,
+  /**
+   * Handle opening messages from push notifications
+   * Delegates to custom hook for cleaner code organization
+   */
+  useMessageFromNotification({
+    senderId: mediaParams?.openMessageFromSender,
+    instantMessage: mediaParams?.instantMessage,
     inbox,
     inboxLoading,
-    viewer,
-    navigation,
-  ]);
+    viewerOpen: !!viewer,
+    utils,
+    clearParams: () => {
+      navigation.setParams({
+        openMessageFromSender: undefined,
+        instantMessage: undefined,
+      });
+    },
+    openViewer: openViewerWithQueue,
+    markAsRead: (deliveryId) => markRead.mutate({ deliveryId }),
+    refetchInbox: () =>
+      refetchInbox().then((result) => ({ data: result.data })),
+  });
 
   function toggleFriend(id: string) {
     setSelectedFriends((prev) => {
