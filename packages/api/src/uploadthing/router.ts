@@ -64,18 +64,21 @@ async function updateStreak(senderId: string, recipientId: string) {
     if (timeSinceOther <= TWENTY_FOUR_HOURS_MS) {
       // Other user sent within last 24 hours - check if we should increment
       if (senderLastTimestamp) {
-        // Check if OTHER user has sent since the last streak update
+        // Check if BOTH users have sent since the last streak update
         const otherSentSinceUpdate =
           !streakUpdatedAt ||
           otherLastTimestamp.getTime() > streakUpdatedAt.getTime();
+        const senderSentSinceUpdate =
+          !streakUpdatedAt ||
+          senderLastTimestamp.getTime() > streakUpdatedAt.getTime();
 
-        if (otherSentSinceUpdate) {
-          // Both parties have sent since last update - this completes a "day"
-          // Increment streak
+        if (otherSentSinceUpdate && !senderSentSinceUpdate) {
+          // Other user has sent since last update, but sender hasn't yet
+          // This completes a "day" - increment streak
           updates.currentStreak = currentStreak + 1;
           updates.streakUpdatedAt = now;
         }
-        // Otherwise, other user hasn't sent since last update - waiting for next day cycle
+        // Otherwise, either waiting for other user or sender already sent this cycle
       } else {
         // First time sender is sending, and other has already sent - complete first day
         updates.currentStreak = 1;
