@@ -415,8 +415,14 @@ export default function FriendsScreen() {
     const timeSincePartner =
       now.getTime() - new Date(row.partnerLastActivityTimestamp).getTime();
     const timeRemaining = TWENTY_FOUR_HOURS_MS - timeSincePartner;
-    const hoursRemaining =
-      timeRemaining > 0 ? timeRemaining / (60 * 60 * 1000) : 0;
+
+    // If more than 24 hours have passed, the streak has expired
+    // Treat as streak 0 on the client (server will update on next message)
+    if (timeRemaining <= 0) {
+      return { ...row, streak: 0, hoursRemaining: null };
+    }
+
+    const hoursRemaining = timeRemaining / (60 * 60 * 1000);
 
     return { ...row, hoursRemaining };
   });
