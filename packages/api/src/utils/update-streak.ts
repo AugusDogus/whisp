@@ -110,7 +110,7 @@ export async function updateStreak(
  * - Returns 0 if there's a gap that breaks the streak
  * - Returns updatedAt as now if streak increments, null if reset
  */
-function calculateStreakUpdate(params: {
+export function calculateStreakUpdate(params: {
   currentStreak: number;
   streakUpdatedAt: Date | null;
   senderLastTimestamp: Date | null;
