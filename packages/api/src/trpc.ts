@@ -7,11 +7,47 @@
  * The pieces you will need to use are documented accordingly near the end
  */
 import { initTRPC, TRPCError } from "@trpc/server";
+import { Ratelimit } from "@upstash/ratelimit";
+import { Redis } from "@upstash/redis";
 import superjson from "superjson";
 import { z, ZodError } from "zod/v4";
 
 import type { Auth } from "@acme/auth";
 import { db } from "@acme/db/client";
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+});
+
+// Rate limiter for public procedures: 20 requests per 10 seconds (by IP)
+const publicRateLimiter = new Ratelimit({
+  redis,
+  limiter: Ratelimit.slidingWindow(20, "10 s"),
+  prefix: "ratelimit:public",
+});
+
+// Rate limiter for protected procedures: 60 requests per 10 seconds (by user ID)
+const protectedRateLimiter = new Ratelimit({
+  redis,
+  limiter: Ratelimit.slidingWindow(60, "10 s"),
+  prefix: "ratelimit:protected",
+});
+
+function getIp(headers: Headers): string | null {
+  const forwardedFor = headers.get("x-forwarded-for");
+  const realIp = headers.get("x-real-ip");
+
+  if (forwardedFor) {
+    return forwardedFor.split(",")[0]?.trim() ?? null;
+  }
+
+  if (realIp) {
+    return realIp.trim();
+  }
+
+  return null;
+}
 
 /**
  * 1. CONTEXT
@@ -38,6 +74,7 @@ export const createTRPCContext = async (opts: {
     authApi,
     session,
     db,
+    headers: opts.headers,
   };
 };
 /**
@@ -96,6 +133,52 @@ const timingMiddleware = t.middleware(async ({ next, path }) => {
   return result;
 });
 
+const publicRateLimitMiddleware = t.middleware(async ({ ctx, next }) => {
+  const ip = getIp(ctx.headers) ?? "anonymous";
+
+  const { success, reset } = await publicRateLimiter.limit(ip);
+
+  if (!success) {
+    const resetInSeconds = Math.ceil((reset - Date.now()) / 1000);
+    throw new TRPCError({
+      code: "TOO_MANY_REQUESTS",
+      message: `Rate limit exceeded. Try again in ${resetInSeconds} seconds.`,
+    });
+  }
+
+  return next();
+});
+
+const protectedRateLimitMiddleware = t.middleware(async ({ ctx, next }) => {
+  const userId = ctx.session?.user?.id;
+  if (!userId) {
+    const ip = getIp(ctx.headers) ?? "anonymous";
+    const { success, reset } = await publicRateLimiter.limit(ip);
+
+    if (!success) {
+      const resetInSeconds = Math.ceil((reset - Date.now()) / 1000);
+      throw new TRPCError({
+        code: "TOO_MANY_REQUESTS",
+        message: `Rate limit exceeded. Try again in ${resetInSeconds} seconds.`,
+      });
+    }
+
+    return next();
+  }
+
+  const { success, reset } = await protectedRateLimiter.limit(userId);
+
+  if (!success) {
+    const resetInSeconds = Math.ceil((reset - Date.now()) / 1000);
+    throw new TRPCError({
+      code: "TOO_MANY_REQUESTS",
+      message: `Rate limit exceeded. Try again in ${resetInSeconds} seconds.`,
+    });
+  }
+
+  return next();
+});
+
 /**
  * Public (unauthed) procedure
  *
@@ -103,7 +186,9 @@ const timingMiddleware = t.middleware(async ({ next, path }) => {
  * tRPC API. It does not guarantee that a user querying is authorized, but you
  * can still access user session data if they are logged in
  */
-export const publicProcedure = t.procedure.use(timingMiddleware);
+export const publicProcedure = t.procedure
+  .use(timingMiddleware)
+  .use(publicRateLimitMiddleware);
 
 /**
  * Protected (authenticated) procedure
@@ -123,6 +208,8 @@ export const protectedProcedure = t.procedure
       ctx: {
         // infers the `session` as non-nullable
         session: { ...ctx.session, user: ctx.session.user },
+        headers: ctx.headers,
       },
     });
-  });
+  })
+  .use(protectedRateLimitMiddleware);

@@ -20,6 +20,8 @@ export const env = createEnv({
     DATABASE_TOKEN: z.string(),
     LOCAL_URL: z.url().default("http://localhost:3000"),
     CRON_SECRET: z.string().optional(),
+    UPSTASH_REDIS_REST_URL: z.url(),
+    UPSTASH_REDIS_REST_TOKEN: z.string(),
   },
 
   /**
