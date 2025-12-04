@@ -148,7 +148,7 @@ export default function CameraPage(): React.ReactElement {
   const [preferredDevice] = usePreferredCameraDevice();
   let device = useCameraDevice(cameraPosition);
 
-  if (preferredDevice != null && preferredDevice.position === cameraPosition) {
+  if (preferredDevice?.position === cameraPosition) {
     // override default device with the one selected by the user in settings
     device = preferredDevice;
   }

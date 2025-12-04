@@ -144,9 +144,7 @@ export function useMessageFromNotification(
     }
 
     // Step 2: Check if we have messages from this sender in the current inbox
-    const messagesFromSender = inbox.filter(
-      (m) => m && m.senderId === senderId,
-    );
+    const messagesFromSender = inbox.filter((m) => m?.senderId === senderId);
 
     console.log("Checking for messages from sender:", {
       senderId,
@@ -185,7 +183,7 @@ export function useMessageFromNotification(
       refetchInbox()
         .then(({ data: freshInbox }) => {
           const freshMessages = (freshInbox ?? []).filter(
-            (m) => m && m.senderId === senderId,
+            (m) => m?.senderId === senderId,
           );
 
           if (freshMessages.length > 0) {

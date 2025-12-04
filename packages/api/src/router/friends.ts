@@ -254,7 +254,7 @@ export const friendsRouter = {
           .from(FriendRequest)
           .where(eq(FriendRequest.id, input.requestId))
       )[0];
-      if (!request || request.toUserId !== me || request.status !== "pending")
+      if (request?.toUserId !== me || request.status !== "pending")
         return { ok: false };
 
       // create friendship with normalized pair
@@ -293,7 +293,7 @@ export const friendsRouter = {
           .from(FriendRequest)
           .where(eq(FriendRequest.id, input.requestId))
       )[0];
-      if (!request || request.toUserId !== me || request.status !== "pending")
+      if (request?.toUserId !== me || request.status !== "pending")
         return { ok: false };
 
       // Delete the friend request

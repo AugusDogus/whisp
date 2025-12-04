@@ -241,7 +241,7 @@ export default function FriendsScreen() {
    * - Marks first message as read immediately
    */
   const openViewer = (friendId: string) => {
-    const queue = inbox.filter((m) => m && m.senderId === friendId);
+    const queue = inbox.filter((m) => m?.senderId === friendId);
     if (queue.length === 0) return;
 
     // Optimistically update the inbox to remove messages from this friend
