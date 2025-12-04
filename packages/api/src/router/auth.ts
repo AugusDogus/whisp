@@ -2,10 +2,10 @@ import type { TRPCRouterRecord } from "@trpc/server";
 import type { APIUser } from "discord-api-types/v10";
 import { calculateUserDefaultAvatarIndex, CDN, REST } from "@discordjs/rest";
 import { Routes } from "discord-api-types/v10";
-import { eq } from "drizzle-orm";
+import { and, eq, or } from "drizzle-orm";
 import { z } from "zod/v4";
 
-import { account, user } from "@acme/db/schema";
+import { account, Friendship, user } from "@acme/db/schema";
 
 import { protectedProcedure, publicProcedure } from "../trpc";
 
@@ -55,6 +55,32 @@ export const authRouter = {
   refreshAvatar: protectedProcedure
     .input(z.object({ userId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
+      const me = ctx.session.user.id;
+
+      // Allow refreshing own avatar or friends' avatars
+      if (input.userId !== me) {
+        const [friendship] = await ctx.db
+          .select()
+          .from(Friendship)
+          .where(
+            or(
+              and(
+                eq(Friendship.userIdA, me),
+                eq(Friendship.userIdB, input.userId),
+              ),
+              and(
+                eq(Friendship.userIdA, input.userId),
+                eq(Friendship.userIdB, me),
+              ),
+            ),
+          )
+          .limit(1);
+
+        if (!friendship) {
+          return { success: false, error: "Unauthorized" };
+        }
+      }
+
       const [discordAccount] = await ctx.db
         .select()
         .from(account)
