@@ -1,4 +1,7 @@
 import type { TRPCRouterRecord } from "@trpc/server";
+import type { APIUser } from "discord-api-types/v10";
+import { calculateUserDefaultAvatarIndex, CDN, REST } from "@discordjs/rest";
+import { Routes } from "discord-api-types/v10";
 import { eq } from "drizzle-orm";
 import { z } from "zod/v4";
 
@@ -6,28 +9,26 @@ import { account, user } from "@acme/db/schema";
 
 import { protectedProcedure, publicProcedure } from "../trpc";
 
+const cdn = new CDN();
+
 async function fetchDiscordAvatar(
   discordUserId: string,
 ): Promise<string | null> {
   const botToken = process.env.DISCORD_BOT_TOKEN;
   if (!botToken) return null;
 
-  const response = await fetch(
-    `https://discord.com/api/v10/users/${discordUserId}`,
-    { headers: { Authorization: `Bot ${botToken}` } },
-  );
+  try {
+    const rest = new REST({ version: "10" }).setToken(botToken);
+    const discordUser = (await rest.get(Routes.user(discordUserId))) as APIUser;
 
-  if (!response.ok) return null;
+    if (!discordUser.avatar) {
+      return cdn.defaultAvatar(calculateUserDefaultAvatarIndex(discordUserId));
+    }
 
-  const data = (await response.json()) as { id: string; avatar: string | null };
-
-  if (!data.avatar) {
-    const index = Number((BigInt(discordUserId) >> 22n) % 6n);
-    return `https://cdn.discordapp.com/embed/avatars/${index}.png`;
+    return cdn.avatar(discordUserId, discordUser.avatar, { size: 256 });
+  } catch {
+    return null;
   }
-
-  const format = data.avatar.startsWith("a_") ? "gif" : "png";
-  return `https://cdn.discordapp.com/avatars/${discordUserId}/${data.avatar}.${format}?size=256`;
 }
 
 export const authRouter = {
