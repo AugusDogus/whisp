@@ -5,20 +5,19 @@ import { Routes } from "discord-api-types/v10";
 import { and, eq, or } from "drizzle-orm";
 import { z } from "zod/v4";
 
+import { authEnv } from "@acme/auth/env";
 import { account, Friendship, user } from "@acme/db/schema";
 
 import { protectedProcedure, publicProcedure } from "../trpc";
 
 const cdn = new CDN();
+const env = authEnv();
 
 async function fetchDiscordAvatar(
   discordUserId: string,
 ): Promise<string | null> {
-  const botToken = process.env.DISCORD_BOT_TOKEN;
-  if (!botToken) return null;
-
   try {
-    const rest = new REST({ version: "10" }).setToken(botToken);
+    const rest = new REST({ version: "10" }).setToken(env.DISCORD_BOT_TOKEN);
     const discordUser = (await rest.get(Routes.user(discordUserId))) as APIUser;
 
     if (!discordUser.avatar) {
