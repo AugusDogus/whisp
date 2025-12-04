@@ -21,7 +21,9 @@
     "@acme/auth": "workspace:*",
     "@acme/db": "workspace:*",
     "@acme/validators": "workspace:*",
+    "@discordjs/rest": "^2.6.0",
     "@trpc/server": "catalog:",
+    "discord-api-types": "^0.38.36",
     "superjson": "2.2.2",
     "uploadthing": "catalog:",
     "zod": "catalog:"
