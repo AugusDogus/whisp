@@ -2,10 +2,11 @@ import { createEnv } from "@t3-oss/env-nextjs";
 import { vercel } from "@t3-oss/env-nextjs/presets-zod";
 import { z } from "zod/v4";
 
+import { apiEnv } from "@acme/api/env";
 import { authEnv } from "@acme/auth/env";
 
 export const env = createEnv({
-  extends: [authEnv(), vercel()],
+  extends: [authEnv(), apiEnv(), vercel()],
   shared: {
     NODE_ENV: z
       .enum(["development", "production", "test"])
@@ -20,8 +21,6 @@ export const env = createEnv({
     DATABASE_TOKEN: z.string(),
     LOCAL_URL: z.url().default("http://localhost:3000"),
     CRON_SECRET: z.string().optional(),
-    UPSTASH_REDIS_REST_URL: z.url(),
-    UPSTASH_REDIS_REST_TOKEN: z.string(),
   },
 
   /**
