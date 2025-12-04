@@ -48,6 +48,7 @@ import type { MainTabParamList, RootStackParamList } from "~/navigation/types";
 import { CaptureButton } from "~/components/capture-button";
 import { FrontFlashOverlay } from "~/components/front-flash-overlay";
 import { StatusBarBlurBackground } from "~/components/status-bar-blur-background";
+import { Avatar } from "~/components/ui/avatar";
 import { useIsForeground } from "~/hooks/useIsForeground";
 import { usePreferredCameraDevice } from "~/hooks/usePreferredCameraDevice";
 import { usePreferredCameraPosition } from "~/hooks/usePreferredCameraPosition";
@@ -596,29 +597,14 @@ export default function CameraPage(): React.ReactElement {
       {selectedFriend && (
         <View style={styles.selectedFriendBanner}>
           <View className="flex-row items-center gap-3 rounded-full bg-black/70 py-2 pl-2 pr-2">
-            <View className="h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-secondary">
-              {(selectedFriend as { image?: string | null }).image ? (
-                <Image
-                  source={{
-                    uri:
-                      (selectedFriend as { image?: string | null }).image ?? "",
-                  }}
-                  style={{ width: 32, height: 32 }}
-                  contentFit="cover"
-                />
-              ) : (
-                <Text style={{ color: "white", fontWeight: "600" }}>
-                  {(() => {
-                    const n = selectedFriend.name.trim();
-                    if (n.length === 0) return "?";
-                    const cp = n.codePointAt(0);
-                    if (cp == null) return "?";
-                    const first = String.fromCodePoint(cp);
-                    return /^[a-z]$/i.test(first) ? first.toUpperCase() : first;
-                  })()}
-                </Text>
-              )}
-            </View>
+            <Avatar
+              userId={selectedFriend.id}
+              image={
+                (selectedFriend as { image?: string | null }).image ?? null
+              }
+              name={selectedFriend.name}
+              size={32}
+            />
             <Text style={[styles.selectedFriendText, { marginLeft: 4 }]}>
               Sending to {selectedFriend.name}
             </Text>

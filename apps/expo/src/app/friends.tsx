@@ -40,6 +40,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "~/components/ui/alert-dialog";
+import { Avatar } from "~/components/ui/avatar";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { Text } from "~/components/ui/text";
@@ -610,30 +611,12 @@ export default function FriendsScreen() {
                   onPress={() => toggleFriend(item.id)}
                 >
                   <View className="flex-row items-center gap-3">
-                    <View className="h-10 w-10 overflow-hidden rounded-full bg-secondary">
-                      {item.image ? (
-                        <Image
-                          source={{ uri: item.image }}
-                          style={{ width: 40, height: 40 }}
-                          contentFit="cover"
-                        />
-                      ) : (
-                        <View className="h-full w-full items-center justify-center">
-                          <Text className="text-base font-semibold">
-                            {(() => {
-                              const n = item.name.trim();
-                              if (n.length === 0) return "?";
-                              const cp = n.codePointAt(0);
-                              if (cp == null) return "?";
-                              const first = String.fromCodePoint(cp);
-                              return /^[a-z]$/i.test(first)
-                                ? first.toUpperCase()
-                                : first;
-                            })()}
-                          </Text>
-                        </View>
-                      )}
-                    </View>
+                    <Avatar
+                      userId={item.id}
+                      image={item.image}
+                      name={item.name}
+                      size={40}
+                    />
                     <Text className="text-base">{item.name}</Text>
                   </View>
                   <View
@@ -781,30 +764,12 @@ export default function FriendsScreen() {
                   }}
                 >
                   <View className="flex-row items-center gap-3">
-                    <View className="h-10 w-10 overflow-hidden rounded-full bg-secondary">
-                      {item.image ? (
-                        <Image
-                          source={{ uri: item.image }}
-                          style={{ width: 40, height: 40 }}
-                          contentFit="cover"
-                        />
-                      ) : (
-                        <View className="h-full w-full items-center justify-center">
-                          <Text className="text-base font-semibold">
-                            {(() => {
-                              const n = item.name.trim();
-                              if (n.length === 0) return "?";
-                              const cp = n.codePointAt(0);
-                              if (cp == null) return "?";
-                              const first = String.fromCodePoint(cp);
-                              return /^[a-z]$/i.test(first)
-                                ? first.toUpperCase()
-                                : first;
-                            })()}
-                          </Text>
-                        </View>
-                      )}
-                    </View>
+                    <Avatar
+                      userId={item.id}
+                      image={item.image}
+                      name={item.name}
+                      size={40}
+                    />
                     <View className="flex-row items-center gap-2">
                       <Text className="text-base">{item.name}</Text>
                       {item.streak > 0 && (
