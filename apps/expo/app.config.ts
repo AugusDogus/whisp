@@ -53,6 +53,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     reactCanary: true,
   },
   plugins: [
+    "@rnrepo/expo-config-plugin",
     "expo-router",
     "expo-secure-store",
     "expo-web-browser",
