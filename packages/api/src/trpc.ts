@@ -154,7 +154,7 @@ const publicRateLimitMiddleware = t.middleware(async ({ ctx, next }) => {
 });
 
 const protectedRateLimitMiddleware = t.middleware(async ({ ctx, next }) => {
-  const userId = ctx.session?.user?.id;
+  const userId = ctx.session?.user.id;
   if (!userId) {
     const ip = getIp(ctx.headers) ?? "anonymous";
     const { success, reset } = await publicRateLimiter.limit(ip);
