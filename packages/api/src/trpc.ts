@@ -184,6 +184,15 @@ const protectedRateLimitMiddleware = t.middleware(async ({ ctx, next }) => {
 });
 
 /**
+ * Public procedure without rate limiting
+ *
+ * Use this for simple read operations that are safe to call during static
+ * generation (e.g., fetching counts, public data). This procedure does NOT
+ * have rate limiting, so only use it for endpoints that don't need protection.
+ */
+export const publicNoRateLimitProcedure = t.procedure.use(timingMiddleware);
+
+/**
  * Public (unauthed) procedure
  *
  * This is the base piece you use to build new queries and mutations on your

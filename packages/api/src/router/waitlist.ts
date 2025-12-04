@@ -3,7 +3,7 @@ import { count, eq } from "drizzle-orm";
 
 import { user, Waitlist } from "@acme/db/schema";
 
-import { protectedProcedure, publicProcedure } from "../trpc";
+import { protectedProcedure, publicNoRateLimitProcedure } from "../trpc";
 
 export const waitlistRouter = {
   join: protectedProcedure.mutation(async ({ ctx }) => {
@@ -26,7 +26,7 @@ export const waitlistRouter = {
     return { success: true, alreadyJoined: false };
   }),
 
-  getCount: publicProcedure.query(async ({ ctx }) => {
+  getCount: publicNoRateLimitProcedure.query(async ({ ctx }) => {
     // Count all unique users (pre-alpha testers + waitlist, no double counting)
     // Since waitlist.userId references user.id, all waitlist entries are already users
     // So we just need to count total users
