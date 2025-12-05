@@ -75,6 +75,9 @@ export default function MediaScreen() {
   // Generate thumbhash for the image
   const [thumbhash, setThumbhash] = useState<string | undefined>(undefined);
 
+  // Track save operation state to prevent duplicate saves
+  const [isSaving, setIsSaving] = useState(false);
+
   useEffect(() => {
     async function generateThumbhash() {
       try {
@@ -86,6 +89,13 @@ export default function MediaScreen() {
     }
     void generateThumbhash();
   }, [path]);
+
+  // Reset save state when screen comes into focus
+  useEffect(() => {
+    if (isFocused) {
+      setIsSaving(false);
+    }
+  }, [isFocused]);
 
   // Debug render
   useEffect(() => {
@@ -199,7 +209,15 @@ export default function MediaScreen() {
   }
 
   async function handleSave() {
+    // Prevent duplicate saves
+    if (isSaving) {
+      console.log("[Media] Save already in progress, ignoring");
+      return;
+    }
+
     try {
+      setIsSaving(true);
+
       // Haptic feedback on button press
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
@@ -244,6 +262,9 @@ export default function MediaScreen() {
     } catch (error) {
       console.error("[Media] Failed to save media:", error);
       toast.error("Failed to save media");
+    } finally {
+      // Always reset the saving state
+      setIsSaving(false);
     }
   }
 
