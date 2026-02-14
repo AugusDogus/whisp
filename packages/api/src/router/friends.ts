@@ -1,11 +1,13 @@
 import type { TRPCRouterRecord } from "@trpc/server";
 import { z } from "zod/v4";
 
-import { and, eq, inArray, like, ne, or } from "@acme/db";
+import { and, eq, inArray, isNull, like, ne, or } from "@acme/db";
 import {
   account as Account,
   FriendRequest,
   Friendship,
+  Message,
+  MessageDelivery,
   user as User,
 } from "@acme/db/schema";
 
@@ -121,6 +123,7 @@ export const friendsRouter = {
         streak: number;
         lastActivityTimestamp: Date | null;
         partnerLastActivityTimestamp: Date | null;
+        lastSentOpened: boolean | null;
       }[];
 
     const friends = await ctx.db
@@ -157,8 +160,69 @@ export const friendsRouter = {
       }),
     );
 
+    // Determine which friends I sent the last message to
+    const friendIdsWhereSentLast = friendIds.filter((fid) => {
+      const info = friendshipMap.get(fid);
+      if (!info?.myLastActivity) return false;
+      return (
+        !info.partnerLastActivity ||
+        info.myLastActivity > info.partnerLastActivity
+      );
+    });
+
+    // Check for unread deliveries of messages I sent to those friends
+    const hasPendingSentTo = new Set<string>();
+    if (friendIdsWhereSentLast.length > 0) {
+      // Get deliveries to these friends that are still unread
+      const unreadDeliveriesToFriends = await ctx.db
+        .select({
+          messageId: MessageDelivery.messageId,
+          recipientId: MessageDelivery.recipientId,
+        })
+        .from(MessageDelivery)
+        .where(
+          and(
+            inArray(MessageDelivery.recipientId, friendIdsWhereSentLast),
+            isNull(MessageDelivery.readAt),
+          ),
+        );
+
+      if (unreadDeliveriesToFriends.length > 0) {
+        // Verify which of these messages were actually sent by me
+        const relevantMessageIds = [
+          ...new Set(unreadDeliveriesToFriends.map((d) => d.messageId)),
+        ];
+        const mySentMessages = await ctx.db
+          .select({ id: Message.id })
+          .from(Message)
+          .where(
+            and(
+              inArray(Message.id, relevantMessageIds),
+              eq(Message.senderId, me),
+            ),
+          );
+        const mySentMessageIdSet = new Set(mySentMessages.map((m) => m.id));
+
+        for (const d of unreadDeliveriesToFriends) {
+          if (mySentMessageIdSet.has(d.messageId)) {
+            hasPendingSentTo.add(d.recipientId);
+          }
+        }
+      }
+    }
+
     return friends.map((u) => {
       const streakInfo = friendshipMap.get(u.id);
+
+      // lastSentOpened:
+      //   false = I sent last and they haven't opened yet
+      //   true  = I sent last and they opened it
+      //   null  = they sent last, or no activity
+      let lastSentOpened: boolean | null = null;
+      if (friendIdsWhereSentLast.includes(u.id)) {
+        lastSentOpened = !hasPendingSentTo.has(u.id);
+      }
+
       return {
         id: u.id,
         name: u.name,
@@ -167,6 +231,7 @@ export const friendsRouter = {
         streak: streakInfo?.streak ?? 0,
         lastActivityTimestamp: streakInfo?.myLastActivity ?? null,
         partnerLastActivityTimestamp: streakInfo?.partnerLastActivity ?? null,
+        lastSentOpened,
       };
     });
   }),

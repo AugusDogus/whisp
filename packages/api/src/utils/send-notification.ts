@@ -146,8 +146,8 @@ export async function notifyNewMessage(
   return sendNotificationToUser(
     database,
     recipientId,
-    "New Whisper",
-    `${senderName} sent you a whisper`,
+    "New Whisp",
+    `${senderName} sent you a whisp`,
     {
       type: "message",
       messageId,

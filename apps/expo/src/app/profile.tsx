@@ -170,7 +170,7 @@ export default function ProfileScreen() {
               </View>
               <View className="gap-3 pt-2">
                 <View className="flex-row items-center justify-between">
-                  <Text className="text-sm">New whispers</Text>
+                  <Text className="text-sm">New whisps</Text>
                   <Switch
                     value={preferences.notifyOnMessages}
                     onValueChange={() => handleToggle("notifyOnMessages")}

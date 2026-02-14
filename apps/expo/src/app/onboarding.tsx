@@ -277,7 +277,7 @@ export default function OnboardingScreen() {
                   Stay Updated
                 </Text>
                 <Text className="text-center text-lg text-muted-foreground">
-                  Get notified when friends send you whispers or accept your
+                  Get notified when friends send you whisps or accept your
                   friend requests.
                 </Text>
               </View>

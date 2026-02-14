@@ -46,10 +46,18 @@ import { Input } from "~/components/ui/input";
 import { Text } from "~/components/ui/text";
 import { useRecording } from "~/contexts/RecordingContext";
 import { useMessageFromNotification } from "~/hooks/useMessageFromNotification";
+import { cn } from "~/lib/utils";
 import { trpc } from "~/utils/api";
 import { uploadMedia } from "~/utils/media-upload";
 import WhispLogoDark from "../../assets/splash-icon-dark.png";
 import WhispLogoLight from "../../assets/splash-icon.png";
+
+type MessageStatus =
+  | "sent"
+  | "opened"
+  | "received"
+  | "received_opened"
+  | null;
 
 interface FriendRow {
   id: string;
@@ -63,6 +71,88 @@ interface FriendRow {
   lastActivityTimestamp: Date | null;
   partnerLastActivityTimestamp: Date | null;
   hoursRemaining: number | null;
+  lastMessageStatus: MessageStatus;
+  lastMessageAt: Date | null;
+}
+
+/**
+ * Returns a compact relative timestamp like Snapchat.
+ * e.g. "Just now", "3m ago", "2h ago", "1d ago", "2w ago", "Jan 5"
+ */
+function getRelativeTime(date: Date | null): string {
+  if (!date) return "";
+  const now = Date.now();
+  const diff = now - new Date(date).getTime();
+  if (diff < 0) return "Just now";
+  const mins = Math.floor(diff / 60_000);
+  if (mins < 1) return "Just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  const weeks = Math.floor(days / 7);
+  if (weeks < 5) return `${weeks}w ago`;
+  return new Date(date).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function getStatusText(status: MessageStatus): string {
+  switch (status) {
+    case "sent":
+      return "Sent";
+    case "opened":
+      return "Opened";
+    case "received":
+      return "New Whisp";
+    case "received_opened":
+      return "Received";
+    default:
+      return "";
+  }
+}
+
+/**
+ * Snapchat-style status icon.
+ * - Sent (pending):   filled arrow → red
+ * - Sent (opened):    outline arrow → gray
+ * - Received (new):   filled square → red
+ * - Received (opened): outline square → gray
+ */
+function MessageStatusIcon({ status }: { status: MessageStatus }) {
+  switch (status) {
+    case "sent":
+      return <Ionicons name="arrow-redo" size={14} color="#ef4444" />;
+    case "opened":
+      return <Ionicons name="arrow-redo-outline" size={14} color="#9ca3af" />;
+    case "received":
+      return (
+        <View
+          style={{
+            width: 10,
+            height: 10,
+            borderRadius: 2,
+            backgroundColor: "#ef4444",
+          }}
+        />
+      );
+    case "received_opened":
+      return (
+        <View
+          style={{
+            width: 10,
+            height: 10,
+            borderRadius: 2,
+            borderWidth: 1.5,
+            borderColor: "#9ca3af",
+          }}
+        />
+      );
+    default:
+      return null;
+  }
 }
 
 export default function FriendsScreen() {
@@ -358,12 +448,18 @@ export default function FriendsScreen() {
    * - Recalculates on every render for real-time updates
    */
   const rows = useMemo<FriendRow[]>(() => {
-    // Count unread messages per sender
+    // Count unread messages per sender and track most recent timestamp
     const senderToMessages = new Map<string, number>();
+    const senderToLatestTimestamp = new Map<string, Date>();
     for (const m of inbox) {
       if (!m) continue;
       const count = senderToMessages.get(m.senderId) ?? 0;
       senderToMessages.set(m.senderId, count + 1);
+
+      const current = senderToLatestTimestamp.get(m.senderId);
+      if (!current || m.createdAt > current) {
+        senderToLatestTimestamp.set(m.senderId, m.createdAt);
+      }
     }
 
     return friends.map((f) => {
@@ -374,6 +470,43 @@ export default function FriendsScreen() {
       const partnerLastActivity = (
         f as unknown as { partnerLastActivityTimestamp?: Date | null }
       ).partnerLastActivityTimestamp;
+      const lastSentOpened =
+        (f as unknown as { lastSentOpened?: boolean | null }).lastSentOpened ??
+        null;
+
+      const unreadCount = senderToMessages.get(f.id) ?? 0;
+      const hasUnread = unreadCount > 0;
+
+      // Compute Snapchat-style message status
+      let lastMessageStatus: MessageStatus = null;
+      if (hasUnread) {
+        lastMessageStatus = "received";
+      } else if (lastSentOpened === false) {
+        lastMessageStatus = "sent";
+      } else if (lastSentOpened === true) {
+        lastMessageStatus = "opened";
+      } else if (partnerLastActivity) {
+        lastMessageStatus = "received_opened";
+      }
+
+      // Compute the most relevant timestamp for display
+      let lastMessageAt: Date | null = null;
+      if (hasUnread) {
+        // For new snaps, show when the most recent one arrived
+        lastMessageAt =
+          senderToLatestTimestamp.get(f.id) ?? partnerLastActivity ?? null;
+      } else {
+        // Use the most recent activity timestamp between the two users
+        const myTs = lastActivity
+          ? new Date(lastActivity).getTime()
+          : 0;
+        const partnerTs = partnerLastActivity
+          ? new Date(partnerLastActivity).getTime()
+          : 0;
+        if (myTs > 0 || partnerTs > 0) {
+          lastMessageAt = new Date(Math.max(myTs, partnerTs));
+        }
+      }
 
       return {
         id: f.id,
@@ -381,8 +514,8 @@ export default function FriendsScreen() {
         image: (f as unknown as { image?: string | null }).image ?? null,
         discordId:
           (f as unknown as { discordId?: string | null }).discordId ?? null,
-        hasUnread: (senderToMessages.get(f.id) ?? 0) > 0,
-        unreadCount: senderToMessages.get(f.id) ?? 0,
+        hasUnread,
+        unreadCount,
         isSelected:
           hasMedia && mediaParams?.defaultRecipientId
             ? f.id === mediaParams.defaultRecipientId
@@ -390,8 +523,9 @@ export default function FriendsScreen() {
         streak,
         lastActivityTimestamp: lastActivity ?? null,
         partnerLastActivityTimestamp: partnerLastActivity ?? null,
-        // Calculate hoursRemaining separately on each render for accuracy
-        hoursRemaining: null, // Will be calculated during render
+        hoursRemaining: null, // Calculated during render
+        lastMessageStatus,
+        lastMessageAt,
       };
     });
   }, [friends, inbox, hasMedia, mediaParams?.defaultRecipientId]);
@@ -607,28 +741,36 @@ export default function FriendsScreen() {
               keyExtractor={(item) => item.id}
               renderItem={({ item }) => (
                 <Pressable
-                  className="flex-row items-center justify-between px-4 py-4"
+                  className="flex-row items-center justify-between px-4"
+                  style={{ minHeight: 56 }}
                   onPress={() => toggleFriend(item.id)}
+                  android_ripple={{ color: "rgba(128,128,128,0.12)" }}
                 >
-                  <View className="flex-row items-center gap-3">
+                  <View className="flex-row items-center gap-3 py-2">
                     <Avatar
                       userId={item.id}
                       image={item.image}
                       name={item.name}
-                      size={40}
+                      size={44}
                     />
                     <Text className="text-base">{item.name}</Text>
                   </View>
                   <View
                     className={
                       selectedFriends.has(item.id)
-                        ? "h-6 w-6 items-center justify-center rounded-full bg-primary"
-                        : "h-6 w-6 rounded-full border border-border"
+                        ? "size-6 items-center justify-center rounded-full bg-primary"
+                        : "size-6 rounded-full border-2 border-border"
                     }
-                  />
+                  >
+                    {selectedFriends.has(item.id) && (
+                      <Ionicons name="checkmark" size={14} color="#fff" />
+                    )}
+                  </View>
                 </Pressable>
               )}
-              ItemSeparatorComponent={() => <View className="h-px bg-border" />}
+              ItemSeparatorComponent={() => (
+                <View className="ml-[68px] h-px bg-border" />
+              )}
             />
           )}
 
@@ -745,7 +887,8 @@ export default function FriendsScreen() {
               }
               renderItem={({ item }) => (
                 <Pressable
-                  className="flex-row items-center justify-between px-4 py-4"
+                  className="flex-row items-center px-4"
+                  style={{ minHeight: 68 }}
                   onPress={() => {
                     if (item.unreadCount > 0) openViewer(item.id);
                     else {
@@ -762,57 +905,98 @@ export default function FriendsScreen() {
                     setSelectedFriend(item);
                     bottomSheetRef.current?.present();
                   }}
+                  android_ripple={{ color: "rgba(128,128,128,0.12)" }}
                 >
-                  <View className="flex-row items-center gap-3">
-                    <Avatar
-                      userId={item.id}
-                      image={item.image}
-                      name={item.name}
-                      size={40}
-                    />
-                    <View className="flex-row items-center gap-2">
-                      <Text className="text-base">{item.name}</Text>
-                      {item.streak > 0 && (
-                        <>
-                          <Text className="text-sm font-semibold text-foreground">
-                            •
-                          </Text>
-                          <View className="flex-row items-center gap-1">
-                            <Text className="text-sm font-semibold tabular-nums text-foreground">
-                              {item.streak}
-                            </Text>
+                  <Avatar
+                    userId={item.id}
+                    image={item.image}
+                    name={item.name}
+                    size={44}
+                  />
+                  <View className="ml-3 flex-1 justify-center py-3">
+                    {/* Top line: Name + streak */}
+                    <View className="flex-row items-center justify-between">
+                      <View className="flex-1 flex-row items-center">
+                        <Text
+                          className={cn(
+                            "text-base",
+                            item.lastMessageStatus === "received" &&
+                              "font-semibold",
+                          )}
+                          numberOfLines={1}
+                        >
+                          {item.name}
+                        </Text>
+                        {item.streak > 0 && (
+                          <View className="ml-1.5 flex-row items-center">
                             <Image
-                              style={{ width: 24, height: 24, margin: -6 }}
+                              style={{ width: 20, height: 20, margin: -4 }}
                               source={whispLogo}
                               contentFit="contain"
                             />
+                            <Text className="ml-0.5 text-sm font-semibold tabular-nums text-foreground">
+                              {item.streak}
+                            </Text>
                             {item.hoursRemaining !== null &&
                               item.hoursRemaining < 4 && (
                                 <Ionicons
                                   name="hourglass"
-                                  size={14}
+                                  size={12}
                                   color={
                                     colorScheme === "dark" ? "#fff" : "#000"
                                   }
+                                  style={{ marginLeft: 2 }}
                                 />
                               )}
                           </View>
-                        </>
+                        )}
+                      </View>
+                      {item.hasUnread && (
+                        <View className="ml-2 items-center justify-center rounded-full bg-primary px-2 py-0.5">
+                          <Text className="text-xs font-semibold tabular-nums text-primary-foreground">
+                            {item.unreadCount}
+                          </Text>
+                        </View>
                       )}
                     </View>
-                  </View>
-                  {item.hasUnread ? (
-                    <View className="items-center justify-center rounded-full bg-primary px-2 py-1">
-                      <Text className="text-xs font-semibold text-primary-foreground">
-                        {item.unreadCount}
+
+                    {/* Bottom line: Status icon + text + timestamp */}
+                    {item.lastMessageStatus ? (
+                      <View className="mt-0.5 flex-row items-center gap-1.5">
+                        <MessageStatusIcon status={item.lastMessageStatus} />
+                        <Text
+                          className={cn(
+                            "text-xs",
+                            item.lastMessageStatus === "received"
+                              ? "font-semibold"
+                              : "text-muted-foreground",
+                          )}
+                          style={
+                            item.lastMessageStatus === "received"
+                              ? { color: "#ef4444" }
+                              : undefined
+                          }
+                        >
+                          {getStatusText(item.lastMessageStatus)}
+                        </Text>
+                        {item.lastMessageAt && (
+                          <Text className="text-xs text-muted-foreground">
+                            {"· "}
+                            {getRelativeTime(item.lastMessageAt)}
+                          </Text>
+                        )}
+                      </View>
+                    ) : (
+                      <Text className="mt-0.5 text-xs text-muted-foreground">
+                        Tap to send a whisp
                       </Text>
-                    </View>
-                  ) : (
-                    <View className="h-3 w-3 rounded-full bg-muted" />
-                  )}
+                    )}
+                  </View>
                 </Pressable>
               )}
-              ItemSeparatorComponent={() => <View className="h-px bg-border" />}
+              ItemSeparatorComponent={() => (
+                <View className="ml-[68px] h-px bg-border" />
+              )}
             />
           )}
         </View>
@@ -939,7 +1123,7 @@ export default function FriendsScreen() {
             }}
           >
             <Ionicons name="camera" size={22} color="#666" />
-            <Text className="text-base">Send whisper</Text>
+            <Text className="text-base">Send whisp</Text>
           </Pressable>
 
           {selectedFriend?.discordId && (

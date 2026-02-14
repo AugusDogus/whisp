@@ -70,7 +70,7 @@ export async function uploadMedia(params: UploadMediaParams): Promise<void> {
       files: [file],
       input: { recipients, mimeType, thumbhash },
     })
-      .then(() => toast.success("whisper sent"))
+      .then(() => toast.success("whisp sent"))
       .catch((err: unknown) =>
         toast.error(err instanceof Error ? err.message : "Upload failed"),
       );
