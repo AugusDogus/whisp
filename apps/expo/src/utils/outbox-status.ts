@@ -1,9 +1,9 @@
 export type OutboxState = "uploading" | "sent" | "failed";
 
-export type OutboxStatus = {
+export interface OutboxStatus {
   state: OutboxState;
   updatedAtMs: number;
-};
+}
 
 type Snapshot = Record<string, OutboxStatus | undefined>;
 type Listener = (snapshot: Snapshot) => void;
