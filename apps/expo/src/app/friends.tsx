@@ -858,9 +858,9 @@ export default function FriendsScreen() {
                       "[Friends] Waiting for background rasterization...",
                     );
                     try {
-                      const rasterizedPath =
+                      const rasterizedUri =
                         await mediaParams.rasterizationPromise;
-                      finalUri = `file://${rasterizedPath}`;
+                      finalUri = rasterizedUri;
                       console.log(
                         "[Friends] Using rasterized image:",
                         finalUri,

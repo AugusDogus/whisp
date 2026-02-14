@@ -198,15 +198,15 @@ export default function MediaScreen() {
     // Create a File reference in the cache directory
     const tempFile = new File(Paths.cache, `whisp-${Date.now()}.jpg`);
 
-    // Write the bytes to the file
-    const writableStream = tempFile.writableStream();
-    const writer = writableStream.getWriter();
-    await writer.write(bytes);
-    await writer.close();
+    // On iOS, the stream writer can throw if the file doesn't already exist.
+    // Create the file first, then write bytes synchronously via the module.
+    tempFile.create({ intermediates: true, overwrite: true });
+    tempFile.write(bytes);
 
-    const tempPath = tempFile.uri.replace(/^file:\/\//, "");
-    console.log("[Media] Background rasterization complete:", tempPath);
-    return tempPath;
+    // Keep the file URI intact; callers can pass this directly to libraries
+    // that expect `file://` URIs (VisionCamera, expo-image, compressor, etc).
+    console.log("[Media] Background rasterization complete:", tempFile.uri);
+    return tempFile.uri;
   }
 
   async function handleSave() {
@@ -228,8 +228,8 @@ export default function MediaScreen() {
         // For photos, rasterize captions and save
         if (captions.length > 0) {
           console.log("[Media] Rasterizing photo with captions");
-          const rasterizedPath = await rasterizeImage();
-          await MediaLibrary.saveToLibraryAsync(`file://${rasterizedPath}`);
+          const rasterizedUri = await rasterizeImage();
+          await MediaLibrary.saveToLibraryAsync(rasterizedUri);
         } else {
           // No captions, save original
           await MediaLibrary.saveToLibraryAsync(`file://${path}`);
@@ -273,9 +273,9 @@ export default function MediaScreen() {
         markWhispUploading([defaultRecipientId]);
         navigation.reset({ index: 0, routes: [{ name: "Main" }] });
         void rasterizationPromise
-          .then((rasterizedPath) => {
+          .then((rasterizedUri) => {
             void uploadMedia({
-              uri: `file://${rasterizedPath}`,
+              uri: rasterizedUri,
               type,
               recipients: [defaultRecipientId],
             });
