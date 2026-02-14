@@ -29,6 +29,7 @@ import {
 import { useNavigation, useRoute } from "@react-navigation/native";
 
 import type { MainTabParamList, RootStackParamList } from "~/navigation/types";
+import type { OutboxState, OutboxStatus } from "~/utils/outbox-status";
 import { AddFriendsPanel } from "~/components/add-friends-panel";
 import { FriendsListSkeletonVaried } from "~/components/friends-skeleton";
 import {
@@ -51,7 +52,6 @@ import { cn } from "~/lib/utils";
 import { trpc } from "~/utils/api";
 import { authClient } from "~/utils/auth";
 import { uploadMedia } from "~/utils/media-upload";
-import type { OutboxState, OutboxStatus } from "~/utils/outbox-status";
 import {
   getOutboxStatusSnapshot,
   markWhispUploading,
@@ -60,12 +60,7 @@ import {
 import WhispLogoDark from "../../assets/splash-icon-dark.png";
 import WhispLogoLight from "../../assets/splash-icon.png";
 
-type MessageStatus =
-  | "sent"
-  | "opened"
-  | "received"
-  | "received_opened"
-  | null;
+type MessageStatus = "sent" | "opened" | "received" | "received_opened" | null;
 
 interface FriendRow {
   id: string;
@@ -509,7 +504,9 @@ export default function FriendsScreen() {
       const outboxState =
         isSelf && rawOutboxState === "sent" ? null : rawOutboxState;
       const outboxUpdatedAt =
-        outboxState && outbox?.updatedAtMs ? new Date(outbox.updatedAtMs) : null;
+        outboxState && outbox?.updatedAtMs
+          ? new Date(outbox.updatedAtMs)
+          : null;
 
       const incomingLatest = senderToLatestTimestamp.get(f.id) ?? null;
       const incomingMs = incomingLatest?.getTime() ?? 0;

@@ -66,4 +66,3 @@ export function markWhispFailed(recipientIds: string[]) {
   setMany(recipientIds, "failed");
   clearManyAfter(recipientIds, 60_000);
 }
-

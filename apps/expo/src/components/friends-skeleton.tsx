@@ -4,10 +4,7 @@ import { Skeleton } from "~/components/ui/skeleton";
 
 export function FriendRowSkeleton() {
   return (
-    <View
-      className="flex-row items-center px-4"
-      style={{ minHeight: 68 }}
-    >
+    <View className="flex-row items-center px-4" style={{ minHeight: 68 }}>
       {/* Avatar skeleton */}
       <Skeleton className="size-11 rounded-full" />
       <View className="ml-3 flex-1 justify-center py-3">
@@ -41,10 +38,7 @@ export function FriendRowSkeletonWithVariation({ index }: { index: number }) {
   const statusWidth = statusWidths[index % statusWidths.length];
 
   return (
-    <View
-      className="flex-row items-center px-4"
-      style={{ minHeight: 68 }}
-    >
+    <View className="flex-row items-center px-4" style={{ minHeight: 68 }}>
       {/* Avatar skeleton */}
       <Skeleton className="size-11 rounded-full" />
       <View className="ml-3 flex-1 justify-center py-3">

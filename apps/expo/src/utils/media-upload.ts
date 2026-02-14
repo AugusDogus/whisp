@@ -2,13 +2,14 @@ import { Image } from "expo-image";
 import * as VideoThumbnails from "expo-video-thumbnails";
 import { toast } from "sonner-native";
 
-import { createFile, uploadFilesWithInput } from "~/utils/uploadthing";
-import { queryClient, type FriendsListOutput } from "~/utils/api";
+import type { FriendsListOutput } from "~/utils/api";
+import { queryClient } from "~/utils/api";
 import {
   markWhispFailed,
   markWhispSent,
   markWhispUploading,
 } from "~/utils/outbox-status";
+import { createFile, uploadFilesWithInput } from "~/utils/uploadthing";
 
 interface UploadMediaParams {
   uri: string;
