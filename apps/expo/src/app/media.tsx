@@ -1,7 +1,7 @@
 import type { RouteProp } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { LayoutChangeEvent } from "react-native";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   BackHandler,
@@ -76,6 +76,20 @@ export default function MediaScreen() {
   // Generate thumbhash for the image
   const [thumbhash, setThumbhash] = useState<string | undefined>(undefined);
 
+  const exitMedia = useCallback(() => {
+    // Prefer going back to whatever opened Media (Friends/Camera/etc).
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+      return;
+    }
+
+    // Fallback for deep links / direct opens without stack history.
+    navigation.reset({
+      index: 0,
+      routes: [{ name: "Main", params: { screen: "Camera" } }],
+    });
+  }, [navigation]);
+
   useEffect(() => {
     async function generateThumbhash() {
       try {
@@ -120,15 +134,11 @@ export default function MediaScreen() {
         return true; // Handled
       }
 
-      // Always reset to Camera
-      navigation.reset({
-        index: 0,
-        routes: [{ name: "Main", params: { screen: "Camera" } }],
-      });
+      exitMedia();
       return true; // Handled
     });
     return () => handler.remove();
-  }, [editingCaptionId, navigation]);
+  }, [editingCaptionId, exitMedia]);
 
   // Handle container layout
   function handleLayout(event: LayoutChangeEvent) {
@@ -404,11 +414,7 @@ export default function MediaScreen() {
       <SafeAreaView edges={["top"]} style={styles.topControlsSafeArea}>
         <Pressable
           onPress={() => {
-            // Always reset to Camera
-            navigation.reset({
-              index: 0,
-              routes: [{ name: "Main", params: { screen: "Camera" } }],
-            });
+            exitMedia();
           }}
           style={styles.closeButton}
         >
