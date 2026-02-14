@@ -3,6 +3,12 @@ import * as VideoThumbnails from "expo-video-thumbnails";
 import { toast } from "sonner-native";
 
 import { createFile, uploadFilesWithInput } from "~/utils/uploadthing";
+import { queryClient, type FriendsListOutput } from "~/utils/api";
+import {
+  markWhispFailed,
+  markWhispSent,
+  markWhispUploading,
+} from "~/utils/outbox-status";
 
 interface UploadMediaParams {
   uri: string;
@@ -51,6 +57,9 @@ export async function uploadMedia(params: UploadMediaParams): Promise<void> {
   const { uri, type, recipients } = params;
 
   try {
+    // Let the UI show per-recipient pending state immediately.
+    markWhispUploading(recipients);
+
     // Generate thumbhash before upload
     const thumbhash = await generateThumbhash(uri, type);
 
@@ -70,12 +79,44 @@ export async function uploadMedia(params: UploadMediaParams): Promise<void> {
       files: [file],
       input: { recipients, mimeType, thumbhash },
     })
-      .then(() => toast.success("whisp sent"))
-      .catch((err: unknown) =>
-        toast.error(err instanceof Error ? err.message : "Upload failed"),
-      );
+      .then(() => {
+        toast.success("whisp sent");
+        markWhispSent(recipients);
+
+        // Optimistically update the Friends list so the row can flip to "Sent"
+        // even before the server has fully processed/propagated the send.
+        const friendsKeyPrefix = [["friends", "list"]] as const;
+        queryClient.setQueriesData<FriendsListOutput>(
+          { queryKey: friendsKeyPrefix },
+          (old) => {
+            if (!old) return old;
+            const now = new Date();
+            const recipientSet = new Set(recipients);
+            return old.map((f) => {
+              if (!recipientSet.has(f.id)) return f;
+              return {
+                ...f,
+                // These keys are used in `friends.tsx` via casts today.
+                lastActivityTimestamp: now,
+                lastSentOpened: false,
+              } as typeof f;
+            });
+          },
+        );
+
+        // Kick a refetch so we converge to server truth shortly after.
+        void queryClient.invalidateQueries({ queryKey: friendsKeyPrefix });
+        void queryClient.invalidateQueries({
+          queryKey: [["messages", "inbox"]] as const,
+        });
+      })
+      .catch((err: unknown) => {
+        markWhispFailed(recipients);
+        toast.error(err instanceof Error ? err.message : "Upload failed");
+      });
   } catch (err) {
     console.error("[Upload] Failed to prepare file for upload:", err);
+    markWhispFailed(recipients);
     toast.error("Failed to prepare media");
   }
 }

@@ -37,6 +37,7 @@ import { SkiaCaptionRenderer } from "~/components/skia-caption-renderer";
 import { Button } from "~/components/ui/button";
 import { Text } from "~/components/ui/text";
 import { uploadMedia } from "~/utils/media-upload";
+import { markWhispFailed, markWhispUploading } from "~/utils/outbox-status";
 import {
   markVideoSaveAlertShown,
   shouldShowVideoSaveAlert,
@@ -259,14 +260,21 @@ export default function MediaScreen() {
 
       if (defaultRecipientId) {
         // For direct send, navigate immediately and upload in background
+        markWhispUploading([defaultRecipientId]);
         navigation.reset({ index: 0, routes: [{ name: "Main" }] });
-        void rasterizationPromise.then((rasterizedPath) => {
-          void uploadMedia({
-            uri: `file://${rasterizedPath}`,
-            type,
-            recipients: [defaultRecipientId],
+        void rasterizationPromise
+          .then((rasterizedPath) => {
+            void uploadMedia({
+              uri: `file://${rasterizedPath}`,
+              type,
+              recipients: [defaultRecipientId],
+            });
+          })
+          .catch((err) => {
+            console.error("[Media] Rasterization failed:", err);
+            markWhispFailed([defaultRecipientId]);
+            toast.error("Failed to prepare media");
           });
-        });
       } else {
         // For friend selection, navigate immediately with original path
         // Pass rasterization promise to friends screen

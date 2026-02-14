@@ -4,6 +4,7 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { Video as VideoType } from "expo-av";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   BackHandler,
   FlatList,
   Linking,
@@ -48,7 +49,14 @@ import { useRecording } from "~/contexts/RecordingContext";
 import { useMessageFromNotification } from "~/hooks/useMessageFromNotification";
 import { cn } from "~/lib/utils";
 import { trpc } from "~/utils/api";
+import { authClient } from "~/utils/auth";
 import { uploadMedia } from "~/utils/media-upload";
+import type { OutboxState, OutboxStatus } from "~/utils/outbox-status";
+import {
+  getOutboxStatusSnapshot,
+  markWhispUploading,
+  subscribeOutboxStatus,
+} from "~/utils/outbox-status";
 import WhispLogoDark from "../../assets/splash-icon-dark.png";
 import WhispLogoLight from "../../assets/splash-icon.png";
 
@@ -73,6 +81,8 @@ interface FriendRow {
   hoursRemaining: number | null;
   lastMessageStatus: MessageStatus;
   lastMessageAt: Date | null;
+  outboxState: OutboxState | null;
+  outboxUpdatedAt: Date | null;
 }
 
 /**
@@ -164,6 +174,8 @@ export default function FriendsScreen() {
   const insets = useSafeAreaInsets();
   const { setIsSendMode } = useRecording();
   const colorScheme = useColorScheme();
+  const { data: session } = authClient.useSession();
+  const selfUserId = session?.user.id ?? null;
 
   // Select the appropriate logo based on color scheme
   const whispLogo = colorScheme === "dark" ? WhispLogoDark : WhispLogoLight;
@@ -179,6 +191,9 @@ export default function FriendsScreen() {
     isLoading: inboxLoading,
   } = trpc.messages.inbox.useQuery();
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [outboxStatus, setOutboxStatus] = useState<
+    Record<string, OutboxStatus | undefined>
+  >(() => getOutboxStatusSnapshot());
   const [searchQuery, setSearchQuery] = useState("");
   const [showAddFriends, setShowAddFriends] = useState(false);
   const [selectedFriend, setSelectedFriend] = useState<FriendRow | null>(null);
@@ -257,6 +272,14 @@ export default function FriendsScreen() {
     await Promise.all([refetchFriends(), refetchInbox()]);
     setIsRefreshing(false);
   };
+
+  // Track background uploads so the list can show per-friend pending state.
+  useEffect(() => {
+    const unsubscribe = subscribeOutboxStatus(setOutboxStatus);
+    return () => {
+      unsubscribe();
+    };
+  }, []);
 
   // Render backdrop for bottom sheet modal
   const renderBackdrop = useCallback(
@@ -463,6 +486,7 @@ export default function FriendsScreen() {
     }
 
     return friends.map((f) => {
+      const isSelf = selfUserId != null && f.id === selfUserId;
       const streak = (f as unknown as { streak?: number }).streak ?? 0;
       const lastActivity = (
         f as unknown as { lastActivityTimestamp?: Date | null }
@@ -477,36 +501,52 @@ export default function FriendsScreen() {
       const unreadCount = senderToMessages.get(f.id) ?? 0;
       const hasUnread = unreadCount > 0;
 
+      // Dev-only "send to yourself" can otherwise get stuck looking like an
+      // unopened sent message forever (you're both sender and recipient).
+      // We still want to show pending/error UI, but we ignore the "sent" override.
+      const outbox = outboxStatus[f.id];
+      const rawOutboxState = outbox?.state ?? null;
+      const outboxState =
+        isSelf && rawOutboxState === "sent" ? null : rawOutboxState;
+      const outboxUpdatedAt =
+        outboxState && outbox?.updatedAtMs ? new Date(outbox.updatedAtMs) : null;
+
+      const incomingLatest = senderToLatestTimestamp.get(f.id) ?? null;
+      const incomingMs = incomingLatest?.getTime() ?? 0;
+      const outgoingMs = lastActivity ? new Date(lastActivity).getTime() : 0;
+      const partnerMs = partnerLastActivity
+        ? new Date(partnerLastActivity).getTime()
+        : 0;
+      const outboxMs =
+        outboxState === "uploading" || outboxState === "sent"
+          ? (outboxUpdatedAt?.getTime() ?? 0)
+          : 0;
+
+      // Prefer whichever direction is newest so "Sent" can replace stale "Received"
+      // after we upload a whisp (even if the inbox still contains older messages).
+      const effectiveOutgoingMs = Math.max(outgoingMs, outboxMs);
+      const latestMs = Math.max(incomingMs, partnerMs, effectiveOutgoingMs);
+      const outgoingIsLatest =
+        effectiveOutgoingMs > 0 && effectiveOutgoingMs === latestMs;
+      const incomingIsLatest = incomingMs > 0 && incomingMs === latestMs;
+
       // Compute Snapchat-style message status
       let lastMessageStatus: MessageStatus = null;
-      if (hasUnread) {
+      if (outboxState === "uploading" || outboxState === "failed") {
+        // Rendered specially; keep lastMessageStatus null.
+        lastMessageStatus = null;
+      } else if (outgoingIsLatest) {
+        // For self-chat, treat outgoing as opened (can't be unopened).
+        if (isSelf) lastMessageStatus = "opened";
+        else if (lastSentOpened === true) lastMessageStatus = "opened";
+        else lastMessageStatus = "sent";
+      } else if (incomingIsLatest && hasUnread) {
         lastMessageStatus = "received";
-      } else if (lastSentOpened === false) {
-        lastMessageStatus = "sent";
-      } else if (lastSentOpened === true) {
-        lastMessageStatus = "opened";
-      } else if (partnerLastActivity) {
+      } else if (partnerLastActivity || incomingLatest) {
         lastMessageStatus = "received_opened";
       }
 
-      // Compute the most relevant timestamp for display
-      let lastMessageAt: Date | null = null;
-      if (hasUnread) {
-        // For new snaps, show when the most recent one arrived
-        lastMessageAt =
-          senderToLatestTimestamp.get(f.id) ?? partnerLastActivity ?? null;
-      } else {
-        // Use the most recent activity timestamp between the two users
-        const myTs = lastActivity
-          ? new Date(lastActivity).getTime()
-          : 0;
-        const partnerTs = partnerLastActivity
-          ? new Date(partnerLastActivity).getTime()
-          : 0;
-        if (myTs > 0 || partnerTs > 0) {
-          lastMessageAt = new Date(Math.max(myTs, partnerTs));
-        }
-      }
+      const lastMessageAt = latestMs > 0 ? new Date(latestMs) : null;
 
       return {
         id: f.id,
@@ -526,9 +566,18 @@ export default function FriendsScreen() {
         hoursRemaining: null, // Calculated during render
         lastMessageStatus,
         lastMessageAt,
+        outboxState,
+        outboxUpdatedAt,
       };
     });
-  }, [friends, inbox, hasMedia, mediaParams?.defaultRecipientId]);
+  }, [
+    friends,
+    inbox,
+    hasMedia,
+    mediaParams?.defaultRecipientId,
+    outboxStatus,
+    selfUserId,
+  ]);
 
   /**
    * Time Remaining Calculation
@@ -800,6 +849,10 @@ export default function FriendsScreen() {
               onPress={async () => {
                 // mediaParams.type and path must exist if we're in send mode
                 if (mediaParams?.type && mediaParams.path) {
+                  const recipients = Array.from(selectedFriends);
+                  // Mark pending immediately (even if we're still rasterizing/prepping).
+                  markWhispUploading(recipients);
+
                   let finalUri = `file://${mediaParams.path}`;
 
                   // If there's a rasterization promise, wait for it to complete
@@ -827,7 +880,7 @@ export default function FriendsScreen() {
                   void uploadMedia({
                     uri: finalUri,
                     type: mediaParams.type,
-                    recipients: Array.from(selectedFriends),
+                    recipients,
                   });
                   // Navigate immediately, don't wait for upload
                   navigation.reset({ index: 0, routes: [{ name: "Main" }] });
@@ -961,7 +1014,28 @@ export default function FriendsScreen() {
                     </View>
 
                     {/* Bottom line: Status icon + text + timestamp */}
-                    {item.lastMessageStatus ? (
+                    {item.outboxState === "uploading" ? (
+                      <View className="mt-0.5 flex-row items-center gap-1.5">
+                        <ActivityIndicator
+                          size="small"
+                          color={colorScheme === "dark" ? "#9ca3af" : "#6b7280"}
+                        />
+                        <Text className="text-xs text-muted-foreground">
+                          Sending...
+                        </Text>
+                      </View>
+                    ) : item.outboxState === "failed" ? (
+                      <View className="mt-0.5 flex-row items-center gap-1.5">
+                        <Ionicons
+                          name="alert-circle-outline"
+                          size={14}
+                          color="#ef4444"
+                        />
+                        <Text className="text-xs font-semibold text-destructive">
+                          Failed to send
+                        </Text>
+                      </View>
+                    ) : item.lastMessageStatus ? (
                       <View className="mt-0.5 flex-row items-center gap-1.5">
                         <MessageStatusIcon status={item.lastMessageStatus} />
                         <Text
