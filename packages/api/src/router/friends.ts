@@ -1,7 +1,7 @@
 import type { TRPCRouterRecord } from "@trpc/server";
 import { z } from "zod/v4";
 
-import { and, eq, inArray, isNull, like, ne, or } from "@acme/db";
+import { and, desc, eq, inArray, isNull, like, ne, or } from "@acme/db";
 import {
   account as Account,
   FriendRequest,
@@ -124,6 +124,7 @@ export const friendsRouter = {
         lastActivityTimestamp: Date | null;
         partnerLastActivityTimestamp: Date | null;
         lastSentOpened: boolean | null;
+        lastMimeType: string | null;
       }[];
 
     const friends = await ctx.db
@@ -211,6 +212,92 @@ export const friendsRouter = {
       }
     }
 
+    // Fetch the mimeType of the most recent message I sent to each friend
+    // where I sent last, so the client can color-code photo vs video.
+    const lastSentMimeMap = new Map<string, string | null>();
+    if (friendIdsWhereSentLast.length > 0) {
+      // For each friend, find the latest delivery of a message I sent.
+      const deliveries = await ctx.db
+        .select({
+          recipientId: MessageDelivery.recipientId,
+          messageId: MessageDelivery.messageId,
+          createdAt: MessageDelivery.createdAt,
+        })
+        .from(MessageDelivery)
+        .innerJoin(Message, eq(Message.id, MessageDelivery.messageId))
+        .where(
+          and(
+            inArray(MessageDelivery.recipientId, friendIdsWhereSentLast),
+            eq(Message.senderId, me),
+          ),
+        )
+        .orderBy(desc(MessageDelivery.createdAt));
+
+      // Pick only the most recent delivery per recipient
+      const latestPerRecipient = new Map<
+        string,
+        { messageId: string }
+      >();
+      for (const d of deliveries) {
+        if (!latestPerRecipient.has(d.recipientId)) {
+          latestPerRecipient.set(d.recipientId, {
+            messageId: d.messageId,
+          });
+        }
+      }
+
+      // Fetch mimeType for those messages
+      const messageIds = [
+        ...new Set(
+          [...latestPerRecipient.values()].map((v) => v.messageId),
+        ),
+      ];
+      if (messageIds.length > 0) {
+        const msgs = await ctx.db
+          .select({ id: Message.id, mimeType: Message.mimeType })
+          .from(Message)
+          .where(inArray(Message.id, messageIds));
+        const msgMimeMap = new Map(msgs.map((m) => [m.id, m.mimeType]));
+
+        for (const [recipientId, { messageId }] of latestPerRecipient) {
+          lastSentMimeMap.set(
+            recipientId,
+            msgMimeMap.get(messageId) ?? null,
+          );
+        }
+      }
+    }
+
+    // Fetch mimeType of the most recent message each friend sent to me
+    // (for coloring received / received_opened statuses).
+    const lastReceivedMimeMap = new Map<string, string | null>();
+    const friendIdsWhereReceivedLast = friendIds.filter(
+      (fid) => !friendIdsWhereSentLast.includes(fid),
+    );
+    if (friendIdsWhereReceivedLast.length > 0) {
+      const deliveries = await ctx.db
+        .select({
+          senderId: Message.senderId,
+          mimeType: Message.mimeType,
+          createdAt: MessageDelivery.createdAt,
+        })
+        .from(MessageDelivery)
+        .innerJoin(Message, eq(Message.id, MessageDelivery.messageId))
+        .where(
+          and(
+            eq(MessageDelivery.recipientId, me),
+            inArray(Message.senderId, friendIdsWhereReceivedLast),
+          ),
+        )
+        .orderBy(desc(MessageDelivery.createdAt));
+
+      for (const d of deliveries) {
+        if (!lastReceivedMimeMap.has(d.senderId)) {
+          lastReceivedMimeMap.set(d.senderId, d.mimeType);
+        }
+      }
+    }
+
     return friends.map((u) => {
       const streakInfo = friendshipMap.get(u.id);
 
@@ -223,6 +310,11 @@ export const friendsRouter = {
         lastSentOpened = !hasPendingSentTo.has(u.id);
       }
 
+      // Determine the mimeType of the most recent message in this thread
+      const lastMimeType = friendIdsWhereSentLast.includes(u.id)
+        ? (lastSentMimeMap.get(u.id) ?? null)
+        : (lastReceivedMimeMap.get(u.id) ?? null);
+
       return {
         id: u.id,
         name: u.name,
@@ -232,6 +324,7 @@ export const friendsRouter = {
         lastActivityTimestamp: streakInfo?.myLastActivity ?? null,
         partnerLastActivityTimestamp: streakInfo?.partnerLastActivity ?? null,
         lastSentOpened,
+        lastMimeType,
       };
     });
   }),

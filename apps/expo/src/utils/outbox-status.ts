@@ -1,8 +1,13 @@
+export type { MediaKind } from "./media-kind";
+
+import type { MediaKind } from "./media-kind";
+
 export type OutboxState = "uploading" | "sent" | "failed";
 
 export interface OutboxStatus {
   state: OutboxState;
   updatedAtMs: number;
+  mediaKind?: MediaKind;
 }
 
 type Snapshot = Record<string, OutboxStatus | undefined>;
@@ -29,10 +34,14 @@ export function getOutboxStatusSnapshot(): Snapshot {
   return Object.fromEntries(statuses.entries());
 }
 
-function setMany(userIds: string[], state: OutboxState) {
+function setMany(
+  userIds: string[],
+  state: OutboxState,
+  mediaKind?: MediaKind,
+) {
   const now = Date.now();
   for (const id of userIds) {
-    statuses.set(id, { state, updatedAtMs: now });
+    statuses.set(id, { state, updatedAtMs: now, mediaKind });
   }
   emit();
 }
@@ -52,12 +61,18 @@ function clearManyAfter(userIds: string[], delayMs: number) {
   }, delayMs);
 }
 
-export function markWhispUploading(recipientIds: string[]) {
-  setMany(recipientIds, "uploading");
+export function markWhispUploading(
+  recipientIds: string[],
+  mediaKind?: MediaKind,
+) {
+  setMany(recipientIds, "uploading", mediaKind);
 }
 
-export function markWhispSent(recipientIds: string[]) {
-  setMany(recipientIds, "sent");
+export function markWhispSent(
+  recipientIds: string[],
+  mediaKind?: MediaKind,
+) {
+  setMany(recipientIds, "sent", mediaKind);
   // Give the friends list time to refetch/settle; then stop overriding.
   clearManyAfter(recipientIds, 30_000);
 }

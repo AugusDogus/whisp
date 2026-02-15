@@ -29,7 +29,13 @@ import {
 import { useNavigation, useRoute } from "@react-navigation/native";
 
 import type { MainTabParamList, RootStackParamList } from "~/navigation/types";
+import type { MediaKind } from "~/utils/media-kind";
 import type { OutboxState, OutboxStatus } from "~/utils/outbox-status";
+import {
+  isVideoMime,
+  mediaKindColor,
+  mimeToMediaKind,
+} from "~/utils/media-kind";
 import { AddFriendsPanel } from "~/components/add-friends-panel";
 import { FriendsListSkeletonVaried } from "~/components/friends-skeleton";
 import {
@@ -75,6 +81,7 @@ interface FriendRow {
   partnerLastActivityTimestamp: Date | null;
   hoursRemaining: number | null;
   lastMessageStatus: MessageStatus;
+  lastMediaKind: MediaKind;
   lastMessageAt: Date | null;
   outboxState: OutboxState | null;
   outboxUpdatedAt: Date | null;
@@ -104,14 +111,17 @@ function getRelativeTime(date: Date | null): string {
   });
 }
 
-function getStatusText(status: MessageStatus): string {
+function getStatusText(
+  status: MessageStatus,
+  mediaKind: MediaKind = "photo",
+): string {
   switch (status) {
     case "sent":
       return "Sent";
     case "opened":
       return "Opened";
     case "received":
-      return "New Whisp";
+      return mediaKind === "video" ? "New Video" : "New Whisp";
     case "received_opened":
       return "Received";
     default:
@@ -120,16 +130,24 @@ function getStatusText(status: MessageStatus): string {
 }
 
 /**
- * Snapchat-style status icon.
- * - Sent (pending):   filled arrow → red
+ * Snapchat-style status icon with colour based on media kind.
+ * Colours come from {@link mediaKindColor} (red for photo, purple for video).
+ * - Sent (pending):   filled arrow → accent
  * - Sent (opened):    outline arrow → gray
- * - Received (new):   filled square → red
+ * - Received (new):   filled square → accent
  * - Received (opened): outline square → gray
  */
-function MessageStatusIcon({ status }: { status: MessageStatus }) {
+function MessageStatusIcon({
+  status,
+  mediaKind = "photo",
+}: {
+  status: MessageStatus;
+  mediaKind?: MediaKind;
+}) {
+  const activeColor = mediaKindColor(mediaKind);
   switch (status) {
     case "sent":
-      return <Ionicons name="arrow-redo" size={14} color="#ef4444" />;
+      return <Ionicons name="arrow-redo" size={14} color={activeColor} />;
     case "opened":
       return <Ionicons name="arrow-redo-outline" size={14} color="#9ca3af" />;
     case "received":
@@ -139,7 +157,7 @@ function MessageStatusIcon({ status }: { status: MessageStatus }) {
             width: 10,
             height: 10,
             borderRadius: 2,
-            backgroundColor: "#ef4444",
+            backgroundColor: activeColor,
           }}
         />
       );
@@ -466,9 +484,10 @@ export default function FriendsScreen() {
    * - Recalculates on every render for real-time updates
    */
   const rows = useMemo<FriendRow[]>(() => {
-    // Count unread messages per sender and track most recent timestamp
+    // Count unread messages per sender and track most recent timestamp + mimeType
     const senderToMessages = new Map<string, number>();
     const senderToLatestTimestamp = new Map<string, Date>();
+    const senderToLatestMime = new Map<string, string | undefined>();
     for (const m of inbox) {
       if (!m) continue;
       const count = senderToMessages.get(m.senderId) ?? 0;
@@ -477,6 +496,7 @@ export default function FriendsScreen() {
       const current = senderToLatestTimestamp.get(m.senderId);
       if (!current || m.createdAt > current) {
         senderToLatestTimestamp.set(m.senderId, m.createdAt);
+        senderToLatestMime.set(m.senderId, m.mimeType);
       }
     }
 
@@ -545,6 +565,27 @@ export default function FriendsScreen() {
 
       const lastMessageAt = latestMs > 0 ? new Date(latestMs) : null;
 
+      // Determine the media kind (photo vs video) of the most relevant message.
+      // Priority: outbox (uploading/sent) → inbox (received) → API (sent/opened)
+      let lastMediaKind: MediaKind = "photo";
+      if (outboxState === "uploading" || outboxState === "sent") {
+        lastMediaKind = outbox?.mediaKind ?? "photo";
+      } else if (incomingIsLatest && hasUnread) {
+        lastMediaKind = mimeToMediaKind(senderToLatestMime.get(f.id));
+      } else if (outgoingIsLatest) {
+        // Use the API-provided lastMimeType for sent/opened
+        const apiMime = (
+          f as unknown as { lastMimeType?: string | null }
+        ).lastMimeType;
+        lastMediaKind = mimeToMediaKind(apiMime);
+      } else {
+        // received_opened or no activity — use API-provided lastMimeType
+        const apiMime = (
+          f as unknown as { lastMimeType?: string | null }
+        ).lastMimeType;
+        lastMediaKind = mimeToMediaKind(apiMime);
+      }
+
       return {
         id: f.id,
         name: f.name,
@@ -562,6 +603,7 @@ export default function FriendsScreen() {
         partnerLastActivityTimestamp: partnerLastActivity ?? null,
         hoursRemaining: null, // Calculated during render
         lastMessageStatus,
+        lastMediaKind,
         lastMessageAt,
         outboxState,
         outboxUpdatedAt,
@@ -1034,7 +1076,10 @@ export default function FriendsScreen() {
                       </View>
                     ) : item.lastMessageStatus ? (
                       <View className="mt-0.5 flex-row items-center gap-1.5">
-                        <MessageStatusIcon status={item.lastMessageStatus} />
+                        <MessageStatusIcon
+                          status={item.lastMessageStatus}
+                          mediaKind={item.lastMediaKind}
+                        />
                         <Text
                           className={cn(
                             "text-xs",
@@ -1044,11 +1089,14 @@ export default function FriendsScreen() {
                           )}
                           style={
                             item.lastMessageStatus === "received"
-                              ? { color: "#ef4444" }
+                              ? { color: mediaKindColor(item.lastMediaKind) }
                               : undefined
                           }
                         >
-                          {getStatusText(item.lastMessageStatus)}
+                          {getStatusText(
+                            item.lastMessageStatus,
+                            item.lastMediaKind,
+                          )}
                         </Text>
                         {item.lastMessageAt && (
                           <Text className="text-xs text-muted-foreground">
@@ -1086,7 +1134,7 @@ export default function FriendsScreen() {
               ? (() => {
                   const m = viewer.queue[viewer.index];
                   if (!m) return null;
-                  const isVideo = (m.mimeType ?? "").startsWith("video/");
+                  const isVideo = isVideoMime(m.mimeType);
                   console.log("Rendering message:", {
                     isVideo,
                     mimeType: m.mimeType,

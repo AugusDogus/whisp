@@ -4,6 +4,7 @@ import { toast } from "sonner-native";
 
 import type { FriendsListOutput } from "~/utils/api";
 import { queryClient } from "~/utils/api";
+import type { MediaKind } from "~/utils/media-kind";
 import {
   markWhispFailed,
   markWhispSent,
@@ -57,9 +58,11 @@ async function generateThumbhash(
 export async function uploadMedia(params: UploadMediaParams): Promise<void> {
   const { uri, type, recipients } = params;
 
+  const mediaKind: MediaKind = type === "video" ? "video" : "photo";
+
   try {
     // Let the UI show per-recipient pending state immediately.
-    markWhispUploading(recipients);
+    markWhispUploading(recipients, mediaKind);
 
     // Generate thumbhash before upload
     const thumbhash = await generateThumbhash(uri, type);
@@ -82,7 +85,7 @@ export async function uploadMedia(params: UploadMediaParams): Promise<void> {
     })
       .then(() => {
         toast.success("whisp sent");
-        markWhispSent(recipients);
+        markWhispSent(recipients, mediaKind);
 
         // Optimistically update the Friends list so the row can flip to "Sent"
         // even before the server has fully processed/propagated the send.
