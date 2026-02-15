@@ -82,9 +82,10 @@ export const createFile = async (
   // and we already know whether we're uploading a photo or video.
   const ext = type === "video" ? "mp4" : "jpg";
   const nameFromPath = processedUri.split("/").pop();
-  const fileName = nameFromPath && nameFromPath.length > 0
-    ? nameFromPath
-    : `whisp-${Date.now()}.${ext}`;
+  const fileName =
+    nameFromPath && nameFromPath.length > 0
+      ? nameFromPath
+      : `whisp-${Date.now()}.${ext}`;
 
   const file = new File([blob], fileName, {
     type: blob.type,
