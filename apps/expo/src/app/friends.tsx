@@ -1,7 +1,7 @@
 import type { BottomSheetBackdropProps } from "@gorhom/bottom-sheet";
 import type { RouteProp } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import type { Video as VideoType } from "expo-av";
+import type { AVPlaybackStatus, Video as VideoType } from "expo-av";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -330,6 +330,22 @@ export default function FriendsScreen() {
     queue: typeof inboxRaw;
     index: number;
   } | null>(null);
+
+  // Track load/progress for the currently-viewed media so we can render a
+  // story-style progress bar (and avoid a "stuck" empty segment).
+  const currentViewerMessage = viewer?.queue[viewer.index] ?? null;
+  const currentViewerKey =
+    currentViewerMessage?.deliveryId ?? currentViewerMessage?.messageId ?? null;
+  const [viewerMediaLoaded, setViewerMediaLoaded] = useState(false);
+  const [viewerMediaProgress, setViewerMediaProgress] = useState(0);
+  const [viewerMediaErrored, setViewerMediaErrored] = useState(false);
+
+  useEffect(() => {
+    // Reset when advancing to a different message.
+    setViewerMediaLoaded(false);
+    setViewerMediaProgress(0);
+    setViewerMediaErrored(false);
+  }, [currentViewerKey]);
 
   /**
    * Filter Inbox to Exclude Messages in Viewer
@@ -1146,6 +1162,58 @@ export default function FriendsScreen() {
       >
         <TouchableWithoutFeedback onPress={onViewerTap}>
           <View className="flex-1 bg-black">
+            {viewer && (
+              <View
+                pointerEvents="none"
+                style={{
+                  position: "absolute",
+                  top: insets.top + 10,
+                  left: 12,
+                  right: 12,
+                  zIndex: 50,
+                  flexDirection: "row",
+                  alignItems: "center",
+                }}
+              >
+                {viewer.queue.map((msg, idx) => {
+                  const fill =
+                    idx < viewer.index
+                      ? 1
+                      : idx > viewer.index
+                        ? 0
+                        : // While loading, show a small fill so the bar isn't "invisible".
+                          // For video, this will be driven by playback status once loaded.
+                          viewerMediaLoaded
+                          ? viewerMediaProgress
+                          : viewerMediaErrored
+                            ? 1
+                            : 0.12;
+
+                  return (
+                    <View
+                      key={msg?.deliveryId ?? msg?.messageId ?? `seg-${idx}`}
+                      style={{
+                        flex: 1,
+                        height: 3,
+                        borderRadius: 2,
+                        overflow: "hidden",
+                        backgroundColor: "rgba(255,255,255,0.28)",
+                        marginRight: idx === viewer.queue.length - 1 ? 0 : 4,
+                      }}
+                    >
+                      <View
+                        style={{
+                          height: "100%",
+                          width: `${Math.min(1, Math.max(0, fill)) * 100}%`,
+                          backgroundColor: "rgba(255,255,255,0.92)",
+                        }}
+                      />
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+
             {viewer?.queue[viewer.index]
               ? (() => {
                   const m = viewer.queue[viewer.index];
@@ -1180,7 +1248,17 @@ export default function FriendsScreen() {
                         shouldPlay
                         isLooping={true}
                         useNativeControls={false}
+                        onPlaybackStatusUpdate={(status: AVPlaybackStatus) => {
+                          if (!status.isLoaded) return;
+                          const duration = status.durationMillis ?? 0;
+                          if (duration <= 0) return;
+                          const progress = status.positionMillis / duration;
+                          setViewerMediaProgress(
+                            Math.min(1, Math.max(0, progress)),
+                          );
+                        }}
                         onLoad={async () => {
+                          setViewerMediaLoaded(true);
                           // Ensure video plays once loaded
                           console.log("Video loaded, attempting to play");
                           try {
@@ -1194,6 +1272,9 @@ export default function FriendsScreen() {
                           }
                         }}
                         onError={(error) => {
+                          setViewerMediaErrored(true);
+                          setViewerMediaLoaded(true);
+                          setViewerMediaProgress(1);
                           console.error("Video error:", error);
                         }}
                       />
@@ -1206,6 +1287,15 @@ export default function FriendsScreen() {
                       placeholder={
                         m.thumbhash ? { thumbhash: m.thumbhash } : undefined
                       }
+                      onLoad={() => {
+                        setViewerMediaLoaded(true);
+                        setViewerMediaProgress(1);
+                      }}
+                      onError={() => {
+                        setViewerMediaErrored(true);
+                        setViewerMediaLoaded(true);
+                        setViewerMediaProgress(1);
+                      }}
                     />
                   );
                 })()
