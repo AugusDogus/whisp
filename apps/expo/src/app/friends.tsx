@@ -243,6 +243,7 @@ export default function FriendsScreen() {
       await utils.messages.inbox.invalidate();
     },
   });
+  const { mutate: cleanupMessage } = trpc.messages.cleanupIfAllRead.useMutation();
 
   const removeFriend = trpc.friends.removeFriend.useMutation({
     onMutate: async (variables) => {
@@ -401,10 +402,25 @@ export default function FriendsScreen() {
   }, []);
 
   const closeViewer = useCallback(() => {
+    // Best-effort cleanup: once the viewer closes, delete any messages that are
+    // now fully read (this includes deleting the underlying UploadThing file).
+    //
+    // This is intentionally done *after* viewing so the media URL isn't deleted
+    // while the client is still loading it.
+    if (viewer) {
+      const messageIds = new Set<string>();
+      for (const msg of viewer.queue) {
+        if (msg?.messageId) messageIds.add(msg.messageId);
+      }
+      for (const messageId of messageIds) {
+        cleanupMessage({ messageId });
+      }
+    }
+
     setViewer(null);
     // Clear any remaining notifications when closing viewer
     void Notifications.dismissAllNotificationsAsync();
-  }, []);
+  }, [cleanupMessage, viewer]);
 
   // Handle hardware back button when viewer is open
   useEffect(() => {

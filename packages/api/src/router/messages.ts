@@ -90,30 +90,19 @@ export const messagesRouter = {
         );
       if (unread.length > 0) return { ok: true };
 
-      // All read -> delete file via UploadThing and soft-delete message
-      const message = (
-        await ctx.db
-          .select()
-          .from(Message)
-          .where(eq(Message.id, delivery.messageId))
-      )[0];
-      if (message?.fileUrl && !message.deletedAt) {
-        const utapi = new UTApi();
-        const derivedKey = (() => {
-          const key = (message as unknown as { fileKey?: string }).fileKey;
-          if (key) return key;
-          const url = message.fileUrl;
-          const idx = url.indexOf("/f/");
-          return idx >= 0 ? url.slice(idx + 3) : undefined;
-        })();
-        if (derivedKey) {
-          await utapi.deleteFiles(derivedKey).catch(() => undefined);
-        }
-        await ctx.db
-          .update(Message)
-          .set({ deletedAt: new Date() })
-          .where(eq(Message.id, message.id));
-      }
+      // All read -> soft-delete the message record, but DO NOT delete the file here.
+      //
+      // Deleting the remote file in the same mutation that marks the delivery as
+      // read can race the client: on slow networks the viewer will open and then
+      // the media URL is removed before it finishes loading, leaving only the
+      // blurred placeholder.
+      //
+      // Actual file deletion is handled by `cleanupIfAllRead` (called when the
+      // viewer closes).
+      await ctx.db
+        .update(Message)
+        .set({ deletedAt: new Date() })
+        .where(eq(Message.id, delivery.messageId));
       return { ok: true };
     }),
 
@@ -138,11 +127,31 @@ export const messagesRouter = {
         .limit(1);
       if (unread.length > 0) return { ok: false, reason: "unread" } as const;
 
-      // delete file via UploadThing if we have key; then soft-delete message
-      if (input.fileKey) {
+      // Delete the underlying UploadThing file (best-effort), then soft-delete
+      // the message record.
+      const message = (
+        await ctx.db
+          .select()
+          .from(Message)
+          .where(eq(Message.id, input.messageId))
+          .limit(1)
+      )[0];
+
+      const derivedKey =
+        input.fileKey ??
+        message?.fileKey ??
+        (() => {
+          const url = message?.fileUrl;
+          if (!url) return undefined;
+          const idx = url.indexOf("/f/");
+          return idx >= 0 ? url.slice(idx + 3) : undefined;
+        })();
+
+      if (derivedKey) {
         const utapi = new UTApi();
-        await utapi.deleteFiles(input.fileKey).catch(() => undefined);
+        await utapi.deleteFiles(derivedKey).catch(() => undefined);
       }
+
       await ctx.db
         .update(Message)
         .set({ deletedAt: new Date() })
