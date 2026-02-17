@@ -94,5 +94,13 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       },
     ],
     "react-native-compressor",
+    [
+      "@sentry/react-native/expo",
+      {
+        url: "https://sentry.io/",
+        project: "whisp",
+        organization: "whisplabs",
+      },
+    ],
   ],
 });
