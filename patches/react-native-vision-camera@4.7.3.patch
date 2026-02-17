@@ -1,0 +1,18 @@
+diff --git a/ios/Core/CameraSession+Photo.swift b/ios/Core/CameraSession+Photo.swift
+index 12f5c07ce3a8e526bbea40907d6cda09d4faa0f4..bb5107227a4696f7e60dc45d1047630085a31dc6 100644
+--- a/ios/Core/CameraSession+Photo.swift
++++ b/ios/Core/CameraSession+Photo.swift
+@@ -79,6 +79,13 @@ extension CameraSession {
+         photoSettings.flashMode = options.flash.toFlashMode()
+       }
+ 
++      // Ensure the video connection is active before capturing (prevents crash on iPhone 17 Pro)
++      guard let videoConnection = photoOutput.connection(with: .video),
++            videoConnection.isEnabled, videoConnection.isActive else {
++        promise.reject(error: .session(.cameraNotReady))
++        return
++      }
++
+       // Actually do the capture!
+       let photoCaptureDelegate = PhotoCaptureDelegate(promise: promise,
+                                                       enableShutterSound: options.enableShutterSound,

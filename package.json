@@ -67,5 +67,8 @@
   },
   "trustedDependencies": [
     "core-js-pure"
-  ]
+  ],
+  "patchedDependencies": {
+    "react-native-vision-camera@4.7.3": "patches/react-native-vision-camera@4.7.3.patch"
+  }
 }
