@@ -1,62 +1,34 @@
-import type { BottomSheetBackdropProps } from "@gorhom/bottom-sheet";
+import type {
+  BottomSheetBackdropProps,
+  BottomSheetModal,
+} from "@gorhom/bottom-sheet";
 import type { RouteProp } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import type { AVPlaybackStatus, Video as VideoType } from "expo-av";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  ActivityIndicator,
-  BackHandler,
-  FlatList,
-  Linking,
-  Modal,
-  Pressable,
-  RefreshControl,
-  TouchableWithoutFeedback,
-  useColorScheme,
-  View,
-} from "react-native";
+import { BackHandler, Linking, useColorScheme, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { ResizeMode, Video } from "expo-av";
 import * as Haptics from "expo-haptics";
-import { Image } from "expo-image";
-import * as Notifications from "expo-notifications";
-import { Ionicons, MaterialIcons } from "@expo/vector-icons";
-import {
-  BottomSheetBackdrop,
-  BottomSheetModal,
-  BottomSheetView,
-} from "@gorhom/bottom-sheet";
+import { BottomSheetBackdrop } from "@gorhom/bottom-sheet";
 import { useNavigation, useRoute } from "@react-navigation/native";
 
+import type { FriendRow } from "~/components/friends/types";
 import type { MainTabParamList, RootStackParamList } from "~/navigation/types";
-import type { MediaKind } from "~/utils/media-kind";
-import type { OutboxState, OutboxStatus } from "~/utils/outbox-status";
-import {
-  isVideoMime,
-  mediaKindColor,
-  mimeToMediaKind,
-} from "~/utils/media-kind";
+import type { OutboxStatus } from "~/utils/outbox-status";
 import { AddFriendsPanel } from "~/components/add-friends-panel";
 import { FriendsListSkeletonVaried } from "~/components/friends-skeleton";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "~/components/ui/alert-dialog";
-import { Avatar } from "~/components/ui/avatar";
-import { Button } from "~/components/ui/button";
-import { Input } from "~/components/ui/input";
-import { Text } from "~/components/ui/text";
+import { FriendActionsSheet } from "~/components/friends/FriendActionsSheet";
+import { FriendsHeader } from "~/components/friends/FriendsHeader";
+import { FriendsList } from "~/components/friends/FriendsList";
+import { MessageViewerModal } from "~/components/friends/MessageViewerModal";
+import { RemoveFriendDialog } from "~/components/friends/RemoveFriendDialog";
+import { SendModePanel } from "~/components/friends/SendModePanel";
 import { useRecording } from "~/contexts/RecordingContext";
 import { useMessageFromNotification } from "~/hooks/useMessageFromNotification";
-import { cn } from "~/lib/utils";
+import { useMessageViewerState } from "~/hooks/useMessageViewerState";
+import { useSendModeSelection } from "~/hooks/useSendModeSelection";
 import { trpc } from "~/utils/api";
 import { authClient } from "~/utils/auth";
+import { mimeToMediaKind } from "~/utils/media-kind";
 import { uploadMedia } from "~/utils/media-upload";
 import {
   getOutboxStatusSnapshot,
@@ -65,118 +37,6 @@ import {
 } from "~/utils/outbox-status";
 import WhispLogoDark from "../../assets/splash-icon-dark.png";
 import WhispLogoLight from "../../assets/splash-icon.png";
-
-type MessageStatus = "sent" | "opened" | "received" | "received_opened" | null;
-
-interface FriendRow {
-  id: string;
-  name: string;
-  image: string | null;
-  discordId: string | null;
-  hasUnread: boolean;
-  unreadCount: number;
-  isSelected: boolean;
-  streak: number;
-  lastActivityTimestamp: Date | null;
-  partnerLastActivityTimestamp: Date | null;
-  hoursRemaining: number | null;
-  lastMessageStatus: MessageStatus;
-  lastMediaKind: MediaKind;
-  lastMessageAt: Date | null;
-  outboxState: OutboxState | null;
-  outboxUpdatedAt: Date | null;
-}
-
-/**
- * Returns a compact relative timestamp like Snapchat.
- * e.g. "Just now", "3m ago", "2h ago", "1d ago", "2w ago", "Jan 5"
- */
-function getRelativeTime(date: Date | null): string {
-  if (!date) return "";
-  const now = Date.now();
-  const diff = now - new Date(date).getTime();
-  if (diff < 0) return "Just now";
-  const mins = Math.floor(diff / 60_000);
-  if (mins < 1) return "Just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d ago`;
-  const weeks = Math.floor(days / 7);
-  if (weeks < 5) return `${weeks}w ago`;
-  return new Date(date).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-  });
-}
-
-function getStatusText(
-  status: MessageStatus,
-  mediaKind: MediaKind = "photo",
-): string {
-  switch (status) {
-    case "sent":
-      return "Sent";
-    case "opened":
-      return "Opened";
-    case "received":
-      return mediaKind === "video" ? "New Video" : "New Whisp";
-    case "received_opened":
-      return "Received";
-    default:
-      return "";
-  }
-}
-
-/**
- * Snapchat-style status icon with colour based on media kind.
- * Colours come from {@link mediaKindColor} (red for photo, purple for video).
- * - Sent (pending):   filled arrow → accent
- * - Sent (opened):    outline arrow → gray
- * - Received (new):   filled square → accent
- * - Received (opened): outline square → gray
- */
-function MessageStatusIcon({
-  status,
-  mediaKind = "photo",
-}: {
-  status: MessageStatus;
-  mediaKind?: MediaKind;
-}) {
-  const activeColor = mediaKindColor(mediaKind);
-  switch (status) {
-    case "sent":
-      return <Ionicons name="arrow-redo" size={14} color={activeColor} />;
-    case "opened":
-      return <Ionicons name="arrow-redo-outline" size={14} color="#9ca3af" />;
-    case "received":
-      return (
-        <View
-          style={{
-            width: 10,
-            height: 10,
-            borderRadius: 2,
-            backgroundColor: activeColor,
-          }}
-        />
-      );
-    case "received_opened":
-      return (
-        <View
-          style={{
-            width: 10,
-            height: 10,
-            borderRadius: 2,
-            borderWidth: 1.5,
-            borderColor: "#9ca3af",
-          }}
-        />
-      );
-    default:
-      return null;
-  }
-}
 
 export default function FriendsScreen() {
   const navigation =
@@ -212,7 +72,6 @@ export default function FriendsScreen() {
   const [selectedFriend, setSelectedFriend] = useState<FriendRow | null>(null);
   const [showRemoveDialog, setShowRemoveDialog] = useState(false);
   const isShowingDialogRef = useRef(false);
-  const videoRef = useRef<VideoType>(null);
   const bottomSheetRef = useRef<BottomSheetModal>(null);
   const utils = trpc.useUtils();
   const markRead = trpc.messages.markRead.useMutation({
@@ -243,7 +102,8 @@ export default function FriendsScreen() {
       await utils.messages.inbox.invalidate();
     },
   });
-  const { mutate: cleanupMessage } = trpc.messages.cleanupIfAllRead.useMutation();
+  const { mutate: cleanupMessage } =
+    trpc.messages.cleanupIfAllRead.useMutation();
 
   const removeFriend = trpc.friends.removeFriend.useMutation({
     onMutate: async (variables) => {
@@ -316,144 +176,19 @@ export default function FriendsScreen() {
     return () => setIsSendMode(false);
   }, [hasMedia, setIsSendMode]);
 
-  /**
-   * Message Viewer State
-   * ====================
-   * Expected behavior:
-   * - viewer holds the current message being viewed and the queue of messages
-   * - When a message is opened, it's removed from inbox and added to viewer
-   * - User taps to advance through messages in the queue
-   * - When queue is exhausted, viewer closes automatically
-   */
-  const [viewer, setViewer] = useState<{
-    friendId: string;
-    queue: typeof inboxRaw;
-    index: number;
-  } | null>(null);
-
-  // Track load/progress for the currently-viewed media so we can render a
-  // story-style progress bar (and avoid a "stuck" empty segment).
-  const currentViewerMessage = viewer?.queue[viewer.index] ?? null;
-  const currentViewerKey =
-    currentViewerMessage?.deliveryId ?? currentViewerMessage?.messageId ?? null;
-  const [viewerMediaLoaded, setViewerMediaLoaded] = useState(false);
-  const [viewerMediaProgress, setViewerMediaProgress] = useState(0);
-  const [viewerMediaErrored, setViewerMediaErrored] = useState(false);
-
-  useEffect(() => {
-    // Reset when advancing to a different message.
-    setViewerMediaLoaded(false);
-    setViewerMediaProgress(0);
-    setViewerMediaErrored(false);
-  }, [currentViewerKey]);
-
-  /**
-   * Filter Inbox to Exclude Messages in Viewer
-   * ===========================================
-   * Expected behavior:
-   * - If viewer is open, filter out all messages in the viewer queue from inbox
-   * - This prevents messages from reappearing during manual refresh
-   * - Race condition protection: Even if server hasn't processed markRead yet,
-   *   we won't show messages that are actively being viewed
-   *
-   * Scenario this fixes:
-   * 1. Open message from notification (optimistically removed from inbox)
-   * 2. markRead mutation starts (async)
-   * 3. User pulls to refresh
-   * 4. Server returns message as unread (markRead not complete yet)
-   * 5. Without this filter: message reappears ❌
-   * 6. With this filter: message stays hidden while in viewer ✅
-   */
-  const inbox = viewer
-    ? inboxRaw.filter((msg) => {
-        if (!msg) return true;
-        // Exclude any message that's in the viewer queue
-        return !viewer.queue.some(
-          (viewerMsg) => viewerMsg?.deliveryId === msg.deliveryId,
-        );
-      })
-    : inboxRaw;
-
-  /**
-   * Opens the message viewer for a specific friend
-   * Expected behavior:
-   * - Filters inbox to get all messages from this friend
-   * - Removes those messages from inbox (optimistic update)
-   * - Clears notifications
-   * - Opens viewer with first message
-   * - Marks first message as read immediately
-   */
-  const openViewer = (friendId: string) => {
-    const queue = inbox.filter((m) => m?.senderId === friendId);
-    if (queue.length === 0) return;
-
-    // Optimistically update the inbox to remove messages from this friend
-    utils.messages.inbox.setData(undefined, (old) =>
-      old ? old.filter((m) => m && m.senderId !== friendId) : [],
-    );
-
-    // Clear notifications when opening viewer
-    void Notifications.dismissAllNotificationsAsync();
-
-    setViewer({ friendId, queue, index: 0 });
-
-    // Mark the first message as read immediately
-    const firstMessage = queue[0];
-    if (firstMessage?.deliveryId) {
-      markRead.mutate({ deliveryId: firstMessage.deliveryId });
-    }
-  };
-
-  /**
-   * Opens the message viewer with a pre-filtered queue
-   * Used by push notification handler to open messages directly
-   */
-  const openViewerWithQueue = useCallback((messages: typeof inbox) => {
-    if (messages.length === 0) return;
-
-    const senderId = messages[0]?.senderId;
-    if (!senderId) return;
-
-    setViewer({ friendId: senderId, queue: messages, index: 0 });
-  }, []);
-
-  const closeViewer = useCallback(() => {
-    // Best-effort cleanup: once the viewer closes, delete any messages that are
-    // now fully read (this includes deleting the underlying UploadThing file).
-    //
-    // This is intentionally done *after* viewing so the media URL isn't deleted
-    // while the client is still loading it.
-    if (viewer) {
-      const messageIds = new Set<string>();
-      for (const msg of viewer.queue) {
-        if (msg?.messageId) messageIds.add(msg.messageId);
-      }
-      for (const messageId of messageIds) {
-        cleanupMessage({ messageId });
-      }
-    }
-
-    setViewer(null);
-    // Clear any remaining notifications when closing viewer
-    void Notifications.dismissAllNotificationsAsync();
-  }, [cleanupMessage, viewer]);
-
-  // Handle hardware back button when viewer is open
-  useEffect(() => {
-    if (!viewer) return;
-
-    const onBackPress = () => {
-      closeViewer();
-      return true; // Prevent default behavior
-    };
-
-    const backHandler = BackHandler.addEventListener(
-      "hardwareBackPress",
-      onBackPress,
-    );
-
-    return () => backHandler.remove();
-  }, [viewer, closeViewer]);
+  const {
+    viewer,
+    inbox,
+    openViewer,
+    openViewerWithQueue,
+    closeViewer,
+    onViewerTap,
+  } = useMessageViewerState({
+    inboxRaw,
+    utils,
+    markAsRead: (deliveryId) => markRead.mutate({ deliveryId }),
+    cleanupMessage,
+  });
 
   // Handle hardware back button when in send mode (has media)
   useEffect(() => {
@@ -480,29 +215,6 @@ export default function FriendsScreen() {
 
     return () => backHandler.remove();
   }, [hasMedia, mediaParams, navigation]);
-
-  /**
-   * Handles taps on the message viewer
-   * Expected behavior:
-   * - Advance to next message in queue
-   * - Mark the new message as read immediately
-   * - If no more messages in queue, close the viewer
-   * - This creates a "story-style" viewing experience
-   */
-  const onViewerTap = () => {
-    if (!viewer) return;
-    const nextIndex = viewer.index + 1;
-    if (nextIndex < viewer.queue.length) {
-      setViewer({ ...viewer, index: nextIndex });
-      // Mark the next message as read when advancing
-      const nextMessage = viewer.queue[nextIndex];
-      if (nextMessage?.deliveryId) {
-        markRead.mutate({ deliveryId: nextMessage.deliveryId });
-      }
-    } else {
-      closeViewer();
-    }
-  };
 
   /**
    * Friend List Rows - Expected Behavior
@@ -534,16 +246,10 @@ export default function FriendsScreen() {
 
     return friends.map((f) => {
       const isSelf = selfUserId != null && f.id === selfUserId;
-      const streak = (f as unknown as { streak?: number }).streak ?? 0;
-      const lastActivity = (
-        f as unknown as { lastActivityTimestamp?: Date | null }
-      ).lastActivityTimestamp;
-      const partnerLastActivity = (
-        f as unknown as { partnerLastActivityTimestamp?: Date | null }
-      ).partnerLastActivityTimestamp;
-      const lastSentOpened =
-        (f as unknown as { lastSentOpened?: boolean | null }).lastSentOpened ??
-        null;
+      const streak = f.streak;
+      const lastActivity = f.lastActivityTimestamp;
+      const partnerLastActivity = f.partnerLastActivityTimestamp;
+      const lastSentOpened = f.lastSentOpened;
 
       const unreadCount = senderToMessages.get(f.id) ?? 0;
       const hasUnread = unreadCount > 0;
@@ -580,7 +286,7 @@ export default function FriendsScreen() {
       const incomingIsLatest = incomingMs > 0 && incomingMs === latestMs;
 
       // Compute Snapchat-style message status
-      let lastMessageStatus: MessageStatus = null;
+      let lastMessageStatus: FriendRow["lastMessageStatus"] = null;
       if (outboxState === "uploading" || outboxState === "failed") {
         // Rendered specially; keep lastMessageStatus null.
         lastMessageStatus = null;
@@ -599,31 +305,26 @@ export default function FriendsScreen() {
 
       // Determine the media kind (photo vs video) of the most relevant message.
       // Priority: outbox (uploading/sent) → inbox (received) → API (sent/opened)
-      let lastMediaKind: MediaKind = "photo";
+      let lastMediaKind: FriendRow["lastMediaKind"] = "photo";
       if (outboxState === "uploading" || outboxState === "sent") {
         lastMediaKind = outbox?.mediaKind ?? "photo";
       } else if (incomingIsLatest && hasUnread) {
         lastMediaKind = mimeToMediaKind(senderToLatestMime.get(f.id));
       } else if (outgoingIsLatest) {
         // Use the API-provided lastMimeType for sent/opened
-        const apiMime = (
-          f as unknown as { lastMimeType?: string | null }
-        ).lastMimeType;
+        const apiMime = f.lastMimeType;
         lastMediaKind = mimeToMediaKind(apiMime);
       } else {
         // received_opened or no activity — use API-provided lastMimeType
-        const apiMime = (
-          f as unknown as { lastMimeType?: string | null }
-        ).lastMimeType;
+        const apiMime = f.lastMimeType;
         lastMediaKind = mimeToMediaKind(apiMime);
       }
 
       return {
         id: f.id,
         name: f.name,
-        image: (f as unknown as { image?: string | null }).image ?? null,
-        discordId:
-          (f as unknown as { discordId?: string | null }).discordId ?? null,
+        image: f.image ?? null,
+        discordId: f.discordId ?? null,
         hasUnread,
         unreadCount,
         isSelected:
@@ -631,8 +332,8 @@ export default function FriendsScreen() {
             ? f.id === mediaParams.defaultRecipientId
             : false,
         streak,
-        lastActivityTimestamp: lastActivity ?? null,
-        partnerLastActivityTimestamp: partnerLastActivity ?? null,
+        lastActivityTimestamp: lastActivity,
+        partnerLastActivityTimestamp: partnerLastActivity,
         hoursRemaining: null, // Calculated during render
         lastMessageStatus,
         lastMediaKind,
@@ -682,66 +383,12 @@ export default function FriendsScreen() {
     return { ...row, hoursRemaining };
   });
 
-  const [selectedFriends, setSelectedFriends] = useState<Set<string>>(
-    new Set(
-      hasMedia && mediaParams?.defaultRecipientId
-        ? [mediaParams.defaultRecipientId]
-        : [],
-    ),
-  );
-
-  // Update selected friends when rows change (on initial load with defaultRecipientId)
-  useEffect(() => {
-    if (hasMedia && mediaParams?.defaultRecipientId) {
-      setSelectedFriends(new Set([mediaParams.defaultRecipientId]));
-    }
-  }, [hasMedia, mediaParams?.defaultRecipientId]);
-
-  /**
-   * Sync Viewer Queue with Inbox - Expected Behavior
-   * =================================================
-   * When the inbox updates (e.g., after refetching or receiving new messages),
-   * we need to check if the viewer should be updated with new messages.
-   *
-   * Expected:
-   * - If user is viewing messages and friend sends more, add them to viewer queue
-   * - Preserve current viewing position (don't skip to new messages)
-   * - Remove new messages from inbox since they're now in viewer
-   * - This enables continuous viewing without closing/reopening
-   */
-  useEffect(() => {
-    if (!viewer || viewer.queue.length === 0) return;
-
-    // Find all messages from the current friend in inbox
-    const inboxMessages = inbox.filter(
-      (m) => m && m.senderId === viewer.friendId,
-    );
-
-    // If inbox has more messages than viewer queue, someone sent multiple messages
-    // Update the viewer queue to include all messages
-    if (inboxMessages.length > viewer.queue.length) {
-      console.log("Inbox has new messages, updating viewer queue");
-
-      // Find the current message we're viewing
-      const currentMessage = viewer.queue[viewer.index];
-      const matchingIndex = currentMessage
-        ? inboxMessages.findIndex(
-            (m) => m?.messageId === currentMessage.messageId,
-          )
-        : 0;
-
-      setViewer({
-        ...viewer,
-        queue: inboxMessages,
-        index: matchingIndex >= 0 ? matchingIndex : viewer.index,
-      });
-
-      // Remove from inbox (already viewing)
-      utils.messages.inbox.setData(undefined, (old) =>
-        old ? old.filter((m) => m && m.senderId !== viewer.friendId) : [],
-      );
-    }
-  }, [inbox, viewer, utils]);
+  const { selectedFriends, toggleFriend, rasterizedImagePath } =
+    useSendModeSelection({
+      hasMedia,
+      defaultRecipientId: mediaParams?.defaultRecipientId,
+      rasterizationPromise: mediaParams?.rasterizationPromise,
+    });
 
   /**
    * Handle opening messages from push notifications
@@ -766,18 +413,6 @@ export default function FriendsScreen() {
       refetchInbox().then((result) => ({ data: result.data })),
   });
 
-  function toggleFriend(id: string) {
-    setSelectedFriends((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
-  }
-
   const filteredRows = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (q.length === 0) return rowsWithTimeRemaining;
@@ -786,183 +421,70 @@ export default function FriendsScreen() {
     );
   }, [rowsWithTimeRemaining, searchQuery]);
 
-  // Wait for rasterization to complete and use rasterized image
-  const [rasterizedImagePath, setRasterizedImagePath] = useState<string | null>(
-    null,
-  );
-
-  useEffect(() => {
-    if (mediaParams?.rasterizationPromise) {
-      void mediaParams.rasterizationPromise.then((path) => {
-        // Use requestAnimationFrame to batch the state update with the next frame
-        requestAnimationFrame(() => {
-          setRasterizedImagePath(path);
-        });
-      });
-    }
-  }, [mediaParams?.rasterizationPromise]);
-
-  const numSelected = selectedFriends.size;
-
   const isLoading = friendsLoading || inboxLoading;
 
   // Send mode: Show media preview, search, and send button
   if (hasMedia) {
     return (
-      <View
-        className="flex-1 bg-background"
-        style={{
-          paddingTop: insets.top,
-          paddingBottom: insets.bottom,
-          paddingLeft: insets.left,
-          paddingRight: insets.right,
+      <SendModePanel
+        insets={insets}
+        mediaPath={mediaParams?.path ?? null}
+        rasterizedImagePath={rasterizedImagePath}
+        captionsCount={mediaParams?.captions?.length ?? 0}
+        thumbhash={mediaParams?.thumbhash}
+        searchQuery={searchQuery}
+        onChangeSearchQuery={setSearchQuery}
+        isLoading={isLoading}
+        rows={filteredRows}
+        selectedFriends={selectedFriends}
+        toggleFriend={toggleFriend}
+        onBack={() => {
+          // If we came from the Media screen with media params, go back to Media
+          if (mediaParams?.path && mediaParams.type) {
+            navigation.navigate("Media", {
+              path: mediaParams.path,
+              type: mediaParams.type,
+              defaultRecipientId: mediaParams.defaultRecipientId,
+              captions: mediaParams.captions,
+            });
+          } else {
+            navigation.goBack();
+          }
         }}
-      >
-        <View className="flex-1" style={{ minHeight: 0 }}>
-          <View
-            className="flex w-full flex-row items-center gap-4 px-4 py-4"
-            style={{ flexShrink: 0 }}
-          >
-            <View className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-md bg-secondary">
-              <Image
-                source={
-                  rasterizedImagePath
-                    ? { uri: `file://${rasterizedImagePath}` }
-                    : mediaParams?.captions && mediaParams.captions.length > 0
-                      ? mediaParams.thumbhash
-                        ? { thumbhash: mediaParams.thumbhash }
-                        : undefined
-                      : mediaParams?.path
-                        ? { uri: `file://${mediaParams.path}` }
-                        : undefined
-                }
-                style={{ width: 64, height: 64 }}
-                contentFit="cover"
-                cachePolicy="memory-disk"
-                transition={200}
-              />
-            </View>
-            <Input
-              placeholder="Send to…"
-              className="w-auto flex-1"
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-            />
-          </View>
+        onSend={async (recipients) => {
+          // mediaParams.type and path must exist if we're in send mode
+          if (mediaParams?.type && mediaParams.path) {
+            // Mark pending immediately (even if we're still rasterizing/prepping).
+            markWhispUploading(recipients);
 
-          {isLoading ? (
-            <View className="mt-4">
-              <FriendsListSkeletonVaried />
-            </View>
-          ) : (
-            <FlatList
-              className="flex-1"
-              data={filteredRows}
-              keyExtractor={(item) => item.id}
-              renderItem={({ item }) => (
-                <Pressable
-                  className="flex-row items-center justify-between px-4"
-                  style={{ minHeight: 56 }}
-                  onPress={() => toggleFriend(item.id)}
-                  android_ripple={{ color: "rgba(128,128,128,0.12)" }}
-                >
-                  <View className="flex-row items-center gap-3 py-2">
-                    <Avatar
-                      userId={item.id}
-                      image={item.image}
-                      name={item.name}
-                      size={44}
-                    />
-                    <Text className="text-base">{item.name}</Text>
-                  </View>
-                  <View
-                    className={
-                      selectedFriends.has(item.id)
-                        ? "size-6 items-center justify-center rounded-full bg-primary"
-                        : "size-6 rounded-full border-2 border-border"
-                    }
-                  >
-                    {selectedFriends.has(item.id) && (
-                      <Ionicons name="checkmark" size={14} color="#fff" />
-                    )}
-                  </View>
-                </Pressable>
-              )}
-              ItemSeparatorComponent={() => (
-                <View className="ml-[68px] h-px bg-border" />
-              )}
-            />
-          )}
+            let finalUri = `file://${mediaParams.path}`;
 
-          <View className="flex flex-row gap-2 px-4 py-3">
-            <Button
-              variant="secondary"
-              className="w-1/2"
-              onPress={() => {
-                // If we came from the Media screen with media params, go back to Media
-                if (mediaParams?.path && mediaParams.type) {
-                  navigation.navigate("Media", {
-                    path: mediaParams.path,
-                    type: mediaParams.type,
-                    defaultRecipientId: mediaParams.defaultRecipientId,
-                    captions: mediaParams.captions,
-                  });
-                } else {
-                  navigation.goBack();
-                }
-              }}
-            >
-              <Text>Back</Text>
-            </Button>
-            <Button
-              className="w-1/2"
-              disabled={numSelected === 0}
-              onPress={async () => {
-                // mediaParams.type and path must exist if we're in send mode
-                if (mediaParams?.type && mediaParams.path) {
-                  const recipients = Array.from(selectedFriends);
-                  // Mark pending immediately (even if we're still rasterizing/prepping).
-                  markWhispUploading(recipients);
+            // If there's a rasterization promise, wait for it to complete
+            if (mediaParams.rasterizationPromise) {
+              console.log("[Friends] Waiting for background rasterization...");
+              try {
+                const rasterizedUri = await mediaParams.rasterizationPromise;
+                finalUri = rasterizedUri;
+                console.log("[Friends] Using rasterized image:", finalUri);
+              } catch (error) {
+                console.error(
+                  "[Friends] Rasterization failed, using original:",
+                  error,
+                );
+                // Fall back to original if rasterization fails
+              }
+            }
 
-                  let finalUri = `file://${mediaParams.path}`;
-
-                  // If there's a rasterization promise, wait for it to complete
-                  if (mediaParams.rasterizationPromise) {
-                    console.log(
-                      "[Friends] Waiting for background rasterization...",
-                    );
-                    try {
-                      const rasterizedUri =
-                        await mediaParams.rasterizationPromise;
-                      finalUri = rasterizedUri;
-                      console.log(
-                        "[Friends] Using rasterized image:",
-                        finalUri,
-                      );
-                    } catch (error) {
-                      console.error(
-                        "[Friends] Rasterization failed, using original:",
-                        error,
-                      );
-                      // Fall back to original if rasterization fails
-                    }
-                  }
-
-                  void uploadMedia({
-                    uri: finalUri,
-                    type: mediaParams.type,
-                    recipients,
-                  });
-                  // Navigate immediately, don't wait for upload
-                  navigation.reset({ index: 0, routes: [{ name: "Main" }] });
-                }
-              }}
-            >
-              <Text>{numSelected > 0 ? `Send (${numSelected})` : "Send"}</Text>
-            </Button>
-          </View>
-        </View>
-      </View>
+            void uploadMedia({
+              uri: finalUri,
+              type: mediaParams.type,
+              recipients,
+            });
+            // Navigate immediately, don't wait for upload
+            navigation.reset({ index: 0, routes: [{ name: "Main" }] });
+          }
+        }}
+      />
     );
   }
 
@@ -979,19 +501,10 @@ export default function FriendsScreen() {
         }}
       >
         <View className="h-full w-full">
-          <View className="relative items-center px-4 py-3 pb-4">
-            <Text className="text-lg font-semibold">Friends</Text>
-            <Pressable
-              onPress={() => setShowAddFriends(!showAddFriends)}
-              className="absolute right-4 top-3 h-10 w-10 items-center justify-center rounded-full bg-secondary"
-            >
-              <Ionicons
-                name={showAddFriends ? "close" : "person-add-outline"}
-                size={20}
-                color="#888"
-              />
-            </Pressable>
-          </View>
+          <FriendsHeader
+            showAddFriends={showAddFriends}
+            onToggleAddFriends={() => setShowAddFriends(!showAddFriends)}
+          />
 
           {isLoading ? (
             <FriendsListSkeletonVaried />
@@ -1000,437 +513,75 @@ export default function FriendsScreen() {
               <AddFriendsPanel />
             </View>
           ) : (
-            <FlatList
-              data={filteredRows}
-              keyExtractor={(item) => item.id}
-              refreshControl={
-                <RefreshControl
-                  refreshing={isRefreshing}
-                  onRefresh={onRefresh}
-                />
-              }
-              renderItem={({ item }) => (
-                <Pressable
-                  className="flex-row items-center px-4"
-                  style={{ minHeight: 68 }}
-                  onPress={() => {
-                    if (item.unreadCount > 0) openViewer(item.id);
-                    else {
-                      navigation.navigate("Camera", {
-                        defaultRecipientId: item.id,
-                      });
-                    }
-                  }}
-                  delayLongPress={300}
-                  onLongPress={() => {
-                    void Haptics.impactAsync(
-                      Haptics.ImpactFeedbackStyle.Medium,
-                    );
-                    setSelectedFriend(item);
-                    bottomSheetRef.current?.present();
-                  }}
-                  android_ripple={{ color: "rgba(128,128,128,0.12)" }}
-                >
-                  <Avatar
-                    userId={item.id}
-                    image={item.image}
-                    name={item.name}
-                    size={44}
-                  />
-                  <View className="ml-3 flex-1 justify-center py-3">
-                    {/* Top line: Name + streak */}
-                    <View className="flex-row items-center justify-between">
-                      <View className="flex-1 flex-row items-center">
-                        <Text
-                          className={cn(
-                            "text-base",
-                            item.lastMessageStatus === "received" &&
-                              "font-semibold",
-                          )}
-                          numberOfLines={1}
-                        >
-                          {item.name}
-                        </Text>
-                        {item.streak > 0 && (
-                          <View className="ml-1.5 flex-row items-center">
-                            <Image
-                              style={{ width: 20, height: 20, margin: -4 }}
-                              source={whispLogo}
-                              contentFit="contain"
-                            />
-                            <Text className="ml-0.5 text-sm font-semibold tabular-nums text-foreground">
-                              {item.streak}
-                            </Text>
-                            {item.hoursRemaining !== null &&
-                              item.hoursRemaining < 4 && (
-                                <Ionicons
-                                  name="hourglass"
-                                  size={12}
-                                  color={
-                                    colorScheme === "dark" ? "#fff" : "#000"
-                                  }
-                                  style={{ marginLeft: 2 }}
-                                />
-                              )}
-                          </View>
-                        )}
-                      </View>
-                      {item.hasUnread && (
-                        <View className="ml-2 items-center justify-center rounded-full bg-primary px-2 py-0.5">
-                          <Text className="text-xs font-semibold tabular-nums text-primary-foreground">
-                            {item.unreadCount}
-                          </Text>
-                        </View>
-                      )}
-                    </View>
-
-                    {/* Bottom line: Status icon + text + timestamp */}
-                    {item.outboxState === "uploading" ? (
-                      <View className="mt-0.5 flex-row items-center gap-1.5">
-                        <ActivityIndicator
-                          size="small"
-                          color={colorScheme === "dark" ? "#9ca3af" : "#6b7280"}
-                        />
-                        <Text className="text-xs text-muted-foreground">
-                          Sending...
-                        </Text>
-                      </View>
-                    ) : item.outboxState === "failed" ? (
-                      <View className="mt-0.5 flex-row items-center gap-1.5">
-                        <Ionicons
-                          name="alert-circle-outline"
-                          size={14}
-                          color="#ef4444"
-                        />
-                        <Text className="text-xs font-semibold text-destructive">
-                          Failed to send
-                        </Text>
-                      </View>
-                    ) : item.lastMessageStatus ? (
-                      <View className="mt-0.5 flex-row items-center gap-1.5">
-                        <MessageStatusIcon
-                          status={item.lastMessageStatus}
-                          mediaKind={item.lastMediaKind}
-                        />
-                        <Text
-                          className={cn(
-                            "text-xs",
-                            item.lastMessageStatus === "received"
-                              ? "font-semibold"
-                              : "text-muted-foreground",
-                          )}
-                          style={
-                            item.lastMessageStatus === "received"
-                              ? { color: mediaKindColor(item.lastMediaKind) }
-                              : undefined
-                          }
-                        >
-                          {getStatusText(
-                            item.lastMessageStatus,
-                            item.lastMediaKind,
-                          )}
-                        </Text>
-                        {item.lastMessageAt && (
-                          <Text className="text-xs text-muted-foreground">
-                            {"· "}
-                            {getRelativeTime(item.lastMessageAt)}
-                          </Text>
-                        )}
-                      </View>
-                    ) : (
-                      <Text className="mt-0.5 text-xs text-muted-foreground">
-                        Tap to send a whisp
-                      </Text>
-                    )}
-                  </View>
-                </Pressable>
-              )}
-              ItemSeparatorComponent={() => (
-                <View className="ml-[68px] h-px bg-border" />
-              )}
+            <FriendsList
+              rows={filteredRows}
+              isRefreshing={isRefreshing}
+              onRefresh={onRefresh}
+              whispLogo={whispLogo}
+              colorScheme={colorScheme}
+              onPressRow={(item) => {
+                if (item.unreadCount > 0) openViewer(item.id);
+                else {
+                  navigation.navigate("Camera", {
+                    defaultRecipientId: item.id,
+                  });
+                }
+              }}
+              onLongPressRow={(item) => {
+                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                setSelectedFriend(item);
+                bottomSheetRef.current?.present();
+              }}
             />
           )}
         </View>
       </View>
 
       {/* Message viewer modal */}
-      <Modal
-        visible={Boolean(viewer)}
-        transparent={false}
-        animationType="fade"
+      <MessageViewerModal
+        viewer={viewer}
+        insetsTop={insets.top}
         onRequestClose={closeViewer}
-      >
-        <TouchableWithoutFeedback onPress={onViewerTap}>
-          <View className="flex-1 bg-black">
-            {viewer && (
-              <View
-                pointerEvents="none"
-                style={{
-                  position: "absolute",
-                  top: insets.top + 10,
-                  left: 12,
-                  right: 12,
-                  zIndex: 50,
-                  flexDirection: "row",
-                  alignItems: "center",
-                }}
-              >
-                {viewer.queue.map((msg, idx) => {
-                  const fill =
-                    idx < viewer.index
-                      ? 1
-                      : idx > viewer.index
-                        ? 0
-                        : // While loading, show a small fill so the bar isn't "invisible".
-                          // For video, this will be driven by playback status once loaded.
-                          viewerMediaLoaded
-                          ? viewerMediaProgress
-                          : viewerMediaErrored
-                            ? 1
-                            : 0.12;
-
-                  return (
-                    <View
-                      key={msg?.deliveryId ?? msg?.messageId ?? `seg-${idx}`}
-                      style={{
-                        flex: 1,
-                        height: 3,
-                        borderRadius: 2,
-                        overflow: "hidden",
-                        backgroundColor: "rgba(255,255,255,0.28)",
-                        marginRight: idx === viewer.queue.length - 1 ? 0 : 4,
-                      }}
-                    >
-                      <View
-                        style={{
-                          height: "100%",
-                          width: `${Math.min(1, Math.max(0, fill)) * 100}%`,
-                          backgroundColor: "rgba(255,255,255,0.92)",
-                        }}
-                      />
-                    </View>
-                  );
-                })}
-              </View>
-            )}
-
-            {viewer?.queue[viewer.index]
-              ? (() => {
-                  const m = viewer.queue[viewer.index];
-                  if (!m) return null;
-                  const isVideo = isVideoMime(m.mimeType);
-                  console.log("Rendering message:", {
-                    isVideo,
-                    mimeType: m.mimeType,
-                    fileUrl: m.fileUrl,
-                    hasThumbhash: !!m.thumbhash,
-                  });
-                  return isVideo ? (
-                    <View style={{ width: "100%", height: "100%" }}>
-                      {/* Show thumbhash as background while video loads */}
-                      {m.thumbhash && (
-                        <Image
-                          placeholder={{ thumbhash: m.thumbhash }}
-                          style={{
-                            width: "100%",
-                            height: "100%",
-                            position: "absolute",
-                          }}
-                          contentFit="cover"
-                        />
-                      )}
-                      {/* Video renders on top */}
-                      <Video
-                        ref={videoRef}
-                        source={{ uri: m.fileUrl }}
-                        style={{ width: "100%", height: "100%" }}
-                        resizeMode={ResizeMode.COVER}
-                        shouldPlay
-                        isLooping={true}
-                        useNativeControls={false}
-                        onPlaybackStatusUpdate={(status: AVPlaybackStatus) => {
-                          if (!status.isLoaded) return;
-                          const duration = status.durationMillis ?? 0;
-                          if (duration <= 0) return;
-                          const progress = status.positionMillis / duration;
-                          setViewerMediaProgress(
-                            Math.min(1, Math.max(0, progress)),
-                          );
-                        }}
-                        onLoad={async () => {
-                          setViewerMediaLoaded(true);
-                          // Ensure video plays once loaded
-                          console.log("Video loaded, attempting to play");
-                          try {
-                            const status =
-                              await videoRef.current?.getStatusAsync();
-                            console.log("Video status:", status);
-                            await videoRef.current?.playAsync();
-                            console.log("Video play called");
-                          } catch (err) {
-                            console.error("Error playing video:", err);
-                          }
-                        }}
-                        onError={(error) => {
-                          setViewerMediaErrored(true);
-                          setViewerMediaLoaded(true);
-                          setViewerMediaProgress(1);
-                          console.error("Video error:", error);
-                        }}
-                      />
-                    </View>
-                  ) : (
-                    <Image
-                      source={{ uri: m.fileUrl }}
-                      style={{ width: "100%", height: "100%" }}
-                      contentFit="cover"
-                      placeholder={
-                        m.thumbhash ? { thumbhash: m.thumbhash } : undefined
-                      }
-                      onLoad={() => {
-                        setViewerMediaLoaded(true);
-                        setViewerMediaProgress(1);
-                      }}
-                      onError={() => {
-                        setViewerMediaErrored(true);
-                        setViewerMediaLoaded(true);
-                        setViewerMediaProgress(1);
-                      }}
-                    />
-                  );
-                })()
-              : null}
-          </View>
-        </TouchableWithoutFeedback>
-      </Modal>
+        onTap={onViewerTap}
+      />
 
       {/* Friend actions bottom sheet */}
-      <BottomSheetModal
-        ref={bottomSheetRef}
-        enableDynamicSizing
-        enablePanDownToClose
-        enableDismissOnClose
-        backdropComponent={renderBackdrop}
-        onDismiss={() => {
-          console.log(
-            "BottomSheet onDismiss, isShowingDialog:",
-            isShowingDialogRef.current,
-            "selectedFriend:",
-            selectedFriend,
-          );
-          // Only clear if dialog is not showing (use ref for synchronous check)
-          if (!isShowingDialogRef.current) {
-            console.log("Clearing selectedFriend in onDismiss");
-            setSelectedFriend(null);
+      <FriendActionsSheet
+        bottomSheetRef={bottomSheetRef}
+        renderBackdrop={renderBackdrop}
+        selectedFriend={selectedFriend}
+        isShowingDialogRef={isShowingDialogRef}
+        clearSelectedFriend={() => setSelectedFriend(null)}
+        onSendWhisp={(friend) => {
+          if (friend.unreadCount > 0) openViewer(friend.id);
+          else {
+            navigation.navigate("Camera", {
+              defaultRecipientId: friend.id,
+            });
           }
         }}
-        backgroundStyle={{ backgroundColor: "#171717" }}
-        handleIndicatorStyle={{ backgroundColor: "#525252" }}
-      >
-        <BottomSheetView className="px-4 pb-8 pt-2">
-          <Text className="mb-3 px-2 text-sm font-medium text-muted-foreground">
-            {selectedFriend?.name}
-          </Text>
+        onViewDiscordProfile={(discordId) => {
+          void Linking.openURL(`https://discord.com/users/${discordId}`);
+        }}
+        onRemoveFriend={() => setShowRemoveDialog(true)}
+      />
 
-          <Pressable
-            className="flex-row items-center gap-3 rounded-lg px-3 py-3 active:bg-accent"
-            onPress={() => {
-              if (selectedFriend) {
-                if (selectedFriend.unreadCount > 0) {
-                  openViewer(selectedFriend.id);
-                } else {
-                  navigation.navigate("Camera", {
-                    defaultRecipientId: selectedFriend.id,
-                  });
-                }
-                bottomSheetRef.current?.close();
-              }
-            }}
-          >
-            <Ionicons name="camera" size={22} color="#666" />
-            <Text className="text-base">Send whisp</Text>
-          </Pressable>
-
-          {selectedFriend?.discordId && (
-            <Pressable
-              className="flex-row items-center gap-3 rounded-lg px-3 py-3 active:bg-accent"
-              onPress={() => {
-                if (selectedFriend.discordId) {
-                  void Linking.openURL(
-                    `https://discord.com/users/${selectedFriend.discordId}`,
-                  );
-                  bottomSheetRef.current?.close();
-                }
-              }}
-            >
-              <MaterialIcons name="discord" size={22} color="#666" />
-              <Text className="text-base">View Discord Profile</Text>
-            </Pressable>
-          )}
-
-          <Pressable
-            className="flex-row items-center gap-3 rounded-lg px-3 py-3 active:bg-accent"
-            onPress={() => {
-              console.log(
-                "Remove Friend pressed, selectedFriend:",
-                selectedFriend,
-              );
-              // Use ref to track dialog state synchronously
-              isShowingDialogRef.current = true;
-              setShowRemoveDialog(true);
-              bottomSheetRef.current?.close();
-            }}
-          >
-            <Ionicons name="person-remove-outline" size={22} color="#ef4444" />
-            <Text className="text-base text-destructive">Remove Friend</Text>
-          </Pressable>
-        </BottomSheetView>
-      </BottomSheetModal>
-
-      {/* Remove friend confirmation dialog */}
-      <AlertDialog
+      <RemoveFriendDialog
         open={showRemoveDialog}
-        onOpenChange={(open) => {
-          console.log(
-            "AlertDialog onOpenChange:",
-            open,
-            "selectedFriend:",
-            selectedFriend,
-          );
-          setShowRemoveDialog(open);
-          isShowingDialogRef.current = open;
-          // Clear selected friend when dialog closes
-          if (!open) {
-            setTimeout(() => {
-              setSelectedFriend(null);
-            }, 300);
+        setOpen={setShowRemoveDialog}
+        selectedFriend={selectedFriend}
+        isShowingDialogRef={isShowingDialogRef}
+        clearSelectedFriendAfterDelay={() => {
+          setTimeout(() => {
+            setSelectedFriend(null);
+          }, 300);
+        }}
+        onConfirmRemove={() => {
+          if (selectedFriend) {
+            removeFriend.mutate({ friendId: selectedFriend.id });
           }
         }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Remove Friend</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to remove {selectedFriend?.name} from your
-              friends list? This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>
-              <Text>Cancel</Text>
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onPress={() => {
-                if (selectedFriend) {
-                  removeFriend.mutate({ friendId: selectedFriend.id });
-                }
-              }}
-            >
-              <Text>Remove</Text>
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      />
     </>
   );
 }

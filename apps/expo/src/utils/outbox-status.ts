@@ -1,6 +1,6 @@
-export type { MediaKind } from "./media-kind";
-
 import type { MediaKind } from "./media-kind";
+
+export type { MediaKind } from "./media-kind";
 
 export type OutboxState = "uploading" | "sent" | "failed";
 
@@ -34,11 +34,7 @@ export function getOutboxStatusSnapshot(): Snapshot {
   return Object.fromEntries(statuses.entries());
 }
 
-function setMany(
-  userIds: string[],
-  state: OutboxState,
-  mediaKind?: MediaKind,
-) {
+function setMany(userIds: string[], state: OutboxState, mediaKind?: MediaKind) {
   const now = Date.now();
   for (const id of userIds) {
     statuses.set(id, { state, updatedAtMs: now, mediaKind });
@@ -68,10 +64,7 @@ export function markWhispUploading(
   setMany(recipientIds, "uploading", mediaKind);
 }
 
-export function markWhispSent(
-  recipientIds: string[],
-  mediaKind?: MediaKind,
-) {
+export function markWhispSent(recipientIds: string[], mediaKind?: MediaKind) {
   setMany(recipientIds, "sent", mediaKind);
   // Give the friends list time to refetch/settle; then stop overriding.
   clearManyAfter(recipientIds, 30_000);

@@ -9,10 +9,8 @@
 export type MediaKind = "photo" | "video";
 
 /** Derive {@link MediaKind} from a MIME-type string. Defaults to `"photo"`. */
-export function mimeToMediaKind(
-  mime: string | null | undefined,
-): MediaKind {
-  if (mime && mime.startsWith("video/")) return "video";
+export function mimeToMediaKind(mime: string | null | undefined): MediaKind {
+  if (mime?.startsWith("video/")) return "video";
   return "photo";
 }
 

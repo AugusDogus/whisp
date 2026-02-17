@@ -234,10 +234,7 @@ export const friendsRouter = {
         .orderBy(desc(MessageDelivery.createdAt));
 
       // Pick only the most recent delivery per recipient
-      const latestPerRecipient = new Map<
-        string,
-        { messageId: string }
-      >();
+      const latestPerRecipient = new Map<string, { messageId: string }>();
       for (const d of deliveries) {
         if (!latestPerRecipient.has(d.recipientId)) {
           latestPerRecipient.set(d.recipientId, {
@@ -248,9 +245,7 @@ export const friendsRouter = {
 
       // Fetch mimeType for those messages
       const messageIds = [
-        ...new Set(
-          [...latestPerRecipient.values()].map((v) => v.messageId),
-        ),
+        ...new Set([...latestPerRecipient.values()].map((v) => v.messageId)),
       ];
       if (messageIds.length > 0) {
         const msgs = await ctx.db
@@ -260,10 +255,7 @@ export const friendsRouter = {
         const msgMimeMap = new Map(msgs.map((m) => [m.id, m.mimeType]));
 
         for (const [recipientId, { messageId }] of latestPerRecipient) {
-          lastSentMimeMap.set(
-            recipientId,
-            msgMimeMap.get(messageId) ?? null,
-          );
+          lastSentMimeMap.set(recipientId, msgMimeMap.get(messageId) ?? null);
         }
       }
     }

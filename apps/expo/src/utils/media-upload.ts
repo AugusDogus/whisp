@@ -3,8 +3,8 @@ import * as VideoThumbnails from "expo-video-thumbnails";
 import { toast } from "sonner-native";
 
 import type { FriendsListOutput } from "~/utils/api";
-import { queryClient } from "~/utils/api";
 import type { MediaKind } from "~/utils/media-kind";
+import { queryClient } from "~/utils/api";
 import {
   markWhispFailed,
   markWhispSent,
