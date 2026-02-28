@@ -1,9 +1,9 @@
 import type { TRPCRouterRecord } from "@trpc/server";
 import { z } from "zod/v4";
 
+import { and, desc, eq, inArray, isNull, or } from "@acme/db";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- used for typeof in getFriendIds
 import { db } from "@acme/db/client";
-import { and, desc, eq, inArray, isNull, or } from "@acme/db";
 import {
   account as Account,
   Friendship,
@@ -142,12 +142,7 @@ export const groupsRouter = {
         createdAt: Message.createdAt,
       })
       .from(Message)
-      .where(
-        and(
-          inArray(Message.groupId, groupIds),
-          isNull(Message.deletedAt),
-        ),
-      )
+      .where(and(inArray(Message.groupId, groupIds), isNull(Message.deletedAt)))
       .orderBy(desc(Message.createdAt));
 
     const groupToLastAt = new Map<string, Date>();
@@ -175,7 +170,10 @@ export const groupsRouter = {
     const groupToLastSentAt = new Map<string, Date>();
     for (const m of lastSentMessages) {
       if (m.groupId && !groupToLastSentAt.has(m.groupId)) {
-        groupToLastSentAt.set(m.groupId, groupToLastAt.get(m.groupId) ?? new Date());
+        groupToLastSentAt.set(
+          m.groupId,
+          groupToLastAt.get(m.groupId) ?? new Date(),
+        );
       }
     }
 
@@ -373,15 +371,16 @@ export const groupsRouter = {
             ),
           )
       )[0];
-      if (!membership) return [] as {
-        deliveryId: string;
-        messageId: string;
-        senderId: string;
-        fileUrl: string;
-        mimeType?: string;
-        thumbhash?: string;
-        createdAt: Date;
-      }[];
+      if (!membership)
+        return [] as {
+          deliveryId: string;
+          messageId: string;
+          senderId: string;
+          fileUrl: string;
+          mimeType?: string;
+          thumbhash?: string;
+          createdAt: Date;
+        }[];
 
       const deliveries = await ctx.db
         .select()

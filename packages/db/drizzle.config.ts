@@ -1,10 +1,7 @@
 import type { Config } from "drizzle-kit";
 
 // generate does not connect to DB; push/studio require credentials
-if (
-  process.argv.includes("push") ||
-  process.argv.includes("studio")
-) {
+if (process.argv.includes("push") || process.argv.includes("studio")) {
   if (!process.env.DATABASE_URL || !process.env.DATABASE_TOKEN) {
     throw new Error("Missing Database configuration");
   }

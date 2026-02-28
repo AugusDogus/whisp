@@ -3,11 +3,11 @@ import { FlatList, Pressable, RefreshControl, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
 import type { FriendRow, GroupRow } from "./types";
-import { FriendListRow } from "./FriendListRow";
-import { getRelativeTime } from "./friendsTime";
 import { GroupAvatar } from "~/components/ui/group-avatar";
 import { Text } from "~/components/ui/text";
 import { mediaKindColor } from "~/utils/media-kind";
+import { FriendListRow } from "./FriendListRow";
+import { getRelativeTime } from "./friendsTime";
 
 function GroupListRow({
   group,
@@ -54,10 +54,7 @@ function GroupListRow({
                   backgroundColor: color,
                 }}
               />
-              <Text
-                className="text-xs font-semibold"
-                style={{ color }}
-              >
+              <Text className="text-xs font-semibold" style={{ color }}>
                 New Whisp
               </Text>
               {group.lastMessageAt && (
@@ -70,9 +67,7 @@ function GroupListRow({
           ) : group.lastSentByMe && group.lastMessageAt ? (
             <>
               <Ionicons name="arrow-redo" size={14} color={color} />
-              <Text className="text-xs text-muted-foreground">
-                Sent
-              </Text>
+              <Text className="text-xs text-muted-foreground">Sent</Text>
               <Text className="text-xs text-muted-foreground">
                 {"· "}
                 {getRelativeTime(group.lastMessageAt)}
@@ -89,9 +84,7 @@ function GroupListRow({
                   borderColor: "#9ca3af",
                 }}
               />
-              <Text className="text-xs text-muted-foreground">
-                Received
-              </Text>
+              <Text className="text-xs text-muted-foreground">Received</Text>
               <Text className="text-xs text-muted-foreground">
                 {"· "}
                 {getRelativeTime(group.lastMessageAt)}

@@ -1,7 +1,7 @@
 import type { RouteProp } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useState } from "react";
-import { Pressable, ScrollView, View, useColorScheme } from "react-native";
+import { Pressable, ScrollView, useColorScheme, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation, useRoute } from "@react-navigation/native";
@@ -107,7 +107,10 @@ export default function GroupSettingsScreen() {
         </View>
       ) : (
         <>
-          <ScrollView className="flex-1" contentContainerClassName="gap-3 px-4 pb-4">
+          <ScrollView
+            className="flex-1"
+            contentContainerClassName="gap-3 px-4 pb-4"
+          >
             {/* Group name card */}
             <View className="rounded-lg border border-border bg-background p-4 shadow-sm shadow-black/5">
               <View className="flex-row items-center gap-3 pb-3">
@@ -174,9 +177,7 @@ export default function GroupSettingsScreen() {
               <View className="gap-0.5">
                 {group.members.map((member, index) => (
                   <View key={member.id}>
-                    <View
-                      className="flex-row items-center gap-3 py-2"
-                    >
+                    <View className="flex-row items-center gap-3 py-2">
                       <Avatar
                         userId={member.id}
                         image={member.image}
@@ -223,9 +224,7 @@ export default function GroupSettingsScreen() {
                   <AlertDialogCancel>
                     <Text>Cancel</Text>
                   </AlertDialogCancel>
-                  <AlertDialogAction
-                    onPress={() => leave.mutate({ groupId })}
-                  >
+                  <AlertDialogAction onPress={() => leave.mutate({ groupId })}>
                     <Text>Leave</Text>
                   </AlertDialogAction>
                 </AlertDialogFooter>

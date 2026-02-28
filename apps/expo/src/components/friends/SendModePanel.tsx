@@ -144,7 +144,10 @@ export function SendModePanel({
   toggleFriend: (id: string) => void;
   toggleGroup: (groupId: string) => void;
   onBack: () => void;
-  onSend: (opts: { recipients?: string[]; groupId?: string }) => void | Promise<void>;
+  onSend: (opts: {
+    recipients?: string[];
+    groupId?: string;
+  }) => void | Promise<void>;
 }) {
   const hasGroupSelected = selectedGroupId !== null;
   const numFriendsSelected = selectedFriends.size;

@@ -70,7 +70,8 @@ export const Group = sqliteTable("group", (t) => ({
     .primaryKey()
     .$defaultFn(() => crypto.randomUUID()),
   name: t.text().notNull(),
-  createdById: t.text()
+  createdById: t
+    .text()
     .notNull()
     .references(() => user.id, { onDelete: "cascade" }),
   createdAt: t
@@ -85,10 +86,12 @@ export const GroupMember = sqliteTable("group_member", (t) => ({
     .notNull()
     .primaryKey()
     .$defaultFn(() => crypto.randomUUID()),
-  groupId: t.text()
+  groupId: t
+    .text()
     .notNull()
     .references(() => Group.id, { onDelete: "cascade" }),
-  userId: t.text()
+  userId: t
+    .text()
     .notNull()
     .references(() => user.id, { onDelete: "cascade" }),
   joinedAt: t

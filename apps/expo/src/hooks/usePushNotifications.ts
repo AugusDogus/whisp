@@ -64,41 +64,42 @@ export function usePushNotifications(isAuthenticated: boolean) {
           console.log("Navigating to group from notification:", groupId);
           navigationRef.current.navigate("Group", { groupId });
         } else {
-          const senderId = typeof data.senderId === "string" ? data.senderId : "";
+          const senderId =
+            typeof data.senderId === "string" ? data.senderId : "";
           console.log("Navigating to message from sender:", senderId);
           if (navigationRef.current && senderId) {
-          // If we have fileUrl and mimeType in the notification, pass them for instant viewing
-          const params: {
-            openMessageFromSender: string;
-            instantMessage?: {
-              messageId: string;
-              senderId: string;
-              fileUrl: string;
-              mimeType: string;
-              deliveryId: string;
-            };
-          } = { openMessageFromSender: senderId };
+            // If we have fileUrl and mimeType in the notification, pass them for instant viewing
+            const params: {
+              openMessageFromSender: string;
+              instantMessage?: {
+                messageId: string;
+                senderId: string;
+                fileUrl: string;
+                mimeType: string;
+                deliveryId: string;
+              };
+            } = { openMessageFromSender: senderId };
 
-          if (
-            data.fileUrl &&
-            data.mimeType &&
-            data.messageId &&
-            data.deliveryId
-          ) {
-            console.log("Using instant message data from notification");
-            params.instantMessage = {
-              messageId: data.messageId as string,
-              senderId: data.senderId as string,
-              fileUrl: data.fileUrl as string,
-              mimeType: data.mimeType as string,
-              deliveryId: data.deliveryId as string,
-            };
-          }
+            if (
+              data.fileUrl &&
+              data.mimeType &&
+              data.messageId &&
+              data.deliveryId
+            ) {
+              console.log("Using instant message data from notification");
+              params.instantMessage = {
+                messageId: data.messageId as string,
+                senderId: data.senderId as string,
+                fileUrl: data.fileUrl as string,
+                mimeType: data.mimeType as string,
+                deliveryId: data.deliveryId as string,
+              };
+            }
 
-          navigationRef.current.navigate("Main", {
-            screen: "Friends",
-            params,
-          });
+            navigationRef.current.navigate("Main", {
+              screen: "Friends",
+              params,
+            });
           } else {
             console.warn("Navigation ref or senderId not available");
           }

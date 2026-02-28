@@ -1,4 +1,4 @@
-import { Pressable, View, useColorScheme } from "react-native";
+import { Pressable, useColorScheme, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
 import { Text } from "~/components/ui/text";
@@ -33,7 +33,9 @@ export function FriendsHeader({
         <Pressable
           onPress={onToggleAddFriends}
           className="size-10 items-center justify-center rounded-full bg-secondary"
-          accessibilityLabel={showAddFriends ? "Close add friends" : "Add friends"}
+          accessibilityLabel={
+            showAddFriends ? "Close add friends" : "Add friends"
+          }
         >
           <Ionicons
             name={showAddFriends ? "close" : "person-add-outline"}

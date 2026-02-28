@@ -60,10 +60,8 @@ export default function FriendsScreen() {
     refetch: refetchFriends,
     isLoading: friendsLoading,
   } = trpc.friends.list.useQuery();
-  const {
-    data: groups = [],
-    refetch: refetchGroups,
-  } = trpc.groups.list.useQuery();
+  const { data: groups = [], refetch: refetchGroups } =
+    trpc.groups.list.useQuery();
   const {
     data: inboxRaw = [],
     refetch: refetchInbox,
@@ -487,7 +485,8 @@ export default function FriendsScreen() {
         onSend={async (opts) => {
           if (!mediaParams?.type || !mediaParams.path) return;
           const hasGroup = Boolean(opts.groupId);
-          if (!hasGroup && (!opts.recipients || opts.recipients.length === 0)) return;
+          if (!hasGroup && (!opts.recipients || opts.recipients.length === 0))
+            return;
 
           if (!hasGroup && opts.recipients) {
             markWhispUploading(opts.recipients);

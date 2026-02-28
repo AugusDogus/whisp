@@ -43,11 +43,15 @@ export function createUploadRouter({ getSession }: CreateDeps) {
         const hasGroupId = Boolean(input.groupId);
         if (!hasRecipients && !hasGroupId) {
           // eslint-disable-next-line @typescript-eslint/only-throw-error -- UploadThingError
-          throw new UploadThingError("Either recipients or groupId is required");
+          throw new UploadThingError(
+            "Either recipients or groupId is required",
+          );
         }
         if (hasRecipients && hasGroupId) {
           // eslint-disable-next-line @typescript-eslint/only-throw-error -- UploadThingError
-          throw new UploadThingError("Cannot specify both recipients and groupId");
+          throw new UploadThingError(
+            "Cannot specify both recipients and groupId",
+          );
         }
         if (hasGroupId && input.groupId) {
           const [membership] = await db
@@ -87,7 +91,12 @@ export function createUploadRouter({ getSession }: CreateDeps) {
           thumbhash: metadata.thumbhash,
         });
 
-        let deliveries: { id: string; messageId: string; recipientId: string; groupId?: string }[];
+        let deliveries: {
+          id: string;
+          messageId: string;
+          recipientId: string;
+          groupId?: string;
+        }[];
 
         if (isGroupMessage && metadata.groupId) {
           const groupId = metadata.groupId;
@@ -135,7 +144,7 @@ export function createUploadRouter({ getSession }: CreateDeps) {
             columns: { name: true },
           });
         const groupResult: { name: string } | null = groupQuery
-          ? (await groupQuery) ?? null
+          ? ((await groupQuery) ?? null)
           : null;
 
         if (sender) {
