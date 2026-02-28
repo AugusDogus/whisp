@@ -45,6 +45,9 @@ export function usePushNotifications(isAuthenticated: boolean) {
       if (data.type === "message") {
         console.log("Invalidating inbox query before navigation");
         void utils.messages.inbox.invalidate();
+        if (data.groupId) {
+          void utils.groups.list.invalidate();
+        }
       } else if (
         data.type === "friend_request" ||
         data.type === "friend_accept"
@@ -56,12 +59,14 @@ export function usePushNotifications(isAuthenticated: boolean) {
 
       // Handle navigation based on notification type
       if (data.type === "message") {
-        // Navigate to Friends screen with the sender ID to auto-open messages
-        console.log("Navigating to message from sender:", data.senderId);
-
-        // Validate that senderId is a string
-        const senderId = typeof data.senderId === "string" ? data.senderId : "";
-        if (navigationRef.current && senderId) {
+        const groupId = typeof data.groupId === "string" ? data.groupId : null;
+        if (groupId && navigationRef.current) {
+          console.log("Navigating to group from notification:", groupId);
+          navigationRef.current.navigate("Group", { groupId });
+        } else {
+          const senderId = typeof data.senderId === "string" ? data.senderId : "";
+          console.log("Navigating to message from sender:", senderId);
+          if (navigationRef.current && senderId) {
           // If we have fileUrl and mimeType in the notification, pass them for instant viewing
           const params: {
             openMessageFromSender: string;
@@ -94,8 +99,9 @@ export function usePushNotifications(isAuthenticated: boolean) {
             screen: "Friends",
             params,
           });
-        } else {
-          console.warn("Navigation ref or senderId not available");
+          } else {
+            console.warn("Navigation ref or senderId not available");
+          }
         }
       } else if (data.type === "friend_request") {
         // Navigate to Friends screen

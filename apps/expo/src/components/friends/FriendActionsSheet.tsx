@@ -100,7 +100,7 @@ export function FriendActionsSheet({
             bottomSheetRef.current?.close();
           }}
         >
-          <Ionicons name="person-remove-outline" size={22} color="#ef4444" />
+          <Ionicons name="person-remove" size={22} color="#ef4444" />
           <Text className="text-base text-destructive">Remove Friend</Text>
         </Pressable>
       </BottomSheetView>

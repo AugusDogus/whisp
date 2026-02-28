@@ -37,6 +37,7 @@ export const messagesRouter = {
           deliveryId: d.id,
           messageId: d.messageId,
           senderId: m.senderId,
+          groupId: d.groupId ?? undefined,
           fileUrl: m.fileUrl,
           mimeType: m.mimeType ?? undefined,
           thumbhash: m.thumbhash ?? undefined,

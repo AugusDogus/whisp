@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import * as Notifications from "expo-notifications";
 
+import type { InboxMessage } from "~/components/friends/types";
 import type { trpc } from "~/utils/api";
 
 /**
@@ -25,20 +26,6 @@ import type { trpc } from "~/utils/api";
  * - Clear the notification parameter after handling to prevent re-triggering
  */
 
-/**
- * Message structure from the inbox query
- * Note: tRPC returns an array that can contain null values
- */
-type MessageFromSender = {
-  deliveryId: string;
-  messageId: string;
-  senderId: string;
-  fileUrl: string;
-  mimeType: string | undefined;
-  thumbhash: string | undefined;
-  createdAt: Date;
-} | null;
-
 interface InstantMessage {
   messageId: string;
   senderId: string;
@@ -54,7 +41,7 @@ interface UseMessageFromNotificationParams {
   /** Optional instant message data included in the notification */
   instantMessage: InstantMessage | undefined;
   /** Current inbox messages */
-  inbox: MessageFromSender[];
+  inbox: InboxMessage[];
   /** Whether inbox is currently loading */
   inboxLoading: boolean;
   /** Whether message viewer is currently open */
@@ -64,11 +51,11 @@ interface UseMessageFromNotificationParams {
   /** Navigation function to clear parameters */
   clearParams: () => void;
   /** Function to open the message viewer */
-  openViewer: (messages: MessageFromSender[]) => void;
+  openViewer: (messages: InboxMessage[]) => void;
   /** Mutation to mark a message as read */
   markAsRead: (deliveryId: string) => void;
   /** Function to refetch inbox */
-  refetchInbox: () => Promise<{ data?: MessageFromSender[] }>;
+  refetchInbox: () => Promise<{ data?: InboxMessage[] }>;
 }
 
 /**
@@ -119,10 +106,11 @@ export function useMessageFromNotification(
       );
 
       utils.messages.inbox.setData(undefined, (old) => {
-        const instantMsg = {
+        const instantMsg: InboxMessage = {
           deliveryId: instantMessage.deliveryId,
           messageId: instantMessage.messageId,
           senderId: instantMessage.senderId,
+          groupId: (instantMessage as { groupId?: string }).groupId,
           fileUrl: instantMessage.fileUrl,
           mimeType: instantMessage.mimeType,
           thumbhash: instantMessage.thumbhash,

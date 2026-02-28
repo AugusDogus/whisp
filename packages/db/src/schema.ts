@@ -63,6 +63,40 @@ export const Friendship = sqliteTable("friendship", (t) => ({
   streakUpdatedAt: t.integer({ mode: "timestamp" }),
 }));
 
+export const Group = sqliteTable("group", (t) => ({
+  id: t
+    .text()
+    .notNull()
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  name: t.text().notNull(),
+  createdById: t.text()
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  createdAt: t
+    .integer({ mode: "timestamp" })
+    .$defaultFn(() => new Date())
+    .notNull(),
+}));
+
+export const GroupMember = sqliteTable("group_member", (t) => ({
+  id: t
+    .text()
+    .notNull()
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  groupId: t.text()
+    .notNull()
+    .references(() => Group.id, { onDelete: "cascade" }),
+  userId: t.text()
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  joinedAt: t
+    .integer({ mode: "timestamp" })
+    .$defaultFn(() => new Date())
+    .notNull(),
+}));
+
 export const Message = sqliteTable("message", (t) => ({
   id: t
     .text()
@@ -70,6 +104,7 @@ export const Message = sqliteTable("message", (t) => ({
     .primaryKey()
     .$defaultFn(() => crypto.randomUUID()),
   senderId: t.text().notNull(),
+  groupId: t.text().references(() => Group.id, { onDelete: "cascade" }),
   fileUrl: t.text().notNull(),
   // Store UploadThing file key for deletion when all recipients have read
   fileKey: t.text(),
@@ -91,6 +126,7 @@ export const MessageDelivery = sqliteTable("message_delivery", (t) => ({
     .$defaultFn(() => crypto.randomUUID()),
   messageId: t.text().notNull(),
   recipientId: t.text().notNull(),
+  groupId: t.text().references(() => Group.id, { onDelete: "cascade" }),
   createdAt: t
     .integer({ mode: "timestamp" })
     .$defaultFn(() => new Date())

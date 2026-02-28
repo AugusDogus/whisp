@@ -11,7 +11,7 @@ import * as Haptics from "expo-haptics";
 import { BottomSheetBackdrop } from "@gorhom/bottom-sheet";
 import { useNavigation, useRoute } from "@react-navigation/native";
 
-import type { FriendRow } from "~/components/friends/types";
+import type { FriendRow, GroupRow } from "~/components/friends/types";
 import type { MainTabParamList, RootStackParamList } from "~/navigation/types";
 import type { OutboxStatus } from "~/utils/outbox-status";
 import { AddFriendsPanel } from "~/components/add-friends-panel";
@@ -19,6 +19,8 @@ import { FriendsListSkeletonVaried } from "~/components/friends-skeleton";
 import { FriendActionsSheet } from "~/components/friends/FriendActionsSheet";
 import { FriendsHeader } from "~/components/friends/FriendsHeader";
 import { FriendsList } from "~/components/friends/FriendsList";
+import { GroupActionsSheet } from "~/components/friends/GroupActionsSheet";
+import { LeaveGroupDialog } from "~/components/friends/LeaveGroupDialog";
 import { MessageViewerModal } from "~/components/friends/MessageViewerModal";
 import { RemoveFriendDialog } from "~/components/friends/RemoveFriendDialog";
 import { SendModePanel } from "~/components/friends/SendModePanel";
@@ -59,6 +61,10 @@ export default function FriendsScreen() {
     isLoading: friendsLoading,
   } = trpc.friends.list.useQuery();
   const {
+    data: groups = [],
+    refetch: refetchGroups,
+  } = trpc.groups.list.useQuery();
+  const {
     data: inboxRaw = [],
     refetch: refetchInbox,
     isLoading: inboxLoading,
@@ -70,9 +76,12 @@ export default function FriendsScreen() {
   const [searchQuery, setSearchQuery] = useState("");
   const [showAddFriends, setShowAddFriends] = useState(false);
   const [selectedFriend, setSelectedFriend] = useState<FriendRow | null>(null);
+  const [selectedGroup, setSelectedGroup] = useState<GroupRow | null>(null);
   const [showRemoveDialog, setShowRemoveDialog] = useState(false);
+  const [showLeaveGroupDialog, setShowLeaveGroupDialog] = useState(false);
   const isShowingDialogRef = useRef(false);
   const bottomSheetRef = useRef<BottomSheetModal>(null);
+  const groupSheetRef = useRef<BottomSheetModal>(null);
   const utils = trpc.useUtils();
   const markRead = trpc.messages.markRead.useMutation({
     onMutate: async (variables) => {
@@ -141,9 +150,17 @@ export default function FriendsScreen() {
     },
   });
 
+  const leaveGroup = trpc.groups.leave.useMutation({
+    onSuccess: () => {
+      setShowLeaveGroupDialog(false);
+      setTimeout(() => setSelectedGroup(null), 300);
+      void utils.groups.list.invalidate();
+    },
+  });
+
   const onRefresh = async () => {
     setIsRefreshing(true);
-    await Promise.all([refetchFriends(), refetchInbox()]);
+    await Promise.all([refetchFriends(), refetchInbox(), refetchGroups()]);
     setIsRefreshing(false);
   };
 
@@ -195,17 +212,17 @@ export default function FriendsScreen() {
     if (!hasMedia) return;
 
     const onBackPress = () => {
-      // If we came from the Media screen with media params, go back to Media
       if (mediaParams?.path && mediaParams.type) {
         navigation.navigate("Media", {
           path: mediaParams.path,
           type: mediaParams.type,
           defaultRecipientId: mediaParams.defaultRecipientId,
+          groupId: mediaParams.groupId,
           captions: mediaParams.captions,
         });
-        return true; // Prevent default behavior
+        return true;
       }
-      return false; // Allow default behavior
+      return false;
     };
 
     const backHandler = BackHandler.addEventListener(
@@ -383,12 +400,18 @@ export default function FriendsScreen() {
     return { ...row, hoursRemaining };
   });
 
-  const { selectedFriends, toggleFriend, rasterizedImagePath } =
-    useSendModeSelection({
-      hasMedia,
-      defaultRecipientId: mediaParams?.defaultRecipientId,
-      rasterizationPromise: mediaParams?.rasterizationPromise,
-    });
+  const {
+    selectedFriends,
+    selectedGroupId,
+    toggleFriend,
+    toggleGroup,
+    rasterizedImagePath,
+  } = useSendModeSelection({
+    hasMedia,
+    defaultRecipientId: mediaParams?.defaultRecipientId,
+    defaultGroupId: mediaParams?.groupId,
+    rasterizationPromise: mediaParams?.rasterizationPromise,
+  });
 
   /**
    * Handle opening messages from push notifications
@@ -421,6 +444,12 @@ export default function FriendsScreen() {
     );
   }, [rowsWithTimeRemaining, searchQuery]);
 
+  const filteredGroupRows = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (q.length === 0) return groups;
+    return groups.filter((g) => g.name.toLowerCase().includes(q));
+  }, [groups, searchQuery]);
+
   const isLoading = friendsLoading || inboxLoading;
 
   // Send mode: Show media preview, search, and send button
@@ -435,9 +464,12 @@ export default function FriendsScreen() {
         searchQuery={searchQuery}
         onChangeSearchQuery={setSearchQuery}
         isLoading={isLoading}
+        groupRows={filteredGroupRows}
         rows={filteredRows}
         selectedFriends={selectedFriends}
+        selectedGroupId={selectedGroupId}
         toggleFriend={toggleFriend}
+        toggleGroup={toggleGroup}
         onBack={() => {
           // If we came from the Media screen with media params, go back to Media
           if (mediaParams?.path && mediaParams.type) {
@@ -445,44 +477,42 @@ export default function FriendsScreen() {
               path: mediaParams.path,
               type: mediaParams.type,
               defaultRecipientId: mediaParams.defaultRecipientId,
+              groupId: mediaParams.groupId,
               captions: mediaParams.captions,
             });
           } else {
             navigation.goBack();
           }
         }}
-        onSend={async (recipients) => {
-          // mediaParams.type and path must exist if we're in send mode
-          if (mediaParams?.type && mediaParams.path) {
-            // Mark pending immediately (even if we're still rasterizing/prepping).
-            markWhispUploading(recipients);
+        onSend={async (opts) => {
+          if (!mediaParams?.type || !mediaParams.path) return;
+          const hasGroup = Boolean(opts.groupId);
+          if (!hasGroup && (!opts.recipients || opts.recipients.length === 0)) return;
 
-            let finalUri = `file://${mediaParams.path}`;
-
-            // If there's a rasterization promise, wait for it to complete
-            if (mediaParams.rasterizationPromise) {
-              console.log("[Friends] Waiting for background rasterization...");
-              try {
-                const rasterizedUri = await mediaParams.rasterizationPromise;
-                finalUri = rasterizedUri;
-                console.log("[Friends] Using rasterized image:", finalUri);
-              } catch (error) {
-                console.error(
-                  "[Friends] Rasterization failed, using original:",
-                  error,
-                );
-                // Fall back to original if rasterization fails
-              }
-            }
-
-            void uploadMedia({
-              uri: finalUri,
-              type: mediaParams.type,
-              recipients,
-            });
-            // Navigate immediately, don't wait for upload
-            navigation.reset({ index: 0, routes: [{ name: "Main" }] });
+          if (!hasGroup && opts.recipients) {
+            markWhispUploading(opts.recipients);
           }
+
+          let finalUri = `file://${mediaParams.path}`;
+          if (mediaParams.rasterizationPromise) {
+            try {
+              const rasterizedUri = await mediaParams.rasterizationPromise;
+              finalUri = rasterizedUri;
+            } catch (error) {
+              console.error(
+                "[Friends] Rasterization failed, using original:",
+                error,
+              );
+            }
+          }
+
+          void uploadMedia({
+            uri: finalUri,
+            type: mediaParams.type,
+            recipients: opts.recipients ?? [],
+            groupId: opts.groupId,
+          });
+          navigation.reset({ index: 0, routes: [{ name: "Main" }] });
         }}
       />
     );
@@ -504,6 +534,7 @@ export default function FriendsScreen() {
           <FriendsHeader
             showAddFriends={showAddFriends}
             onToggleAddFriends={() => setShowAddFriends(!showAddFriends)}
+            onNewGroup={() => navigation.navigate("CreateGroup")}
           />
 
           {isLoading ? (
@@ -514,11 +545,20 @@ export default function FriendsScreen() {
             </View>
           ) : (
             <FriendsList
+              groupRows={groups}
               rows={filteredRows}
               isRefreshing={isRefreshing}
               onRefresh={onRefresh}
               whispLogo={whispLogo}
               colorScheme={colorScheme}
+              onPressGroupRow={(group) => {
+                navigation.navigate("Group", { groupId: group.id });
+              }}
+              onLongPressGroupRow={(group) => {
+                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                setSelectedGroup(group);
+                groupSheetRef.current?.present();
+              }}
               onPressRow={(item) => {
                 if (item.unreadCount > 0) openViewer(item.id);
                 else {
@@ -579,6 +619,40 @@ export default function FriendsScreen() {
         onConfirmRemove={() => {
           if (selectedFriend) {
             removeFriend.mutate({ friendId: selectedFriend.id });
+          }
+        }}
+      />
+
+      {/* Group actions bottom sheet */}
+      <GroupActionsSheet
+        bottomSheetRef={groupSheetRef}
+        renderBackdrop={renderBackdrop}
+        selectedGroup={selectedGroup}
+        clearSelectedGroup={() => setSelectedGroup(null)}
+        onOpenGroup={(group) => {
+          navigation.navigate("Group", { groupId: group.id });
+        }}
+        onSendWhisp={(group) => {
+          navigation.navigate("Main", {
+            screen: "Camera",
+            params: { groupId: group.id },
+          });
+        }}
+        onGroupSettings={(group) => {
+          navigation.navigate("GroupSettings", { groupId: group.id });
+        }}
+        onLeaveGroup={() => {
+          setShowLeaveGroupDialog(true);
+        }}
+      />
+
+      <LeaveGroupDialog
+        open={showLeaveGroupDialog}
+        setOpen={setShowLeaveGroupDialog}
+        selectedGroup={selectedGroup}
+        onConfirmLeave={() => {
+          if (selectedGroup) {
+            leaveGroup.mutate({ groupId: selectedGroup.id });
           }
         }}
       />

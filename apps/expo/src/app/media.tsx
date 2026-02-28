@@ -51,6 +51,7 @@ export default function MediaScreen() {
     path,
     type,
     defaultRecipientId,
+    groupId,
     captions: initialCaptions,
   } = route.params;
 
@@ -269,7 +270,6 @@ export default function MediaScreen() {
       const rasterizationPromise = rasterizeImage();
 
       if (defaultRecipientId) {
-        // For direct send, navigate immediately and upload in background
         markWhispUploading([defaultRecipientId]);
         navigation.reset({ index: 0, routes: [{ name: "Main" }] });
         void rasterizationPromise
@@ -278,6 +278,7 @@ export default function MediaScreen() {
               uri: rasterizedUri,
               type,
               recipients: [defaultRecipientId],
+              groupId: groupId,
             });
           })
           .catch((err) => {
@@ -285,32 +286,52 @@ export default function MediaScreen() {
             markWhispFailed([defaultRecipientId]);
             toast.error("Failed to prepare media");
           });
+      } else if (groupId) {
+        navigation.reset({ index: 0, routes: [{ name: "Main" }] });
+        void rasterizationPromise
+          .then((rasterizedUri) => {
+            void uploadMedia({
+              uri: rasterizedUri,
+              type,
+              recipients: [],
+              groupId,
+            });
+          })
+          .catch((err) => {
+            console.error("[Media] Rasterization failed:", err);
+            toast.error("Failed to prepare media");
+          });
       } else {
-        // For friend selection, navigate immediately with original path
-        // Pass rasterization promise to friends screen
-        console.log("[Media] Navigating to Friends screen");
         navigation.navigate("Main", {
           screen: "Friends",
           params: {
-            path, // Original path for thumbnail
+            path,
             type,
             defaultRecipientId,
-            rasterizationPromise, // Promise for upload
-            thumbhash, // Thumbhash for placeholder
-            captions, // Caption data for thumbnail overlay
+            groupId,
+            rasterizationPromise,
+            thumbhash,
+            captions,
             originalWidth: containerLayout?.width,
             originalHeight: containerLayout?.height,
           },
         });
-        console.log("[Media] Navigation dispatched");
       }
     } else {
-      // No captions or video - send original
       if (defaultRecipientId) {
         void uploadMedia({
           uri: `file://${path}`,
           type,
           recipients: [defaultRecipientId],
+          groupId,
+        });
+        navigation.reset({ index: 0, routes: [{ name: "Main" }] });
+      } else if (groupId) {
+        void uploadMedia({
+          uri: `file://${path}`,
+          type,
+          recipients: [],
+          groupId,
         });
         navigation.reset({ index: 0, routes: [{ name: "Main" }] });
       } else {
@@ -320,6 +341,7 @@ export default function MediaScreen() {
             path,
             type,
             defaultRecipientId,
+            groupId,
           },
         });
       }

@@ -16,6 +16,7 @@ interface UploadMediaParams {
   uri: string;
   type: "photo" | "video";
   recipients: string[];
+  groupId?: string;
 }
 
 /**
@@ -56,71 +57,89 @@ async function generateThumbhash(
  * @param params Upload parameters including URI, type, and recipients
  */
 export async function uploadMedia(params: UploadMediaParams): Promise<void> {
-  const { uri, type, recipients } = params;
+  const { uri, type, recipients, groupId } = params;
+  const isGroupSend = Boolean(groupId);
 
   const mediaKind: MediaKind = type === "video" ? "video" : "photo";
 
   try {
-    // Let the UI show per-recipient pending state immediately.
-    markWhispUploading(recipients, mediaKind);
+    if (!isGroupSend && recipients.length > 0) {
+      markWhispUploading(recipients, mediaKind);
+    }
 
-    // Generate thumbhash before upload
     const thumbhash = await generateThumbhash(uri, type);
 
     const file = await createFile(uri, type);
-    // Use the file's actual MIME type instead of just "photo" or "video"
     const mimeType =
       file.type || (type === "photo" ? "image/jpeg" : "video/mp4");
 
-    console.log("[Upload] File info:", {
-      type,
-      fileType: file.type,
-      mimeType,
-      hasThumbhash: !!thumbhash,
-    });
+    const uploadInput = isGroupSend
+      ? { groupId: groupId ?? "", mimeType, thumbhash }
+      : { recipients, mimeType, thumbhash };
 
     void uploadFilesWithInput("imageUploader", {
       files: [file],
-      input: { recipients, mimeType, thumbhash },
+      input: uploadInput,
     })
       .then(() => {
         toast.success("whisp sent");
-        markWhispSent(recipients, mediaKind);
+        if (!isGroupSend && recipients.length > 0) {
+          markWhispSent(recipients, mediaKind);
+        }
 
-        // Optimistically update the Friends list so the row can flip to "Sent"
-        // even before the server has fully processed/propagated the send.
-        const friendsKeyPrefix = [["friends", "list"]] as const;
-        queryClient.setQueriesData<FriendsListOutput>(
-          { queryKey: friendsKeyPrefix },
-          (old) => {
-            if (!old) return old;
-            const now = new Date();
-            const recipientSet = new Set(recipients);
-            return old.map((f) => {
-              if (!recipientSet.has(f.id)) return f;
-              return {
-                ...f,
-                // These keys are used in `friends.tsx` via casts today.
-                lastActivityTimestamp: now,
-                lastSentOpened: false,
-              } as typeof f;
-            });
-          },
-        );
+        if (!isGroupSend) {
+          const friendsKeyPrefix = [["friends", "list"]] as const;
+          queryClient.setQueriesData<FriendsListOutput>(
+            { queryKey: friendsKeyPrefix },
+            (old) => {
+              if (!old) return old;
+              const now = new Date();
+              const recipientSet = new Set(recipients);
+              return old.map((f) => {
+                if (!recipientSet.has(f.id)) return f;
+                return {
+                  ...f,
+                  lastActivityTimestamp: now,
+                  lastSentOpened: false,
+                } as typeof f;
+              });
+            },
+          );
+        }
 
-        // Kick a refetch so we converge to server truth shortly after.
-        void queryClient.invalidateQueries({ queryKey: friendsKeyPrefix });
+        void queryClient.invalidateQueries({
+          queryKey: [["friends", "list"]] as const,
+        });
         void queryClient.invalidateQueries({
           queryKey: [["messages", "inbox"]] as const,
         });
+        if (isGroupSend && groupId) {
+          void queryClient.invalidateQueries({
+            queryKey: [["groups", "list"]] as const,
+          });
+          void queryClient.invalidateQueries({
+            predicate: (query) => {
+              const key = query.queryKey as [string[], ...unknown[]];
+              return (
+                Array.isArray(key[0]) &&
+                key[0][0] === "groups" &&
+                key[0][1] === "inbox"
+              );
+            },
+          });
+        }
       })
       .catch((err: unknown) => {
-        markWhispFailed(recipients);
+        if (!isGroupSend && recipients.length > 0) {
+          markWhispFailed(recipients);
+        }
         toast.error(err instanceof Error ? err.message : "Upload failed");
       });
   } catch (err) {
     console.error("[Upload] Failed to prepare file for upload:", err);
-    markWhispFailed(recipients);
+    if (!isGroupSend && recipients.length > 0) {
+      markWhispFailed(recipients);
+    }
     toast.error("Failed to prepare media");
   }
 }

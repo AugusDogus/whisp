@@ -86,6 +86,7 @@ export default function CameraPage(): React.ReactElement {
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const cameraRoute = useRoute<RouteProp<MainTabParamList, "Camera">>();
   const defaultRecipientId = cameraRoute.params?.defaultRecipientId;
+  const groupId = cameraRoute.params?.groupId;
   const { data: session, isPending, refetch } = authClient.useSession();
 
   // Query friend info if we have a pre-selected recipient
@@ -219,12 +220,13 @@ export default function CameraPage(): React.ReactElement {
           path: media.path,
           type,
           defaultRecipientId,
+          groupId,
         });
       } catch (err) {
         console.error("Failed to navigate to Media screen", err);
       }
     },
-    [navigation, defaultRecipientId],
+    [navigation, defaultRecipientId, groupId],
   );
   const onFlipCameraPressed = useCallback(() => {
     setCameraPosition(cameraPosition === "back" ? "front" : "back");

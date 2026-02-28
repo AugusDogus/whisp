@@ -129,8 +129,8 @@ export async function notifyNewMessage(
   mimeType?: string,
   deliveryId?: string,
   thumbhash?: string,
+  group?: { groupId: string; groupName: string },
 ) {
-  // Check if user has message notifications enabled
   const recipient = await database.query.user.findFirst({
     where: (users, { eq }) => eq(users.id, recipientId),
     columns: {
@@ -143,21 +143,26 @@ export async function notifyNewMessage(
     return { success: false, reason: "disabled" };
   }
 
-  return sendNotificationToUser(
-    database,
-    recipientId,
-    "New Whisp",
-    `${senderName} sent you a whisp`,
-    {
-      type: "message",
-      messageId,
-      senderId,
-      fileUrl,
-      mimeType,
-      deliveryId,
-      thumbhash,
-    },
-  );
+  const title = "New Whisp";
+  const body = group
+    ? `${senderName} sent a whisp to ${group.groupName}`
+    : `${senderName} sent you a whisp`;
+
+  const data: Record<string, unknown> = {
+    type: "message",
+    messageId,
+    senderId,
+    fileUrl,
+    mimeType,
+    deliveryId,
+    thumbhash,
+  };
+  if (group) {
+    data.groupId = group.groupId;
+    data.groupName = group.groupName;
+  }
+
+  return sendNotificationToUser(database, recipientId, title, body, data);
 }
 
 export async function notifyFriendRequest(

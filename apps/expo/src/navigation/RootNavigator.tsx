@@ -11,7 +11,11 @@ import { Toaster } from "sonner-native";
 
 import type { RootStackParamList } from "./types";
 import CameraScreen from "~/app/camera";
+import CreateGroupScreen from "~/app/create-group";
 import FriendsScreen from "~/app/friends";
+import GroupAddMembersScreen from "~/app/group-add-members";
+import GroupScreen from "~/app/group";
+import GroupSettingsScreen from "~/app/group-settings";
 import SplashScreen from "~/app/index";
 import LoginScreen from "~/app/login";
 import MediaScreen from "~/app/media";
@@ -92,6 +96,13 @@ export function RootNavigator() {
           <Stack.Screen name="Onboarding" component={OnboardingScreen} />
           <Stack.Screen name="Main" component={MainTabs} />
           <Stack.Screen name="Media" component={MediaScreen} />
+          <Stack.Screen name="Group" component={GroupScreen} />
+          <Stack.Screen name="GroupSettings" component={GroupSettingsScreen} />
+          <Stack.Screen
+            name="GroupAddMembers"
+            component={GroupAddMembersScreen}
+          />
+          <Stack.Screen name="CreateGroup" component={CreateGroupScreen} />
         </Stack.Navigator>
         <Toaster />
       </NavigationContainer>

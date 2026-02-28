@@ -9,6 +9,7 @@ export interface RootStackParamList extends ParamListBase {
     path: string;
     type: "photo" | "video";
     defaultRecipientId?: string;
+    groupId?: string;
     captions?: {
       id: string;
       text: string;
@@ -18,6 +19,10 @@ export interface RootStackParamList extends ParamListBase {
       color: string;
     }[];
   };
+  Group: { groupId: string };
+  GroupSettings: { groupId: string };
+  GroupAddMembers: { groupId: string };
+  CreateGroup: undefined;
 }
 
 export type AppScreenName = keyof RootStackParamList;
@@ -28,6 +33,7 @@ export interface MainTabParamList extends ParamListBase {
         path?: string;
         type?: "photo" | "video";
         defaultRecipientId?: string;
+        groupId?: string;
         openMessageFromSender?: string;
         rasterizationPromise?: Promise<string>; // Promise that resolves to rasterized image path
         thumbhash?: string; // Thumbhash for placeholder while rasterizing
@@ -51,6 +57,6 @@ export interface MainTabParamList extends ParamListBase {
         };
       }
     | undefined;
-  Camera: { defaultRecipientId?: string } | undefined;
+  Camera: { defaultRecipientId?: string; groupId?: string } | undefined;
   Profile: undefined;
 }

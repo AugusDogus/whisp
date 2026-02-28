@@ -4,6 +4,7 @@ import type { MediaKind } from "~/utils/media-kind";
 import type { OutboxState } from "~/utils/outbox-status";
 
 export type FriendsListFriend = RouterOutputs["friends"]["list"][number];
+export type GroupRow = RouterOutputs["groups"]["list"][number];
 export type InboxMessage = RouterOutputs["messages"]["inbox"][number];
 
 export interface FriendRow {

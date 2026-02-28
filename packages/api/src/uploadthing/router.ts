@@ -2,8 +2,9 @@ import type { FileRouter } from "uploadthing/types";
 import { createUploadthing, UploadThingError } from "uploadthing/server";
 import { z } from "zod/v4";
 
+import { and, eq } from "@acme/db";
 import { db } from "@acme/db/client";
-import { Message, MessageDelivery } from "@acme/db/schema";
+import { GroupMember, Message, MessageDelivery } from "@acme/db/schema";
 
 import { notifyNewMessage } from "../utils/send-notification";
 import { updateStreak } from "../utils/update-streak";
@@ -28,7 +29,8 @@ export function createUploadRouter({ getSession }: CreateDeps) {
     })
       .input(
         z.object({
-          recipients: z.array(z.string().min(1)).min(1),
+          recipients: z.array(z.string().min(1)).optional(),
+          groupId: z.string().min(1).optional(),
           mimeType: z.string().optional(),
           thumbhash: z.string().optional(),
         }),
@@ -37,47 +39,105 @@ export function createUploadRouter({ getSession }: CreateDeps) {
         const session = await getSession();
         // eslint-disable-next-line @typescript-eslint/only-throw-error -- UploadThingError maps to proper HTTP status in UploadThing
         if (!session) throw new UploadThingError("Unauthorized");
+        const hasRecipients = input.recipients && input.recipients.length > 0;
+        const hasGroupId = Boolean(input.groupId);
+        if (!hasRecipients && !hasGroupId) {
+          // eslint-disable-next-line @typescript-eslint/only-throw-error -- UploadThingError
+          throw new UploadThingError("Either recipients or groupId is required");
+        }
+        if (hasRecipients && hasGroupId) {
+          // eslint-disable-next-line @typescript-eslint/only-throw-error -- UploadThingError
+          throw new UploadThingError("Cannot specify both recipients and groupId");
+        }
+        if (hasGroupId && input.groupId) {
+          const [membership] = await db
+            .select()
+            .from(GroupMember)
+            .where(
+              and(
+                eq(GroupMember.groupId, input.groupId),
+                eq(GroupMember.userId, session.user.id),
+              ),
+            )
+            .limit(1);
+          if (!membership) {
+            // eslint-disable-next-line @typescript-eslint/only-throw-error -- UploadThingError
+            throw new UploadThingError("Not a member of this group");
+          }
+        }
         return {
           userId: session.user.id,
-          recipients: input.recipients,
+          recipients: input.recipients ?? [],
+          groupId: input.groupId,
           mimeType: input.mimeType,
           thumbhash: input.thumbhash,
         };
       })
       .onUploadComplete(async ({ metadata, file }) => {
-        // Create message and deliveries
         const messageId = crypto.randomUUID();
+        const isGroupMessage = Boolean(metadata.groupId);
+
         await db.insert(Message).values({
           id: messageId,
           senderId: metadata.userId,
+          groupId: metadata.groupId ?? undefined,
           fileUrl: file.ufsUrl,
           fileKey: (file as unknown as { ufsKey?: string }).ufsKey ?? undefined,
           mimeType: metadata.mimeType,
           thumbhash: metadata.thumbhash,
         });
 
-        // Create deliveries and track recipient -> deliveryId mapping
-        const deliveries = metadata.recipients.map((rid) => ({
-          id: crypto.randomUUID(),
-          messageId,
-          recipientId: rid,
-        }));
+        let deliveries: { id: string; messageId: string; recipientId: string; groupId?: string }[];
+
+        if (isGroupMessage && metadata.groupId) {
+          const groupId = metadata.groupId;
+          const members = await db
+            .select({ userId: GroupMember.userId })
+            .from(GroupMember)
+            .where(eq(GroupMember.groupId, groupId));
+          const recipientIds = members
+            .map((m) => m.userId)
+            .filter((id) => id !== metadata.userId);
+          deliveries = recipientIds.map((rid) => ({
+            id: crypto.randomUUID(),
+            messageId,
+            recipientId: rid,
+            groupId,
+          }));
+        } else if (metadata.recipients.length > 0) {
+          deliveries = metadata.recipients.map((rid) => ({
+            id: crypto.randomUUID(),
+            messageId,
+            recipientId: rid,
+          }));
+        } else {
+          deliveries = [];
+        }
 
         await db.insert(MessageDelivery).values(deliveries);
 
-        // Update friendship streak for each recipient
-        // Expected: Increments streak if both users have sent since last update
-        for (const recipientId of metadata.recipients) {
-          await updateStreak(db, metadata.userId, recipientId);
+        if (!isGroupMessage) {
+          for (const recipientId of metadata.recipients) {
+            await updateStreak(db, metadata.userId, recipientId);
+          }
         }
 
-        // Get sender name for notification
         const sender = await db.query.user.findFirst({
           where: (users, { eq }) => eq(users.id, metadata.userId),
           columns: { name: true },
         });
 
-        // Send notifications to all recipients with their specific deliveryId
+        const groupIdForQuery = metadata.groupId;
+        const groupQuery =
+          groupIdForQuery &&
+          db.query.Group.findFirst({
+            where: (g, { eq }) => eq(g.id, groupIdForQuery),
+            columns: { name: true },
+          });
+        const groupResult: { name: string } | null = groupQuery
+          ? (await groupQuery) ?? null
+          : null;
+
         if (sender) {
           for (const delivery of deliveries) {
             void notifyNewMessage(
@@ -88,8 +148,14 @@ export function createUploadRouter({ getSession }: CreateDeps) {
               messageId,
               file.ufsUrl,
               metadata.mimeType,
-              delivery.id, // Pass the real deliveryId!
+              delivery.id,
               metadata.thumbhash,
+              delivery.groupId
+                ? {
+                    groupId: delivery.groupId,
+                    groupName: groupResult?.name ?? "Group",
+                  }
+                : undefined,
             );
           }
         }

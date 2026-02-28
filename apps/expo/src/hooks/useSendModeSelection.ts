@@ -3,22 +3,34 @@ import { useCallback, useEffect, useState } from "react";
 export function useSendModeSelection({
   hasMedia,
   defaultRecipientId,
+  defaultGroupId,
   rasterizationPromise,
 }: {
   hasMedia: boolean;
   defaultRecipientId: string | undefined;
+  defaultGroupId: string | undefined;
   rasterizationPromise: Promise<string> | undefined;
 }) {
   const [selectedFriends, setSelectedFriends] = useState<Set<string>>(
     new Set(hasMedia && defaultRecipientId ? [defaultRecipientId] : []),
   );
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(
+    hasMedia && defaultGroupId ? defaultGroupId : null,
+  );
 
-  // Update selected friends when the defaultRecipientId changes (initial load)
   useEffect(() => {
     if (hasMedia && defaultRecipientId) {
       setSelectedFriends(new Set([defaultRecipientId]));
+      setSelectedGroupId(null);
     }
   }, [hasMedia, defaultRecipientId]);
+
+  useEffect(() => {
+    if (hasMedia && defaultGroupId) {
+      setSelectedGroupId(defaultGroupId);
+      setSelectedFriends(new Set());
+    }
+  }, [hasMedia, defaultGroupId]);
 
   const toggleFriend = useCallback((id: string) => {
     setSelectedFriends((prev) => {
@@ -27,6 +39,12 @@ export function useSendModeSelection({
       else next.add(id);
       return next;
     });
+    setSelectedGroupId(null);
+  }, []);
+
+  const toggleGroup = useCallback((groupId: string) => {
+    setSelectedGroupId((prev) => (prev === groupId ? null : groupId));
+    setSelectedFriends(new Set());
   }, []);
 
   // Wait for rasterization to complete and use rasterized image
@@ -46,7 +64,9 @@ export function useSendModeSelection({
 
   return {
     selectedFriends,
+    selectedGroupId,
     toggleFriend,
+    toggleGroup,
     rasterizedImagePath,
   };
 }
