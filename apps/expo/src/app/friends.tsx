@@ -25,12 +25,14 @@ import { MessageViewerModal } from "~/components/friends/MessageViewerModal";
 import { RemoveFriendDialog } from "~/components/friends/RemoveFriendDialog";
 import { SendModePanel } from "~/components/friends/SendModePanel";
 import { useRecording } from "~/contexts/RecordingContext";
+import { useFriendRows } from "~/hooks/useFriendRows";
+import { useMarkReadMutation } from "~/hooks/useMarkReadMutation";
 import { useMessageFromNotification } from "~/hooks/useMessageFromNotification";
 import { useMessageViewerState } from "~/hooks/useMessageViewerState";
+import { useRemoveFriend } from "~/hooks/useRemoveFriend";
 import { useSendModeSelection } from "~/hooks/useSendModeSelection";
 import { trpc } from "~/utils/api";
 import { authClient } from "~/utils/auth";
-import { mimeToMediaKind } from "~/utils/media-kind";
 import { uploadMedia } from "~/utils/media-upload";
 import {
   getOutboxStatusSnapshot,
@@ -80,72 +82,12 @@ export default function FriendsScreen() {
   const isShowingDialogRef = useRef(false);
   const bottomSheetRef = useRef<BottomSheetModal>(null);
   const groupSheetRef = useRef<BottomSheetModal>(null);
-  const utils = trpc.useUtils();
-  const markRead = trpc.messages.markRead.useMutation({
-    onMutate: async (variables) => {
-      // Cancel any outgoing refetches
-      await utils.messages.inbox.cancel();
-
-      // Snapshot the previous value
-      const previousInbox = utils.messages.inbox.getData();
-
-      // Optimistically remove the message from inbox
-      utils.messages.inbox.setData(undefined, (old) => {
-        if (!old) return old;
-        return old.filter((msg) => msg?.deliveryId !== variables.deliveryId);
-      });
-
-      // Return context with the snapshot
-      return { previousInbox };
-    },
-    onError: (err, variables, context) => {
-      // If the mutation fails, roll back to the previous value
-      if (context?.previousInbox) {
-        utils.messages.inbox.setData(undefined, context.previousInbox);
-      }
-    },
-    onSettled: async () => {
-      // Always refetch after error or success to ensure we're in sync
-      await utils.messages.inbox.invalidate();
-    },
-  });
-  const { mutate: cleanupMessage } =
-    trpc.messages.cleanupIfAllRead.useMutation();
-
-  const removeFriend = trpc.friends.removeFriend.useMutation({
-    onMutate: async (variables) => {
-      // Cancel any outgoing refetches
-      await utils.friends.list.cancel();
-
-      // Snapshot the previous value
-      const previousFriends = utils.friends.list.getData();
-
-      // Optimistically update to remove the friend
-      utils.friends.list.setData(undefined, (old) => {
-        if (!old) return old;
-        return old.filter((friend) => friend.id !== variables.friendId);
-      });
-
-      // Return context with the snapshot
-      return { previousFriends };
-    },
-    onError: (err, variables, context) => {
-      // If the mutation fails, roll back to the previous value
-      if (context?.previousFriends) {
-        utils.friends.list.setData(undefined, context.previousFriends);
-      }
-    },
-    onSuccess: () => {
-      setShowRemoveDialog(false);
-      // Clear selected friend after dialog closes
-      setTimeout(() => {
-        setSelectedFriend(null);
-      }, 300);
-    },
-    onSettled: async () => {
-      // Always refetch after error or success to ensure we're in sync
-      await utils.friends.list.invalidate();
-    },
+  const { markRead, cleanupMessage, utils } = useMarkReadMutation();
+  const removeFriend = useRemoveFriend(() => {
+    setShowRemoveDialog(false);
+    setTimeout(() => {
+      setSelectedFriend(null);
+    }, 300);
   });
 
   const leaveGroup = trpc.groups.leave.useMutation({
@@ -231,171 +173,13 @@ export default function FriendsScreen() {
     return () => backHandler.remove();
   }, [hasMedia, mediaParams, navigation]);
 
-  /**
-   * Friend List Rows - Expected Behavior
-   * =====================================
-   * Combines friend data with inbox data to create the displayed rows
-   *
-   * Expected:
-   * - Shows unread message count for each friend
-   * - Shows current streak and time remaining
-   * - Marks pre-selected friend when in send mode
-   * - Recalculates on every render for real-time updates
-   */
-  const rows = useMemo<FriendRow[]>(() => {
-    // Count unread messages per sender and track most recent timestamp + mimeType
-    const senderToMessages = new Map<string, number>();
-    const senderToLatestTimestamp = new Map<string, Date>();
-    const senderToLatestMime = new Map<string, string | undefined>();
-    for (const m of inbox) {
-      if (!m) continue;
-      const count = senderToMessages.get(m.senderId) ?? 0;
-      senderToMessages.set(m.senderId, count + 1);
-
-      const current = senderToLatestTimestamp.get(m.senderId);
-      if (!current || m.createdAt > current) {
-        senderToLatestTimestamp.set(m.senderId, m.createdAt);
-        senderToLatestMime.set(m.senderId, m.mimeType);
-      }
-    }
-
-    return friends.map((f) => {
-      const isSelf = selfUserId != null && f.id === selfUserId;
-      const streak = f.streak;
-      const lastActivity = f.lastActivityTimestamp;
-      const partnerLastActivity = f.partnerLastActivityTimestamp;
-      const lastSentOpened = f.lastSentOpened;
-
-      const unreadCount = senderToMessages.get(f.id) ?? 0;
-      const hasUnread = unreadCount > 0;
-
-      // Dev-only "send to yourself" can otherwise get stuck looking like an
-      // unopened sent message forever (you're both sender and recipient).
-      // We still want to show pending/error UI, but we ignore the "sent" override.
-      const outbox = outboxStatus[f.id];
-      const rawOutboxState = outbox?.state ?? null;
-      const outboxState =
-        isSelf && rawOutboxState === "sent" ? null : rawOutboxState;
-      const outboxUpdatedAt =
-        outboxState && outbox?.updatedAtMs
-          ? new Date(outbox.updatedAtMs)
-          : null;
-
-      const incomingLatest = senderToLatestTimestamp.get(f.id) ?? null;
-      const incomingMs = incomingLatest?.getTime() ?? 0;
-      const outgoingMs = lastActivity ? new Date(lastActivity).getTime() : 0;
-      const partnerMs = partnerLastActivity
-        ? new Date(partnerLastActivity).getTime()
-        : 0;
-      const outboxMs =
-        outboxState === "uploading" || outboxState === "sent"
-          ? (outboxUpdatedAt?.getTime() ?? 0)
-          : 0;
-
-      // Prefer whichever direction is newest so "Sent" can replace stale "Received"
-      // after we upload a whisp (even if the inbox still contains older messages).
-      const effectiveOutgoingMs = Math.max(outgoingMs, outboxMs);
-      const latestMs = Math.max(incomingMs, partnerMs, effectiveOutgoingMs);
-      const outgoingIsLatest =
-        effectiveOutgoingMs > 0 && effectiveOutgoingMs === latestMs;
-      const incomingIsLatest = incomingMs > 0 && incomingMs === latestMs;
-
-      // Compute Snapchat-style message status
-      let lastMessageStatus: FriendRow["lastMessageStatus"] = null;
-      if (outboxState === "uploading" || outboxState === "failed") {
-        // Rendered specially; keep lastMessageStatus null.
-        lastMessageStatus = null;
-      } else if (outgoingIsLatest) {
-        // For self-chat, treat outgoing as opened (can't be unopened).
-        if (isSelf) lastMessageStatus = "opened";
-        else if (lastSentOpened === true) lastMessageStatus = "opened";
-        else lastMessageStatus = "sent";
-      } else if (incomingIsLatest && hasUnread) {
-        lastMessageStatus = "received";
-      } else if (partnerLastActivity || incomingLatest) {
-        lastMessageStatus = "received_opened";
-      }
-
-      const lastMessageAt = latestMs > 0 ? new Date(latestMs) : null;
-
-      // Determine the media kind (photo vs video) of the most relevant message.
-      // Priority: outbox (uploading/sent) → inbox (received) → API (sent/opened)
-      let lastMediaKind: FriendRow["lastMediaKind"] = "photo";
-      if (outboxState === "uploading" || outboxState === "sent") {
-        lastMediaKind = outbox?.mediaKind ?? "photo";
-      } else if (incomingIsLatest && hasUnread) {
-        lastMediaKind = mimeToMediaKind(senderToLatestMime.get(f.id));
-      } else if (outgoingIsLatest) {
-        // Use the API-provided lastMimeType for sent/opened
-        const apiMime = f.lastMimeType;
-        lastMediaKind = mimeToMediaKind(apiMime);
-      } else {
-        // received_opened or no activity — use API-provided lastMimeType
-        const apiMime = f.lastMimeType;
-        lastMediaKind = mimeToMediaKind(apiMime);
-      }
-
-      return {
-        id: f.id,
-        name: f.name,
-        image: f.image ?? null,
-        discordId: f.discordId ?? null,
-        hasUnread,
-        unreadCount,
-        isSelected:
-          hasMedia && mediaParams?.defaultRecipientId
-            ? f.id === mediaParams.defaultRecipientId
-            : false,
-        streak,
-        lastActivityTimestamp: lastActivity,
-        partnerLastActivityTimestamp: partnerLastActivity,
-        hoursRemaining: null, // Calculated during render
-        lastMessageStatus,
-        lastMediaKind,
-        lastMessageAt,
-        outboxState,
-        outboxUpdatedAt,
-      };
-    });
-  }, [
+  const rowsWithTimeRemaining = useFriendRows({
     friends,
     inbox,
     hasMedia,
-    mediaParams?.defaultRecipientId,
+    defaultRecipientId: mediaParams?.defaultRecipientId,
     outboxStatus,
     selfUserId,
-  ]);
-
-  /**
-   * Time Remaining Calculation
-   * ===========================
-   * Expected behavior:
-   * - Calculate hours remaining in the 24-hour window for each streak
-   * - Only show if streak > 0 and partner has sent recently
-   * - Updates on every render for real-time countdown
-   * - Shows hourglass icon if < 4 hours remaining (urgency indicator)
-   */
-  const now = new Date();
-  const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
-
-  const rowsWithTimeRemaining = rows.map((row) => {
-    if (row.streak === 0 || !row.partnerLastActivityTimestamp) {
-      return row;
-    }
-
-    const timeSincePartner =
-      now.getTime() - new Date(row.partnerLastActivityTimestamp).getTime();
-    const timeRemaining = TWENTY_FOUR_HOURS_MS - timeSincePartner;
-
-    // If more than 24 hours have passed, the streak has expired
-    // Treat as streak 0 on the client (server will update on next message)
-    if (timeRemaining <= 0) {
-      return { ...row, streak: 0, hoursRemaining: null };
-    }
-
-    const hoursRemaining = timeRemaining / (60 * 60 * 1000);
-
-    return { ...row, hoursRemaining };
   });
 
   const {

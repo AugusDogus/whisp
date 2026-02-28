@@ -1,7 +1,6 @@
 import type { RouteProp } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type * as React from "react";
-import type { GestureResponderEvent } from "react-native";
 import type {
   CameraProps,
   CameraRuntimeError,
@@ -11,17 +10,14 @@ import type {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   InteractionManager,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
-import { check, PERMISSIONS, request, RESULTS } from "react-native-permissions";
+import { RESULTS } from "react-native-permissions";
 import Reanimated, {
-  Extrapolate,
-  interpolate,
   useAnimatedProps,
   useSharedValue,
 } from "react-native-reanimated";
@@ -30,10 +26,8 @@ import {
   useCameraDevice,
   useCameraFormat,
 } from "react-native-vision-camera";
-import { VolumeManager } from "react-native-volume-manager";
 import { Image } from "expo-image";
 import * as SecureStore from "expo-secure-store";
-// Gesture handler types no longer needed with new Gesture API
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import {
   useFocusEffect,
@@ -49,9 +43,13 @@ import { CaptureButton } from "~/components/capture-button";
 import { FrontFlashOverlay } from "~/components/front-flash-overlay";
 import { StatusBarBlurBackground } from "~/components/status-bar-blur-background";
 import { Avatar } from "~/components/ui/avatar";
+import { useCameraFocus } from "~/hooks/useCameraFocus";
+import { useCameraPermissions } from "~/hooks/useCameraPermissions";
 import { useIsForeground } from "~/hooks/useIsForeground";
+import { usePinchZoom } from "~/hooks/usePinchZoom";
 import { usePreferredCameraDevice } from "~/hooks/usePreferredCameraDevice";
 import { usePreferredCameraPosition } from "~/hooks/usePreferredCameraPosition";
+import { useVolumeKeyShutter } from "~/hooks/useVolumeKeyShutter";
 import { useCookieStore } from "~/stores/cookie-store";
 import { trpc } from "~/utils/api";
 import { authClient } from "~/utils/auth";
@@ -68,8 +66,6 @@ const ReanimatedCamera = Reanimated.createAnimatedComponent(Camera);
 Reanimated.addWhitelistedNativeProps({
   zoom: true,
 });
-
-const SCALE_FULL_ZOOM = 3;
 
 export function useWhispCookie() {
   return useQuery({
@@ -100,35 +96,9 @@ export default function CameraPage(): React.ReactElement {
   const camera = useRef<Camera>(null);
   const captureButtonRef = useRef<CaptureButtonRef>(null);
   const [isCameraInitialized, setIsCameraInitialized] = useState(false);
-  const [cameraPermission, setCameraPermission] = useState<string>(
-    RESULTS.DENIED,
-  );
-  const [microphonePermission, setMicrophonePermission] = useState<string>(
-    RESULTS.DENIED,
-  );
+  const { microphonePermission, requestPermissions } = useCameraPermissions();
   const zoom = useSharedValue(1);
   const isPressingButton = useSharedValue(false);
-
-  // Check permissions on mount
-  useEffect(() => {
-    async function checkPermissions() {
-      const camera = await check(
-        Platform.OS === "ios"
-          ? PERMISSIONS.IOS.CAMERA
-          : PERMISSIONS.ANDROID.CAMERA,
-      );
-      const mic = await check(
-        Platform.OS === "ios"
-          ? PERMISSIONS.IOS.MICROPHONE
-          : PERMISSIONS.ANDROID.RECORD_AUDIO,
-      );
-
-      setCameraPermission(camera);
-      setMicrophonePermission(mic);
-    }
-
-    void checkPermissions();
-  }, []);
 
   // Safe area and screen dimensions
   const safeAreaPadding = useSafeAreaPadding();
@@ -235,39 +205,7 @@ export default function CameraPage(): React.ReactElement {
     setFlash((f) => (f === "off" ? "on" : "off"));
   }, []);
 
-  const focusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const onFocusTap = useCallback(
-    ({ nativeEvent: event }: GestureResponderEvent) => {
-      if (!device?.supportsFocus) return;
-
-      // Clear any existing focus timeout to debounce rapid taps
-      if (focusTimeoutRef.current) {
-        clearTimeout(focusTimeoutRef.current);
-      }
-
-      // Debounce focus requests by 100ms to prevent rapid cancellations
-      focusTimeoutRef.current = setTimeout(() => {
-        camera.current
-          ?.focus({
-            x: event.locationX,
-            y: event.locationY,
-          })
-          .catch((error: unknown) => {
-            // Silently handle focus cancellation errors as they're expected behavior
-            if (
-              error != null &&
-              typeof error === "object" &&
-              "code" in error &&
-              error.code !== "capture/focus-canceled"
-            ) {
-              console.error("Focus error:", error);
-            }
-          });
-      }, 100);
-    },
-    [device?.supportsFocus],
-  );
+  const { onFocusTap } = useCameraFocus(camera, device?.supportsFocus);
   const onDoubleTap = useCallback(() => {
     onFlipCameraPressed();
   }, [onFlipCameraPressed]);
@@ -303,177 +241,9 @@ export default function CameraPage(): React.ReactElement {
     zoom.value = device?.neutralZoom ?? 1;
   }, [zoom, device]);
 
-  // Cleanup focus timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (focusTimeoutRef.current) {
-        clearTimeout(focusTimeoutRef.current);
-      }
-    };
-  }, []);
+  useVolumeKeyShutter(captureButtonRef, isActive, isCameraInitialized);
 
-  // Volume key shutter functionality with hold-to-record
-  useEffect(() => {
-    if (!isActive || !isCameraInitialized) return;
-
-    let currentVolume = 0;
-    let isVolumeKeyPressed = false;
-    let photoTimeout: ReturnType<typeof setTimeout> | null = null;
-    let releaseTimeout: ReturnType<typeof setTimeout> | null = null;
-    let lastKeyPressTime = 0;
-    let isRestoringVolume = false;
-    let isRecording = false;
-
-    // Get initial volume to detect changes
-    VolumeManager.getVolume()
-      .then((result) => {
-        currentVolume = result.volume;
-      })
-      .catch((error) => {
-        console.error("Failed to get volume!", error);
-      });
-
-    // Suppress native volume UI when camera is active
-    void VolumeManager.showNativeVolumeUI({ enabled: false });
-
-    const volumeListener = VolumeManager.addVolumeListener((result) => {
-      const now = Date.now();
-
-      // Only trigger on actual volume button press (not programmatic changes)
-      if (Math.abs(result.volume - currentVolume) > 0.01) {
-        // Reset release timeout for any volume event during recording (even restoration events)
-        if (isRecording && releaseTimeout) {
-          clearTimeout(releaseTimeout);
-          releaseTimeout = setTimeout(() => {
-            if (isRecording) {
-              isRecording = false;
-              isVolumeKeyPressed = false;
-              lastKeyPressTime = Date.now();
-
-              // Stop recording
-              if (captureButtonRef.current) {
-                captureButtonRef.current.endCapture();
-              }
-            }
-          }, 100);
-        }
-
-        // Ignore volume changes during restoration
-        if (isRestoringVolume) {
-          return;
-        }
-
-        // Debounce multiple button presses
-        if (now - lastKeyPressTime < 1000) {
-          return;
-        }
-
-        if (!isVolumeKeyPressed) {
-          // First event - button press detected
-          isVolumeKeyPressed = true;
-
-          // Schedule photo capture after delay - will be canceled if hold is detected
-          photoTimeout = setTimeout(() => {
-            // Only take photo if we're still in the initial press state (no auto-repeat)
-            if (isVolumeKeyPressed && !isRecording) {
-              if (captureButtonRef.current) {
-                captureButtonRef.current.takePhoto();
-              }
-              isVolumeKeyPressed = false;
-              lastKeyPressTime = Date.now();
-            }
-          }, 250); // Wait for potential auto-repeat before taking photo
-        } else {
-          // Subsequent event - auto-repeat detected (user is holding)
-
-          // Only start recording on the FIRST auto-repeat event
-          if (!isRecording) {
-            // Auto-repeat detected - switch from photo to video
-            if (photoTimeout) {
-              clearTimeout(photoTimeout);
-              photoTimeout = null;
-            }
-
-            isRecording = true;
-
-            // Start recording - let the hook handle animation
-            if (captureButtonRef.current) {
-              captureButtonRef.current.startRecording();
-            }
-          }
-
-          // Don't reset isVolumeKeyPressed yet - we need to track more auto-repeat events
-          // Reset state will happen when recording stops
-
-          // Schedule release detection - if no events for 100ms, user released button
-          if (releaseTimeout) {
-            clearTimeout(releaseTimeout);
-          }
-          releaseTimeout = setTimeout(() => {
-            if (isRecording) {
-              isRecording = false;
-              isVolumeKeyPressed = false;
-              lastKeyPressTime = Date.now();
-
-              // Stop recording
-              if (captureButtonRef.current) {
-                captureButtonRef.current.endCapture();
-              }
-            }
-          }, 100);
-        }
-
-        // Restore volume immediately to prevent ramping
-        isRestoringVolume = true;
-        void VolumeManager.setVolume(currentVolume, { showUI: false });
-        setTimeout(() => {
-          isRestoringVolume = false;
-        }, 100);
-      }
-    });
-
-    return () => {
-      volumeListener.remove();
-
-      // Clean up timers
-      if (photoTimeout) {
-        clearTimeout(photoTimeout);
-      }
-      if (releaseTimeout) {
-        clearTimeout(releaseTimeout);
-      }
-
-      // Restore native volume UI when leaving camera
-      void VolumeManager.showNativeVolumeUI({ enabled: true });
-    };
-  }, [isActive, isCameraInitialized]);
-
-  // The gesture handler maps the linear pinch gesture (0 - 1) to an exponential curve since a camera's zoom
-  // function does not appear linear to the user. (aka zoom 0.1 -> 0.2 does not look equal in difference as 0.8 -> 0.9)
-  const startZoom = useSharedValue(1);
-
-  const pinchGesture = Gesture.Pinch()
-    .onStart(() => {
-      "worklet";
-      // Always sync with current zoom value to prevent flicker
-      startZoom.value = zoom.value;
-    })
-    .onUpdate((event) => {
-      "worklet";
-      // we're trying to map the scale gesture to a linear zoom here
-      const scale = interpolate(
-        event.scale,
-        [1 - 1 / SCALE_FULL_ZOOM, 1, SCALE_FULL_ZOOM],
-        [-1, 0, 1],
-        Extrapolate.CLAMP,
-      );
-      zoom.value = interpolate(
-        scale,
-        [-1, 0, 1],
-        [minZoom, startZoom.value, maxZoom],
-        Extrapolate.CLAMP,
-      );
-    });
+  const { pinchGesture } = usePinchZoom(zoom, minZoom, maxZoom);
 
   useEffect(() => {
     const f =
@@ -484,29 +254,9 @@ export default function CameraPage(): React.ReactElement {
   }, [device?.name, format, fps]);
 
   useEffect(() => {
-    async function requestPermissions() {
-      if (cameraPermission !== RESULTS.GRANTED) {
-        const result = await request(
-          Platform.OS === "ios"
-            ? PERMISSIONS.IOS.CAMERA
-            : PERMISSIONS.ANDROID.CAMERA,
-        );
-        setCameraPermission(result);
-      }
-      if (microphonePermission !== RESULTS.GRANTED) {
-        const result = await request(
-          Platform.OS === "ios"
-            ? PERMISSIONS.IOS.MICROPHONE
-            : PERMISSIONS.ANDROID.RECORD_AUDIO,
-        );
-        setMicrophonePermission(result);
-      }
-    }
-
     if (!isCameraInitialized || !isActive) return;
     void requestPermissions();
-    // we intentionally only track booleans to avoid effect identity churn
-  }, [isCameraInitialized, isActive, cameraPermission, microphonePermission]);
+  }, [isCameraInitialized, isActive, requestPermissions]);
 
   const videoHdr = format?.supportsVideoHdr && enableHdr;
   const photoHdr = format?.supportsPhotoHdr && enableHdr && !videoHdr;
