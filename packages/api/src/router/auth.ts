@@ -2,12 +2,13 @@ import type { TRPCRouterRecord } from "@trpc/server";
 import type { APIUser } from "discord-api-types/v10";
 import { calculateUserDefaultAvatarIndex, CDN, REST } from "@discordjs/rest";
 import { Routes } from "discord-api-types/v10";
-import { and, eq, or } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { z } from "zod/v4";
 
 import { authEnv } from "@acme/auth/env";
-import { account, Friendship, user } from "@acme/db/schema";
+import { account, user } from "@acme/db/schema";
 
+import { checkIsFriend } from "../services/friendship";
 import { protectedProcedure, publicProcedure } from "../trpc";
 
 const cdn = new CDN();
@@ -58,24 +59,8 @@ export const authRouter = {
 
       // Allow refreshing own avatar or friends' avatars
       if (input.userId !== me) {
-        const [friendship] = await ctx.db
-          .select()
-          .from(Friendship)
-          .where(
-            or(
-              and(
-                eq(Friendship.userIdA, me),
-                eq(Friendship.userIdB, input.userId),
-              ),
-              and(
-                eq(Friendship.userIdA, input.userId),
-                eq(Friendship.userIdB, me),
-              ),
-            ),
-          )
-          .limit(1);
-
-        if (!friendship) {
+        const isFriend = await checkIsFriend(ctx.db, me, input.userId);
+        if (!isFriend) {
           return { success: false, error: "Unauthorized" };
         }
       }

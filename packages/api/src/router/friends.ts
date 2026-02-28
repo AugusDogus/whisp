@@ -1,17 +1,21 @@
 import type { TRPCRouterRecord } from "@trpc/server";
 import { z } from "zod/v4";
 
-import { and, desc, eq, inArray, isNull, like, ne, or } from "@acme/db";
+import { and, eq, inArray, like, ne, or } from "@acme/db";
 import {
-  account as Account,
   FriendRequest,
   Friendship,
-  Message,
-  MessageDelivery,
   user as User,
 } from "@acme/db/schema";
 
-import { DISCORD_PROVIDER_ID, FRIEND_REQUEST_STATUS } from "../constants";
+import { FRIEND_REQUEST_STATUS } from "../constants";
+import { getFriendsWithDiscordIds } from "../services/member";
+import {
+  deriveLastSentOpened,
+  getLastReceivedMimeTypes,
+  getLastSentMimeTypes,
+  getPendingSentDeliveries,
+} from "../services/message-status";
 import { protectedProcedure } from "../trpc";
 import {
   notifyFriendAccept,
@@ -128,24 +132,8 @@ export const friendsRouter = {
         lastMimeType: string | null;
       }[];
 
-    const friends = await ctx.db
-      .select({
-        id: User.id,
-        name: User.name,
-        image: User.image,
-        discordId: Account.accountId,
-      })
-      .from(User)
-      .leftJoin(
-        Account,
-        and(
-          eq(Account.userId, User.id),
-          eq(Account.providerId, DISCORD_PROVIDER_ID),
-        ),
-      )
-      .where(or(...friendIds.map((id) => eq(User.id, id))));
+    const friends = await getFriendsWithDiscordIds(ctx.db, friendIds);
 
-    // Create a map of friend ID to streak info
     const friendshipMap = new Map(
       rows.map((r) => {
         const isUserA = r.userIdA === me;
@@ -165,7 +153,6 @@ export const friendsRouter = {
       }),
     );
 
-    // Determine which friends I sent the last message to
     const friendIdsWhereSentLast = friendIds.filter((fid) => {
       const info = friendshipMap.get(fid);
       if (!info?.myLastActivity) return false;
@@ -175,138 +162,24 @@ export const friendsRouter = {
       );
     });
 
-    // Check for unread deliveries of messages I sent to those friends
-    const hasPendingSentTo = new Set<string>();
-    if (friendIdsWhereSentLast.length > 0) {
-      // Get deliveries to these friends that are still unread
-      const unreadDeliveriesToFriends = await ctx.db
-        .select({
-          messageId: MessageDelivery.messageId,
-          recipientId: MessageDelivery.recipientId,
-        })
-        .from(MessageDelivery)
-        .where(
-          and(
-            inArray(MessageDelivery.recipientId, friendIdsWhereSentLast),
-            isNull(MessageDelivery.readAt),
-          ),
-        );
-
-      if (unreadDeliveriesToFriends.length > 0) {
-        // Verify which of these messages were actually sent by me
-        const relevantMessageIds = [
-          ...new Set(unreadDeliveriesToFriends.map((d) => d.messageId)),
-        ];
-        const mySentMessages = await ctx.db
-          .select({ id: Message.id })
-          .from(Message)
-          .where(
-            and(
-              inArray(Message.id, relevantMessageIds),
-              eq(Message.senderId, me),
-            ),
-          );
-        const mySentMessageIdSet = new Set(mySentMessages.map((m) => m.id));
-
-        for (const d of unreadDeliveriesToFriends) {
-          if (mySentMessageIdSet.has(d.messageId)) {
-            hasPendingSentTo.add(d.recipientId);
-          }
-        }
-      }
-    }
-
-    // Fetch the mimeType of the most recent message I sent to each friend
-    // where I sent last, so the client can color-code photo vs video.
-    const lastSentMimeMap = new Map<string, string | null>();
-    if (friendIdsWhereSentLast.length > 0) {
-      // For each friend, find the latest delivery of a message I sent.
-      const deliveries = await ctx.db
-        .select({
-          recipientId: MessageDelivery.recipientId,
-          messageId: MessageDelivery.messageId,
-          createdAt: MessageDelivery.createdAt,
-        })
-        .from(MessageDelivery)
-        .innerJoin(Message, eq(Message.id, MessageDelivery.messageId))
-        .where(
-          and(
-            inArray(MessageDelivery.recipientId, friendIdsWhereSentLast),
-            eq(Message.senderId, me),
-          ),
-        )
-        .orderBy(desc(MessageDelivery.createdAt));
-
-      // Pick only the most recent delivery per recipient
-      const latestPerRecipient = new Map<string, { messageId: string }>();
-      for (const d of deliveries) {
-        if (!latestPerRecipient.has(d.recipientId)) {
-          latestPerRecipient.set(d.recipientId, {
-            messageId: d.messageId,
-          });
-        }
-      }
-
-      // Fetch mimeType for those messages
-      const messageIds = [
-        ...new Set([...latestPerRecipient.values()].map((v) => v.messageId)),
-      ];
-      if (messageIds.length > 0) {
-        const msgs = await ctx.db
-          .select({ id: Message.id, mimeType: Message.mimeType })
-          .from(Message)
-          .where(inArray(Message.id, messageIds));
-        const msgMimeMap = new Map(msgs.map((m) => [m.id, m.mimeType]));
-
-        for (const [recipientId, { messageId }] of latestPerRecipient) {
-          lastSentMimeMap.set(recipientId, msgMimeMap.get(messageId) ?? null);
-        }
-      }
-    }
-
-    // Fetch mimeType of the most recent message each friend sent to me
-    // (for coloring received / received_opened statuses).
-    const lastReceivedMimeMap = new Map<string, string | null>();
     const friendIdsWhereReceivedLast = friendIds.filter(
       (fid) => !friendIdsWhereSentLast.includes(fid),
     );
-    if (friendIdsWhereReceivedLast.length > 0) {
-      const deliveries = await ctx.db
-        .select({
-          senderId: Message.senderId,
-          mimeType: Message.mimeType,
-          createdAt: MessageDelivery.createdAt,
-        })
-        .from(MessageDelivery)
-        .innerJoin(Message, eq(Message.id, MessageDelivery.messageId))
-        .where(
-          and(
-            eq(MessageDelivery.recipientId, me),
-            inArray(Message.senderId, friendIdsWhereReceivedLast),
-          ),
-        )
-        .orderBy(desc(MessageDelivery.createdAt));
 
-      for (const d of deliveries) {
-        if (!lastReceivedMimeMap.has(d.senderId)) {
-          lastReceivedMimeMap.set(d.senderId, d.mimeType);
-        }
-      }
-    }
+    const [hasPendingSentTo, lastSentMimeMap, lastReceivedMimeMap] =
+      await Promise.all([
+        getPendingSentDeliveries(ctx.db, me, friendIdsWhereSentLast),
+        getLastSentMimeTypes(ctx.db, me, friendIdsWhereSentLast),
+        getLastReceivedMimeTypes(ctx.db, me, friendIdsWhereReceivedLast),
+      ]);
 
     return friends.map((u) => {
       const streakInfo = friendshipMap.get(u.id);
-
-      // lastSentOpened:
-      //   false = I sent last and they haven't opened yet
-      //   true  = I sent last and they opened it
-      //   null  = they sent last, or no activity
-      let lastSentOpened: boolean | null = null;
-      if (friendIdsWhereSentLast.includes(u.id)) {
-        lastSentOpened = !hasPendingSentTo.has(u.id);
-      }
-
-      // Determine the mimeType of the most recent message in this thread
+      const lastSentOpened = deriveLastSentOpened(
+        u.id,
+        friendIdsWhereSentLast,
+        hasPendingSentTo,
+      );
       const lastMimeType = friendIdsWhereSentLast.includes(u.id)
         ? (lastSentMimeMap.get(u.id) ?? null)
         : (lastReceivedMimeMap.get(u.id) ?? null);

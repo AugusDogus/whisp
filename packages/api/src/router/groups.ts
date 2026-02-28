@@ -2,32 +2,20 @@ import type { TRPCRouterRecord } from "@trpc/server";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod/v4";
 
-import { and, desc, eq, inArray, isNull, or } from "@acme/db";
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- used for typeof in getFriendIds
-import { db } from "@acme/db/client";
+import { and, desc, eq, inArray, isNull } from "@acme/db";
 import {
-  account as Account,
-  Friendship,
   Group,
   GroupMember,
   Message,
   MessageDelivery,
-  user as User,
 } from "@acme/db/schema";
 
-import { DISCORD_PROVIDER_ID } from "../constants";
+import { getFriendIds } from "../services/friendship";
+import {
+  getGroupMemberAvatars,
+  getGroupMembersWithDiscordIds,
+} from "../services/member";
 import { protectedProcedure } from "../trpc";
-
-async function getFriendIds(
-  dbClient: typeof db,
-  me: string,
-): Promise<string[]> {
-  const rows = await dbClient
-    .select()
-    .from(Friendship)
-    .where(or(eq(Friendship.userIdA, me), eq(Friendship.userIdB, me)));
-  return rows.map((r) => (r.userIdA === me ? r.userIdB : r.userIdA));
-}
 
 export const groupsRouter = {
   create: protectedProcedure
@@ -100,30 +88,10 @@ export const groupsRouter = {
       }[];
     }
 
-    const groups = await ctx.db
-      .select()
-      .from(Group)
-      .where(inArray(Group.id, groupIds));
-
-    const allMembers = await ctx.db
-      .select({
-        groupId: GroupMember.groupId,
-        userId: GroupMember.userId,
-        image: User.image,
-      })
-      .from(GroupMember)
-      .innerJoin(User, eq(User.id, GroupMember.userId))
-      .where(inArray(GroupMember.groupId, groupIds));
-
-    const groupToMembers = new Map<
-      string,
-      { userId: string; image: string | null }[]
-    >();
-    for (const m of allMembers) {
-      const existing = groupToMembers.get(m.groupId) ?? [];
-      existing.push({ userId: m.userId, image: m.image });
-      groupToMembers.set(m.groupId, existing);
-    }
+    const [groups, groupToMembers] = await Promise.all([
+      ctx.db.select().from(Group).where(inArray(Group.id, groupIds)),
+      getGroupMemberAvatars(ctx.db, groupIds),
+    ]);
 
     const groupToUnread = new Map<string, number>();
     const unreadDeliveries = await ctx.db
@@ -228,23 +196,10 @@ export const groupsRouter = {
       )[0];
       if (!group) return null;
 
-      const members = await ctx.db
-        .select({
-          id: User.id,
-          name: User.name,
-          image: User.image,
-          discordId: Account.accountId,
-        })
-        .from(GroupMember)
-        .innerJoin(User, eq(User.id, GroupMember.userId))
-        .leftJoin(
-          Account,
-          and(
-            eq(Account.userId, User.id),
-            eq(Account.providerId, DISCORD_PROVIDER_ID),
-          ),
-        )
-        .where(eq(GroupMember.groupId, input.groupId));
+      const members = await getGroupMembersWithDiscordIds(
+        ctx.db,
+        input.groupId,
+      );
 
       return {
         id: group.id,
