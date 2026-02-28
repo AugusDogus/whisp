@@ -2,6 +2,8 @@ import type { db } from "@acme/db/client";
 import { eq } from "@acme/db";
 import { PushToken } from "@acme/db/schema";
 
+import { EXPO_PUSH_URL, NOTIFICATION_TYPE } from "../constants";
+
 interface NotificationPayload {
   to: string; // Expo push token
   title: string;
@@ -28,7 +30,7 @@ export async function sendPushNotification(
   };
 
   try {
-    const response = await fetch("https://exp.host/--/api/v2/push/send", {
+    const response = await fetch(EXPO_PUSH_URL, {
       method: "POST",
       headers: {
         Accept: "application/json",
@@ -149,7 +151,7 @@ export async function notifyNewMessage(
     : `${senderName} sent you a whisp`;
 
   const data: Record<string, unknown> = {
-    type: "message",
+    type: NOTIFICATION_TYPE.MESSAGE,
     messageId,
     senderId,
     fileUrl,
@@ -192,7 +194,7 @@ export async function notifyFriendRequest(
     "New Friend Request",
     `${senderName} sent you a friend request`,
     {
-      type: "friend_request",
+      type: NOTIFICATION_TYPE.FRIEND_REQUEST,
       requestId,
     },
   );
@@ -224,7 +226,7 @@ export async function notifyFriendAccept(
     "Friend Request Accepted",
     `${accepterName} accepted your friend request`,
     {
-      type: "friend_accept",
+      type: NOTIFICATION_TYPE.FRIEND_ACCEPT,
     },
   );
 }

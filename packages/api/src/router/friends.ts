@@ -11,6 +11,7 @@ import {
   user as User,
 } from "@acme/db/schema";
 
+import { DISCORD_PROVIDER_ID, FRIEND_REQUEST_STATUS } from "../constants";
 import { protectedProcedure } from "../trpc";
 import {
   notifyFriendAccept,
@@ -82,10 +83,10 @@ export const friendsRouter = {
           (r) =>
             (r.fromUserId === me &&
               r.toUserId === u.id &&
-              r.status === "pending") ||
+              r.status === FRIEND_REQUEST_STATUS.PENDING) ||
             (r.toUserId === me &&
               r.fromUserId === u.id &&
-              r.status === "pending"),
+              r.status === FRIEND_REQUEST_STATUS.PENDING),
         );
         return {
           id: u.id,
@@ -137,7 +138,10 @@ export const friendsRouter = {
       .from(User)
       .leftJoin(
         Account,
-        and(eq(Account.userId, User.id), eq(Account.providerId, "discord")),
+        and(
+          eq(Account.userId, User.id),
+          eq(Account.providerId, DISCORD_PROVIDER_ID),
+        ),
       )
       .where(or(...friendIds.map((id) => eq(User.id, id))));
 
@@ -329,7 +333,7 @@ export const friendsRouter = {
       .where(
         and(
           eq(FriendRequest.toUserId, me),
-          eq(FriendRequest.status, "pending"),
+          eq(FriendRequest.status, FRIEND_REQUEST_STATUS.PENDING),
         ),
       );
 
@@ -377,7 +381,7 @@ export const friendsRouter = {
         .values({
           fromUserId: me,
           toUserId: input.toUserId,
-          status: "pending",
+          status: FRIEND_REQUEST_STATUS.PENDING,
         })
         .returning();
 
@@ -404,7 +408,10 @@ export const friendsRouter = {
           .from(FriendRequest)
           .where(eq(FriendRequest.id, input.requestId))
       )[0];
-      if (request?.toUserId !== me || request.status !== "pending")
+      if (
+        request?.toUserId !== me ||
+        request.status !== FRIEND_REQUEST_STATUS.PENDING
+      )
         return { ok: false };
 
       // create friendship with normalized pair
@@ -443,7 +450,10 @@ export const friendsRouter = {
           .from(FriendRequest)
           .where(eq(FriendRequest.id, input.requestId))
       )[0];
-      if (request?.toUserId !== me || request.status !== "pending")
+      if (
+        request?.toUserId !== me ||
+        request.status !== FRIEND_REQUEST_STATUS.PENDING
+      )
         return { ok: false };
 
       // Delete the friend request

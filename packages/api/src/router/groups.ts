@@ -14,6 +14,7 @@ import {
   user as User,
 } from "@acme/db/schema";
 
+import { DISCORD_PROVIDER_ID } from "../constants";
 import { protectedProcedure } from "../trpc";
 
 async function getFriendIds(
@@ -230,7 +231,10 @@ export const groupsRouter = {
         .innerJoin(User, eq(User.id, GroupMember.userId))
         .leftJoin(
           Account,
-          and(eq(Account.userId, User.id), eq(Account.providerId, "discord")),
+          and(
+            eq(Account.userId, User.id),
+            eq(Account.providerId, DISCORD_PROVIDER_ID),
+          ),
         )
         .where(eq(GroupMember.groupId, input.groupId));
 
