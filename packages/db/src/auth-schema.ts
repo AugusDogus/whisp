@@ -1,4 +1,4 @@
-import { sqliteTable } from "drizzle-orm/sqlite-core";
+import { index, sqliteTable } from "drizzle-orm/sqlite-core";
 
 export const user = sqliteTable("user", (t) => ({
   id: t.text().primaryKey(),
@@ -16,38 +16,48 @@ export const user = sqliteTable("user", (t) => ({
     .default(true),
 }));
 
-export const session = sqliteTable("session", (t) => ({
-  id: t.text().primaryKey(),
-  expiresAt: t.integer({ mode: "timestamp" }).notNull(),
-  token: t.text().notNull().unique(),
-  createdAt: t.integer({ mode: "timestamp" }).notNull(),
-  updatedAt: t.integer({ mode: "timestamp" }).notNull(),
-  ipAddress: t.text(),
-  userAgent: t.text(),
-  userId: t
-    .text()
-    .notNull()
-    .references(() => user.id, { onDelete: "cascade" }),
-}));
+export const session = sqliteTable(
+  "session",
+  (t) => ({
+    id: t.text().primaryKey(),
+    expiresAt: t.integer({ mode: "timestamp" }).notNull(),
+    token: t.text().notNull().unique(),
+    createdAt: t.integer({ mode: "timestamp" }).notNull(),
+    updatedAt: t.integer({ mode: "timestamp" }).notNull(),
+    ipAddress: t.text(),
+    userAgent: t.text(),
+    userId: t
+      .text()
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+  }),
+  (table) => [index("session_userId_idx").on(table.userId)],
+);
 
-export const account = sqliteTable("account", (t) => ({
-  id: t.text().primaryKey(),
-  accountId: t.text().notNull(),
-  providerId: t.text().notNull(),
-  userId: t
-    .text()
-    .notNull()
-    .references(() => user.id, { onDelete: "cascade" }),
-  accessToken: t.text(),
-  refreshToken: t.text(),
-  idToken: t.text(),
-  accessTokenExpiresAt: t.integer({ mode: "timestamp" }),
-  refreshTokenExpiresAt: t.integer({ mode: "timestamp" }),
-  scope: t.text(),
-  password: t.text(),
-  createdAt: t.integer({ mode: "timestamp" }).notNull(),
-  updatedAt: t.integer({ mode: "timestamp" }).notNull(),
-}));
+export const account = sqliteTable(
+  "account",
+  (t) => ({
+    id: t.text().primaryKey(),
+    accountId: t.text().notNull(),
+    providerId: t.text().notNull(),
+    userId: t
+      .text()
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    accessToken: t.text(),
+    refreshToken: t.text(),
+    idToken: t.text(),
+    accessTokenExpiresAt: t.integer({ mode: "timestamp" }),
+    refreshTokenExpiresAt: t.integer({ mode: "timestamp" }),
+    scope: t.text(),
+    password: t.text(),
+    createdAt: t.integer({ mode: "timestamp" }).notNull(),
+    updatedAt: t.integer({ mode: "timestamp" }).notNull(),
+  }),
+  (table) => [
+    index("account_userId_providerId_idx").on(table.userId, table.providerId),
+  ],
+);
 
 export const verification = sqliteTable("verification", (t) => ({
   id: t.text().primaryKey(),
