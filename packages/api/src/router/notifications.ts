@@ -1,4 +1,5 @@
 import type { TRPCRouterRecord } from "@trpc/server";
+import { TRPCError } from "@trpc/server";
 import { z } from "zod/v4";
 
 import { eq } from "@acme/db";
@@ -48,7 +49,10 @@ export const notificationsRouter = {
         .returning();
 
       if (!newToken) {
-        throw new Error("Failed to create push token");
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to create push token",
+        });
       }
 
       return { success: true, tokenId: newToken.id };

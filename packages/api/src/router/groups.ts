@@ -1,4 +1,5 @@
 import type { TRPCRouterRecord } from "@trpc/server";
+import { TRPCError } from "@trpc/server";
 import { z } from "zod/v4";
 
 import { and, desc, eq, inArray, isNull, or } from "@acme/db";
@@ -45,7 +46,10 @@ export const groupsRouter = {
       for (const mid of input.memberIds) {
         if (mid === me) continue;
         if (!friendSet.has(mid)) {
-          throw new Error(`User ${mid} is not a friend`);
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `User ${mid} is not a friend`,
+          });
         }
       }
 
@@ -59,7 +63,11 @@ export const groupsRouter = {
         })
         .returning();
 
-      if (!group) throw new Error("Failed to create group");
+      if (!group)
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to create group",
+        });
 
       await ctx.db.insert(GroupMember).values(
         allMemberIds.map((userId) => ({
@@ -272,7 +280,11 @@ export const groupsRouter = {
             ),
           )
       )[0];
-      if (!membership) throw new Error("Not a member of this group");
+      if (!membership)
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Not a member of this group",
+        });
 
       const friendIds = await getFriendIds(ctx.db, me);
       const friendSet = new Set(friendIds);
@@ -286,7 +298,11 @@ export const groupsRouter = {
       const toAdd: string[] = [];
       for (const uid of input.userIds) {
         if (uid === me) continue;
-        if (!friendSet.has(uid)) throw new Error(`User ${uid} is not a friend`);
+        if (!friendSet.has(uid))
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `User ${uid} is not a friend`,
+          });
         if (!existingSet.has(uid)) toAdd.push(uid);
       }
 
@@ -349,7 +365,11 @@ export const groupsRouter = {
             ),
           )
       )[0];
-      if (!membership) throw new Error("Not a member of this group");
+      if (!membership)
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Not a member of this group",
+        });
 
       await ctx.db
         .update(Group)
