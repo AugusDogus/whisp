@@ -1,7 +1,9 @@
 "use client";
 
 import React from "react";
+
 import Link from "next/link";
+
 import { Menu, X } from "lucide-react";
 
 import { Discord, GitHub, Logo, Twitter } from "~/app/components/icons";

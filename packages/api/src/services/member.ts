@@ -1,10 +1,6 @@
-import type { db } from "@acme/db/client";
 import { and, eq, inArray } from "@acme/db";
-import {
-  account as Account,
-  GroupMember,
-  user as User,
-} from "@acme/db/schema";
+import type { db } from "@acme/db/client";
+import { account as Account, GroupMember, user as User } from "@acme/db/schema";
 
 import { DISCORD_PROVIDER_ID } from "../constants";
 
@@ -16,10 +12,7 @@ export async function getGroupMemberAvatars(
   dbClient: typeof db,
   groupIds: string[],
 ): Promise<Map<string, { userId: string; image: string | null }[]>> {
-  const result = new Map<
-    string,
-    { userId: string; image: string | null }[]
-  >();
+  const result = new Map<string, { userId: string; image: string | null }[]>();
   if (groupIds.length === 0) return result;
 
   const allMembers = await dbClient

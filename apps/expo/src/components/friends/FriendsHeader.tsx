@@ -1,4 +1,5 @@
 import { Pressable, useColorScheme, View } from "react-native";
+
 import { Ionicons } from "@expo/vector-icons";
 
 import { Text } from "~/components/ui/text";

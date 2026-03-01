@@ -1,5 +1,5 @@
-import type { db } from "@acme/db/client";
 import { and, eq, or } from "@acme/db";
+import type { db } from "@acme/db/client";
 import { Friendship } from "@acme/db/schema";
 
 export async function getFriendIds(

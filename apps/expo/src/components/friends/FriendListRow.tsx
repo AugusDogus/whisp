@@ -1,13 +1,17 @@
+import type { FriendRow } from "./types";
+
 import type { ColorSchemeName, ImageSourcePropType } from "react-native";
 import { ActivityIndicator, Pressable, View } from "react-native";
+
 import { Image } from "expo-image";
+
 import { Ionicons } from "@expo/vector-icons";
 
-import type { FriendRow } from "./types";
 import { Avatar } from "~/components/ui/avatar";
 import { Text } from "~/components/ui/text";
 import { cn } from "~/lib/utils";
 import { mediaKindColor } from "~/utils/media-kind";
+
 import { getRelativeTime } from "./friendsTime";
 import { getStatusText, MessageStatusIcon } from "./messageStatus";
 

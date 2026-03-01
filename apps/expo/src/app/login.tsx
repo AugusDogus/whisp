@@ -1,11 +1,12 @@
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+
 import { useEffect, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+
 import { useNavigation } from "@react-navigation/native";
 import { usePostHog } from "posthog-react-native";
 
-import type { RootStackParamList } from "~/navigation/types";
 import { Button } from "~/components/ui/button";
 import {
   Card,
@@ -15,6 +16,7 @@ import {
   CardTitle,
 } from "~/components/ui/card";
 import { Text } from "~/components/ui/text";
+import type { RootStackParamList } from "~/navigation/types";
 import { authClient } from "~/utils/auth";
 
 export default function LoginPage() {

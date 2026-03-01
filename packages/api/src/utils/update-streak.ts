@@ -1,5 +1,5 @@
-import type { db as Database } from "@acme/db/client";
 import { and, eq } from "@acme/db";
+import type { db as Database } from "@acme/db/client";
 import { Friendship } from "@acme/db/schema";
 
 /**

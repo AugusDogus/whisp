@@ -1,7 +1,9 @@
 import type { VariantProps } from "class-variance-authority";
-import type { Role } from "react-native";
+
 import * as React from "react";
+import type { Role } from "react-native";
 import { Platform, Text as RNText } from "react-native";
+
 import * as Slot from "@rn-primitives/slot";
 import { cva } from "class-variance-authority";
 

@@ -1,5 +1,6 @@
 import type { SwitchProps } from "react-native";
 import { Switch as RNSwitch } from "react-native";
+
 import { useColorScheme } from "nativewind";
 
 function Switch({ value, ...props }: SwitchProps) {

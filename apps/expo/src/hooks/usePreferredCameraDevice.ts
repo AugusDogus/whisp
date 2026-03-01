@@ -1,6 +1,7 @@
-import type { CameraDevice } from "react-native-vision-camera";
 import { useCallback, useMemo, useState } from "react";
+import type { CameraDevice } from "react-native-vision-camera";
 import { useCameraDevices } from "react-native-vision-camera";
+
 import * as SecureStore from "expo-secure-store";
 
 // Simple storage state hook for SecureStore

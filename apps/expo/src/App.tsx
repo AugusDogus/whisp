@@ -4,7 +4,9 @@ import {
   initialWindowMetrics,
   SafeAreaProvider,
 } from "react-native-safe-area-context";
+
 import { StatusBar } from "expo-status-bar";
+
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { PortalHost } from "@rn-primitives/portal";
 import * as Sentry from "@sentry/react-native";
@@ -15,8 +17,8 @@ import { usePushNotifications } from "~/hooks/usePushNotifications";
 import { createExpoTRPCClient, queryClient, trpc } from "~/utils/api";
 import { authClient } from "~/utils/auth";
 import { POSTHOG_API_KEY, POSTHOG_HOST } from "~/utils/constants";
-import { RootNavigator } from "./navigation/RootNavigator";
 
+import { RootNavigator } from "./navigation/RootNavigator";
 import "./styles.css";
 
 Sentry.init({

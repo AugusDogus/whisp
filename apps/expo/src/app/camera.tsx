@@ -1,12 +1,7 @@
 import type { RouteProp } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+
 import type * as React from "react";
-import type {
-  CameraProps,
-  CameraRuntimeError,
-  PhotoFile,
-  VideoFile,
-} from "react-native-vision-camera";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   InteractionManager,
@@ -21,13 +16,21 @@ import Reanimated, {
   useAnimatedProps,
   useSharedValue,
 } from "react-native-reanimated";
+import type {
+  CameraProps,
+  CameraRuntimeError,
+  PhotoFile,
+  VideoFile,
+} from "react-native-vision-camera";
 import {
   Camera,
   useCameraDevice,
   useCameraFormat,
 } from "react-native-vision-camera";
+
 import { Image } from "expo-image";
 import * as SecureStore from "expo-secure-store";
+
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import {
   useFocusEffect,
@@ -38,7 +41,6 @@ import {
 import { useQuery } from "@tanstack/react-query";
 
 import type { CaptureButtonRef } from "~/components/capture-button";
-import type { MainTabParamList, RootStackParamList } from "~/navigation/types";
 import { CaptureButton } from "~/components/capture-button";
 import { FrontFlashOverlay } from "~/components/front-flash-overlay";
 import { StatusBarBlurBackground } from "~/components/status-bar-blur-background";
@@ -50,6 +52,7 @@ import { usePinchZoom } from "~/hooks/usePinchZoom";
 import { usePreferredCameraDevice } from "~/hooks/usePreferredCameraDevice";
 import { usePreferredCameraPosition } from "~/hooks/usePreferredCameraPosition";
 import { useVolumeKeyShutter } from "~/hooks/useVolumeKeyShutter";
+import type { MainTabParamList, RootStackParamList } from "~/navigation/types";
 import { useCookieStore } from "~/stores/cookie-store";
 import { trpc } from "~/utils/api";
 import { authClient } from "~/utils/auth";

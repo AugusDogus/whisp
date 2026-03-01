@@ -1,6 +1,7 @@
+import type { FriendRow } from "./types";
+
 import type { MutableRefObject } from "react";
 
-import type { FriendRow } from "./types";
 import {
   AlertDialog,
   AlertDialogAction,

@@ -1,15 +1,17 @@
+import type { RootStackParamList } from "./types";
 import type {
   LinkingOptions,
   NavigationContainerRef,
 } from "@react-navigation/native";
+
 import { createRef, useRef } from "react";
+
 import { createMaterialTopTabNavigator } from "@react-navigation/material-top-tabs";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { usePostHog } from "posthog-react-native";
 import { Toaster } from "sonner-native";
 
-import type { RootStackParamList } from "./types";
 import CameraScreen from "~/app/camera";
 import CreateGroupScreen from "~/app/create-group";
 import FriendsScreen from "~/app/friends";

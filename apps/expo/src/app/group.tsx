@@ -1,5 +1,6 @@
 import type { RouteProp } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+
 import { useCallback, useMemo, useState } from "react";
 import {
   FlatList,
@@ -9,18 +10,21 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+
 import { Image } from "expo-image";
+
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation, useRoute } from "@react-navigation/native";
 
-import type { RootStackParamList } from "~/navigation/types";
 import { MessageViewerModal } from "~/components/friends/MessageViewerModal";
 import { Avatar } from "~/components/ui/avatar";
 import { Button } from "~/components/ui/button";
 import { GroupAvatar } from "~/components/ui/group-avatar";
 import { Text } from "~/components/ui/text";
 import { useGroupMessageViewer } from "~/hooks/useGroupMessageViewer";
+import type { RootStackParamList } from "~/navigation/types";
 import { trpc } from "~/utils/api";
+
 import WhispLogoDark from "../../assets/splash-icon-dark.png";
 import WhispLogoLight from "../../assets/splash-icon.png";
 

@@ -1,4 +1,5 @@
 import type { FileRouter } from "uploadthing/types";
+
 import { createUploadthing, UploadThingError } from "uploadthing/server";
 import { z } from "zod/v4";
 
@@ -132,7 +133,7 @@ export function createUploadRouter({ getSession }: CreateDeps) {
         }
 
         const sender = await db.query.user.findFirst({
-          where: (users, { eq }) => eq(users.id, metadata.userId),
+          where: (users, { eq: colEq }) => colEq(users.id, metadata.userId),
           columns: { name: true },
         });
 
@@ -140,7 +141,7 @@ export function createUploadRouter({ getSession }: CreateDeps) {
         const groupQuery =
           groupIdForQuery &&
           db.query.Group.findFirst({
-            where: (g, { eq }) => eq(g.id, groupIdForQuery),
+            where: (g, { eq: colEq }) => colEq(g.id, groupIdForQuery),
             columns: { name: true },
           });
         const groupResult: { name: string } | null = groupQuery

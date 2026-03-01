@@ -1,11 +1,14 @@
+import type { FriendRow, GroupRow } from "./types";
+
 import type { ColorSchemeName, ImageSourcePropType } from "react-native";
 import { FlatList, Pressable, RefreshControl, View } from "react-native";
+
 import { Ionicons } from "@expo/vector-icons";
 
-import type { FriendRow, GroupRow } from "./types";
 import { GroupAvatar } from "~/components/ui/group-avatar";
 import { Text } from "~/components/ui/text";
 import { mediaKindColor } from "~/utils/media-kind";
+
 import { FriendListRow } from "./FriendListRow";
 import { getRelativeTime } from "./friendsTime";
 

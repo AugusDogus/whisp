@@ -1,0 +1,48 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "printWidth": 80,
+  "sortPackageJson": false,
+  "ignorePatterns": ["**/*.hbs"],
+  "sortImports": {
+    "newlinesBetween": true,
+    "customGroups": [
+      {
+        "groupName": "react",
+        "elementNamePattern": ["react", "react-*"]
+      },
+      {
+        "groupName": "next",
+        "elementNamePattern": ["next", "next/**"]
+      },
+      {
+        "groupName": "expo",
+        "elementNamePattern": ["expo", "expo-*", "expo/**"]
+      },
+      {
+        "groupName": "acme",
+        "elementNamePattern": ["@acme/**"]
+      },
+      {
+        "groupName": "local",
+        "elementNamePattern": ["~/**"]
+      }
+    ],
+    "groups": [
+      "type-import",
+      "react",
+      "next",
+      "expo",
+      ["value-builtin", "value-external"],
+      { "newlinesBetween": true },
+      "acme",
+      { "newlinesBetween": true },
+      "local",
+      ["value-parent", "value-sibling", "value-index"],
+      "unknown"
+    ]
+  },
+  "sortTailwindcss": {
+    "config": "./tooling/tailwind/web.ts",
+    "functions": ["cn", "cva"]
+  }
+}

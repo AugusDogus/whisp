@@ -1,5 +1,6 @@
 import { Dimensions, Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+
 import Constants from "expo-constants";
 
 export const CONTENT_SPACING = 15;

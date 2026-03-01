@@ -1,12 +1,9 @@
 import type { TRPCRouterRecord } from "@trpc/server";
+
 import { z } from "zod/v4";
 
 import { and, eq, inArray, like, ne, or } from "@acme/db";
-import {
-  FriendRequest,
-  Friendship,
-  user as User,
-} from "@acme/db/schema";
+import { FriendRequest, Friendship, user as User } from "@acme/db/schema";
 
 import { FRIEND_REQUEST_STATUS } from "../constants";
 import { getFriendsWithDiscordIds } from "../services/member";

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState, Platform } from "react-native";
 import { checkNotifications } from "react-native-permissions";
+
 import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
 
@@ -179,12 +180,12 @@ export function usePushNotifications(isAuthenticated: boolean) {
 
     // Listen for notifications received while app is foregrounded
     notificationListener.current =
-      Notifications.addNotificationReceivedListener((notification) => {
-        console.log("Notification received:", notification);
-        setNotification(notification);
+      Notifications.addNotificationReceivedListener((incoming) => {
+        console.log("Notification received:", incoming);
+        setNotification(incoming);
 
         // Invalidate queries based on notification type to prefetch fresh data
-        const data = notification.request.content.data;
+        const data = incoming.request.content.data;
         if (data.type === "message") {
           console.log("Invalidating inbox query for new message notification");
           // This will cause the inbox to refetch in the background

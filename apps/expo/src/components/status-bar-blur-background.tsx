@@ -1,7 +1,8 @@
-import type { BlurViewProps } from "expo-blur";
 import React from "react";
 import { Platform, StyleSheet } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import type { BlurViewProps } from "expo-blur";
 import { BlurView } from "expo-blur";
 
 const StatusBarBlurBackgroundImpl = ({

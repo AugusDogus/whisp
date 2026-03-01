@@ -1,8 +1,9 @@
-import type { ViewProps } from "react-native";
 import * as React from "react";
+import type { ViewProps } from "react-native";
 import { Platform, Text, View } from "react-native";
 import { FadeIn, FadeOut } from "react-native-reanimated";
 import { FullWindowOverlay as RNFullWindowOverlay } from "react-native-screens";
+
 import { Ionicons } from "@expo/vector-icons";
 import * as DialogPrimitive from "@rn-primitives/dialog";
 

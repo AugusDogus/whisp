@@ -1,14 +1,10 @@
 import type { TRPCRouterRecord } from "@trpc/server";
+
 import { TRPCError } from "@trpc/server";
 import { z } from "zod/v4";
 
 import { and, desc, eq, inArray, isNull } from "@acme/db";
-import {
-  Group,
-  GroupMember,
-  Message,
-  MessageDelivery,
-} from "@acme/db/schema";
+import { Group, GroupMember, Message, MessageDelivery } from "@acme/db/schema";
 
 import { getFriendIds } from "../services/friendship";
 import {

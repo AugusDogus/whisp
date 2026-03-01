@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { BackHandler } from "react-native";
+
 import * as Notifications from "expo-notifications";
 
 import type { InboxMessage } from "~/components/friends/types";

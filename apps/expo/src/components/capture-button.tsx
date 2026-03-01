@@ -1,9 +1,8 @@
-import type { ViewProps } from "react-native";
-import type { SharedValue } from "react-native-reanimated";
-import type { Camera, PhotoFile, VideoFile } from "react-native-vision-camera";
 import React, { useCallback, useEffect, useRef } from "react";
+import type { ViewProps } from "react-native";
 import { StyleSheet, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import type { SharedValue } from "react-native-reanimated";
 import Reanimated, {
   Easing,
   useAnimatedStyle,
@@ -12,6 +11,7 @@ import Reanimated, {
   withSpring,
   withTiming,
 } from "react-native-reanimated";
+import type { Camera, PhotoFile, VideoFile } from "react-native-vision-camera";
 
 import { useCameraCapture } from "~/hooks/useCameraCapture";
 import { CAPTURE_BUTTON_SIZE } from "~/utils/constants";

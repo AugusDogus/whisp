@@ -1,4 +1,3 @@
-import type { SharedValue } from "react-native-reanimated";
 import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import {
   InteractionManager,
@@ -12,11 +11,13 @@ import {
   GestureDetector,
   GestureHandlerRootView,
 } from "react-native-gesture-handler";
+import type { SharedValue } from "react-native-reanimated";
 import Animated, {
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
 } from "react-native-reanimated";
+
 import {
   Canvas,
   Group,
@@ -477,23 +478,23 @@ export function CaptionEditor({
   }, [editingCaptionId, translateX, translateY]);
 
   // Focus input when editing starts (for programmatic editing triggers like gesture tap)
+  // Focus input when editing starts (for programmatic editing triggers like gesture tap)
   useEffect(() => {
     if (editingCaptionId) {
       // Try to focus immediately
-      const ref = inputRefs.current.get(editingCaptionId);
-      if (ref) {
-        ref.focus();
+      const inputRef = inputRefs.current.get(editingCaptionId);
+      if (inputRef) {
+        inputRef.focus();
       } else {
         // If ref doesn't exist yet, wait for next frame
         requestAnimationFrame(() => {
-          const ref = inputRefs.current.get(editingCaptionId);
-          if (ref) {
-            ref.focus();
+          const deferredRef = inputRefs.current.get(editingCaptionId);
+          if (deferredRef) {
+            deferredRef.focus();
           } else {
             // Last resort - wait for interactions
             InteractionManager.runAfterInteractions(() => {
-              const ref = inputRefs.current.get(editingCaptionId);
-              ref?.focus();
+              inputRefs.current.get(editingCaptionId)?.focus();
             });
           }
         });

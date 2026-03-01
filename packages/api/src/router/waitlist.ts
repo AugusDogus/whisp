@@ -1,4 +1,5 @@
 import type { TRPCRouterRecord } from "@trpc/server";
+
 import { count, eq } from "drizzle-orm";
 
 import { user, Waitlist } from "@acme/db/schema";

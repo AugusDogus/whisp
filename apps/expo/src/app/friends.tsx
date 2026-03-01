@@ -4,16 +4,16 @@ import type {
 } from "@gorhom/bottom-sheet";
 import type { RouteProp } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BackHandler, Linking, useColorScheme, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+
 import * as Haptics from "expo-haptics";
+
 import { BottomSheetBackdrop } from "@gorhom/bottom-sheet";
 import { useNavigation, useRoute } from "@react-navigation/native";
 
-import type { FriendRow, GroupRow } from "~/components/friends/types";
-import type { MainTabParamList, RootStackParamList } from "~/navigation/types";
-import type { OutboxStatus } from "~/utils/outbox-status";
 import { AddFriendsPanel } from "~/components/add-friends-panel";
 import { FriendsListSkeletonVaried } from "~/components/friends-skeleton";
 import { FriendActionsSheet } from "~/components/friends/FriendActionsSheet";
@@ -24,6 +24,7 @@ import { LeaveGroupDialog } from "~/components/friends/LeaveGroupDialog";
 import { MessageViewerModal } from "~/components/friends/MessageViewerModal";
 import { RemoveFriendDialog } from "~/components/friends/RemoveFriendDialog";
 import { SendModePanel } from "~/components/friends/SendModePanel";
+import type { FriendRow, GroupRow } from "~/components/friends/types";
 import { useRecording } from "~/contexts/RecordingContext";
 import { useFriendRows } from "~/hooks/useFriendRows";
 import { useMarkReadMutation } from "~/hooks/useMarkReadMutation";
@@ -31,14 +32,17 @@ import { useMessageFromNotification } from "~/hooks/useMessageFromNotification";
 import { useMessageViewerState } from "~/hooks/useMessageViewerState";
 import { useRemoveFriend } from "~/hooks/useRemoveFriend";
 import { useSendModeSelection } from "~/hooks/useSendModeSelection";
+import type { MainTabParamList, RootStackParamList } from "~/navigation/types";
 import { trpc } from "~/utils/api";
 import { authClient } from "~/utils/auth";
 import { uploadMedia } from "~/utils/media-upload";
+import type { OutboxStatus } from "~/utils/outbox-status";
 import {
   getOutboxStatusSnapshot,
   markWhispUploading,
   subscribeOutboxStatus,
 } from "~/utils/outbox-status";
+
 import WhispLogoDark from "../../assets/splash-icon-dark.png";
 import WhispLogoLight from "../../assets/splash-icon.png";
 

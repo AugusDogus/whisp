@@ -23,6 +23,7 @@ Do not rewrite large parts of the UI. Prefer minimal, targeted fixes.
 ## when to apply
 
 Reference these guidelines when:
+
 - adding or changing buttons, links, inputs, menus, dialogs, tabs, dropdowns
 - building forms, validation, error states, helper text
 - implementing keyboard shortcuts or custom interactions
@@ -32,17 +33,17 @@ Reference these guidelines when:
 
 ## rule categories by priority
 
-| priority | category | impact |
-|----------|----------|--------|
-| 1 | accessible names | critical |
-| 2 | keyboard access | critical |
-| 3 | focus and dialogs | critical |
-| 4 | semantics | high |
-| 5 | forms and errors | high |
-| 6 | announcements | medium-high |
-| 7 | contrast and states | medium |
-| 8 | media and motion | low-medium |
-| 9 | tool boundaries | critical |
+| priority | category            | impact      |
+| -------- | ------------------- | ----------- |
+| 1        | accessible names    | critical    |
+| 2        | keyboard access     | critical    |
+| 3        | focus and dialogs   | critical    |
+| 4        | semantics           | high        |
+| 5        | forms and errors    | high        |
+| 6        | announcements       | medium-high |
+| 7        | contrast and states | medium      |
+| 8        | media and motion    | low-medium  |
+| 9        | tool boundaries     | critical    |
 
 ## quick reference
 

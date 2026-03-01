@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { View } from "react-native";
+
 import { Image } from "expo-image";
 
 import { trpc } from "~/utils/api";
+
 import { Text } from "./text";
 
 interface AvatarProps {

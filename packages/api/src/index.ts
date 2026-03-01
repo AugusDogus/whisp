@@ -1,7 +1,7 @@
+import type { AppRouter } from "./root";
 import type { inferRouterInputs, inferRouterOutputs } from "@trpc/server";
 import type { AnyFileRoute } from "uploadthing/types";
 
-import type { AppRouter } from "./root";
 import { appRouter } from "./root";
 import { createTRPCContext } from "./trpc";
 

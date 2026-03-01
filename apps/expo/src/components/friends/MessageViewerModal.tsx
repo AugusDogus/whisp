@@ -1,6 +1,7 @@
-import type { AVPlaybackStatus, Video as VideoType } from "expo-av";
 import { useEffect, useRef, useState } from "react";
 import { Modal, TouchableWithoutFeedback, View } from "react-native";
+
+import type { AVPlaybackStatus, Video as VideoType } from "expo-av";
 import { ResizeMode, Video } from "expo-av";
 import { Image } from "expo-image";
 

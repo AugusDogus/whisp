@@ -1,4 +1,5 @@
 import type { Variants } from "motion/react";
+
 import Image from "next/image";
 
 import { AnimatedGroup } from "@acme/ui/animated-group";

@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+
 import * as Notifications from "expo-notifications";
 
 import type { InboxMessage } from "~/components/friends/types";

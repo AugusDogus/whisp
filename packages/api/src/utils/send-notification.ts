@@ -1,5 +1,5 @@
-import type { db } from "@acme/db/client";
 import { eq } from "@acme/db";
+import type { db } from "@acme/db/client";
 import { PushToken } from "@acme/db/schema";
 
 import { EXPO_PUSH_URL, NOTIFICATION_TYPE } from "../constants";
@@ -71,18 +71,18 @@ export async function sendNotificationToUser(
   data?: Record<string, unknown>,
 ) {
   // Get all push tokens for this user
-  const tokens = await database.query.PushToken.findMany({
-    where: (tokens, { eq }) => eq(tokens.userId, userId),
+  const userTokens = await database.query.PushToken.findMany({
+    where: (t, { eq: colEq }) => colEq(t.userId, userId),
   });
 
-  if (tokens.length === 0) {
+  if (userTokens.length === 0) {
     console.log(`No push tokens found for user ${userId}`);
     return { success: false, reason: "no_tokens" };
   }
 
   // Send notification to all user's devices
   const results = await Promise.allSettled(
-    tokens.map((token) =>
+    userTokens.map((token) =>
       sendPushNotification({
         to: token.token,
         title,
@@ -98,9 +98,9 @@ export async function sendNotificationToUser(
     if (
       result.status === "fulfilled" &&
       result.value.isInvalidToken &&
-      tokens[index]
+      userTokens[index]
     ) {
-      invalidTokens.push(tokens[index].token);
+      invalidTokens.push(userTokens[index].token);
     }
   });
 
@@ -134,7 +134,7 @@ export async function notifyNewMessage(
   group?: { groupId: string; groupName: string },
 ) {
   const recipient = await database.query.user.findFirst({
-    where: (users, { eq }) => eq(users.id, recipientId),
+    where: (users, { eq: colEq }) => colEq(users.id, recipientId),
     columns: {
       notifyOnMessages: true,
     },
@@ -175,7 +175,7 @@ export async function notifyFriendRequest(
 ) {
   // Check if user has friend activity notifications enabled
   const recipient = await database.query.user.findFirst({
-    where: (users, { eq }) => eq(users.id, recipientId),
+    where: (users, { eq: colEq }) => colEq(users.id, recipientId),
     columns: {
       notifyOnFriendActivity: true,
     },
@@ -207,7 +207,7 @@ export async function notifyFriendAccept(
 ) {
   // Check if user has friend activity notifications enabled
   const recipient = await database.query.user.findFirst({
-    where: (users, { eq }) => eq(users.id, recipientId),
+    where: (users, { eq: colEq }) => colEq(users.id, recipientId),
     columns: {
       notifyOnFriendActivity: true,
     },

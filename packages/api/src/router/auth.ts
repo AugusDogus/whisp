@@ -1,5 +1,6 @@
 import type { TRPCRouterRecord } from "@trpc/server";
 import type { APIUser } from "discord-api-types/v10";
+
 import { calculateUserDefaultAvatarIndex, CDN, REST } from "@discordjs/rest";
 import { Routes } from "discord-api-types/v10";
 import { eq } from "drizzle-orm";

@@ -1,6 +1,6 @@
+import { useCallback, useRef } from "react";
 import type { useSharedValue } from "react-native-reanimated";
 import type { Camera, PhotoFile, VideoFile } from "react-native-vision-camera";
-import { useCallback, useRef } from "react";
 
 import { useRecording } from "~/contexts/RecordingContext";
 

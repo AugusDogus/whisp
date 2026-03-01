@@ -1,16 +1,18 @@
+import type { FriendRow } from "./types";
 import type {
   BottomSheetBackdropProps,
   BottomSheetModal,
 } from "@gorhom/bottom-sheet";
+
 import type { MutableRefObject, ReactElement } from "react";
 import { Pressable } from "react-native";
+
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import {
   BottomSheetView,
   BottomSheetModal as GorhomBottomSheetModal,
 } from "@gorhom/bottom-sheet";
 
-import type { FriendRow } from "./types";
 import { Text } from "~/components/ui/text";
 
 export function FriendActionsSheet({

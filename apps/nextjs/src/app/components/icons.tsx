@@ -1,4 +1,5 @@
 import type { SVGProps } from "react";
+
 import Image from "next/image";
 
 export function Logo({ className }: { className?: string }) {

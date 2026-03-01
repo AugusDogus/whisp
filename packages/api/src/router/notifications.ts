@@ -1,4 +1,5 @@
 import type { TRPCRouterRecord } from "@trpc/server";
+
 import { TRPCError } from "@trpc/server";
 import { z } from "zod/v4";
 
@@ -20,9 +21,10 @@ export const notificationsRouter = {
       const userId = ctx.session.user.id;
 
       // Check if this token already exists for this user
+      // Check if this token already exists for this user
       const existing = await ctx.db.query.PushToken.findFirst({
-        where: (tokens, { and, eq }) =>
-          and(eq(tokens.userId, userId), eq(tokens.token, input.token)),
+        where: (tokens, { and, eq: colEq }) =>
+          and(colEq(tokens.userId, userId), colEq(tokens.token, input.token)),
       });
 
       if (existing) {
@@ -70,7 +72,7 @@ export const notificationsRouter = {
   // Get notification preferences
   getPreferences: protectedProcedure.query(async ({ ctx }) => {
     const userData = await ctx.db.query.user.findFirst({
-      where: (users, { eq }) => eq(users.id, ctx.session.user.id),
+      where: (users, { eq: colEq }) => colEq(users.id, ctx.session.user.id),
       columns: {
         notifyOnMessages: true,
         notifyOnFriendActivity: true,

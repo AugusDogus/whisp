@@ -1,7 +1,7 @@
 import type { RefObject } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type { GestureResponderEvent } from "react-native";
 import type { Camera } from "react-native-vision-camera";
-import { useCallback, useEffect, useRef } from "react";
 
 export function useCameraFocus(
   camera: RefObject<Camera | null>,

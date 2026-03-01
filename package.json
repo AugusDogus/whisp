@@ -15,26 +15,23 @@
     "db:studio": "turbo -F @acme/db studio",
     "dev": "turbo watch dev --continue",
     "dev:next": "turbo watch dev -F @acme/nextjs...",
-    "format": "turbo run format --continue -- --cache --cache-location .cache/.prettiercache",
-    "format:fix": "turbo run format --continue -- --write --cache --cache-location .cache/.prettiercache",
-    "lint": "turbo run lint --continue -- --cache --cache-location .cache/.eslintcache",
-    "lint:fix": "turbo run lint --continue -- --fix --cache --cache-location .cache/.eslintcache",
+    "lint": "oxlint && oxfmt --check",
+    "lint:fix": "oxlint --fix && oxfmt --write",
     "lint:ws": "bun x sherif@latest",
     "postinstall": "bun lint:ws",
     "typecheck": "turbo run typecheck",
-    "check": "bun run typecheck && bun run lint:fix && bun run format:fix",
+    "check": "turbo run typecheck && oxlint --fix && oxfmt --write",
     "ui-add": "turbo run ui-add",
     "android": "expo run:android",
     "ios": "expo run:ios"
   },
   "devDependencies": {
-    "@acme/prettier-config": "workspace:*",
-    "@turbo/gen": "^2.5.6",
-    "prettier": "catalog:",
-    "turbo": "^2.5.6",
+    "@turbo/gen": "^2.8.11",
+    "oxfmt": "^0.35.0",
+    "oxlint": "^1.50.0",
+    "turbo": "^2.8.11",
     "typescript": "catalog:"
   },
-  "prettier": "@acme/prettier-config",
   "workspaces": {
     "packages": [
       "apps/*",
@@ -48,8 +45,6 @@
       "@trpc/tanstack-react-query": "^11.5.1",
       "uploadthing": "^7.7.4",
       "dotenv-cli": "^10.0.0",
-      "eslint": "^9.35.0",
-      "prettier": "^3.6.2",
       "tailwindcss": "^3.4.17",
       "typescript": "~5.9.2",
       "zod": "^4.1.5"

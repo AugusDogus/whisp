@@ -1,5 +1,8 @@
+import type { CaptionData } from "./caption-editor";
+
 import { useMemo } from "react";
 import { Platform } from "react-native";
+
 import {
   Group,
   Paragraph,
@@ -7,8 +10,6 @@ import {
   Skia,
   TextAlign,
 } from "@shopify/react-native-skia";
-
-import type { CaptionData } from "./caption-editor";
 
 interface SkiaCaptionRendererProps {
   captions: CaptionData[];

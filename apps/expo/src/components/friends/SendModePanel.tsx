@@ -1,10 +1,13 @@
+import type { FriendRow, GroupRow } from "./types";
+
 import type { ComponentProps } from "react";
-import type { EdgeInsets } from "react-native-safe-area-context";
 import { FlatList, Pressable, View } from "react-native";
+import type { EdgeInsets } from "react-native-safe-area-context";
+
 import { Image } from "expo-image";
+
 import { Ionicons } from "@expo/vector-icons";
 
-import type { FriendRow, GroupRow } from "./types";
 import { FriendsListSkeletonVaried } from "~/components/friends-skeleton";
 import { Avatar } from "~/components/ui/avatar";
 import { Button } from "~/components/ui/button";

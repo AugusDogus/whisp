@@ -1,8 +1,11 @@
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+
 import { useEffect } from "react";
 import { View } from "react-native";
+
 import * as SecureStore from "expo-secure-store";
 import * as SplashScreen from "expo-splash-screen";
+
 import { useNavigation } from "@react-navigation/native";
 import { usePostHog } from "posthog-react-native";
 

@@ -1,8 +1,10 @@
 "use client";
 
 import type { Variants } from "motion/react";
+
 import type { ElementType, JSX, ReactNode } from "react";
 import { Children, useMemo } from "react";
+
 import { motion } from "motion/react";
 
 export type PresetType =

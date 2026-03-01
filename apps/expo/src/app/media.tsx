@@ -1,7 +1,8 @@
 import type { RouteProp } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import type { LayoutChangeEvent } from "react-native";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { LayoutChangeEvent } from "react-native";
 import {
   Alert,
   BackHandler,
@@ -11,11 +12,13 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+
 import { ResizeMode, Video } from "expo-av";
 import { File, Paths } from "expo-file-system";
 import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
 import * as MediaLibrary from "expo-media-library";
+
 import { AntDesign, Ionicons } from "@expo/vector-icons";
 import {
   useIsFocused,
@@ -31,11 +34,11 @@ import {
 import { toast } from "sonner-native";
 
 import type { CaptionData } from "~/components/caption-editor";
-import type { RootStackParamList } from "~/navigation/types";
 import { CaptionEditor } from "~/components/caption-editor";
 import { SkiaCaptionRenderer } from "~/components/skia-caption-renderer";
 import { Button } from "~/components/ui/button";
 import { Text } from "~/components/ui/text";
+import type { RootStackParamList } from "~/navigation/types";
 import { uploadMedia } from "~/utils/media-upload";
 import { markWhispFailed, markWhispUploading } from "~/utils/outbox-status";
 import {

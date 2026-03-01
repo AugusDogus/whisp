@@ -1,5 +1,9 @@
 import { Gesture } from "react-native-gesture-handler";
-import { Extrapolate, interpolate, useSharedValue } from "react-native-reanimated";
+import {
+  Extrapolate,
+  interpolate,
+  useSharedValue,
+} from "react-native-reanimated";
 
 const SCALE_FULL_ZOOM = 3;
 

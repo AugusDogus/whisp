@@ -3,8 +3,8 @@ import { useMemo } from "react";
 import type { FriendRow, InboxMessage } from "~/components/friends/types";
 import type { FriendsListOutput } from "~/utils/api";
 import type { MediaKind } from "~/utils/media-kind";
-import type { OutboxState, OutboxStatus } from "~/utils/outbox-status";
 import { mimeToMediaKind } from "~/utils/media-kind";
+import type { OutboxState, OutboxStatus } from "~/utils/outbox-status";
 
 interface UseFriendRowsParams {
   friends: FriendsListOutput;
@@ -108,9 +108,8 @@ export function useFriendRows({
         discordId: f.discordId ?? null,
         hasUnread,
         unreadCount,
-        isSelected: hasMedia && defaultRecipientId
-          ? f.id === defaultRecipientId
-          : false,
+        isSelected:
+          hasMedia && defaultRecipientId ? f.id === defaultRecipientId : false,
         streak,
         lastActivityTimestamp: lastActivity,
         partnerLastActivityTimestamp: partnerLastActivity,
