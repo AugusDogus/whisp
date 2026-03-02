@@ -54,25 +54,13 @@ export function MessageStatusIcon({
     case "received":
       return (
         <View
-          style={{
-            width: 10,
-            height: 10,
-            borderRadius: 2,
-            backgroundColor: activeColor,
-          }}
+          className="size-2.5 rounded-[2px]"
+          style={{ backgroundColor: activeColor }}
         />
       );
     case "received_opened":
       return (
-        <View
-          style={{
-            width: 10,
-            height: 10,
-            borderRadius: 2,
-            borderWidth: 1.5,
-            borderColor: "#9ca3af",
-          }}
-        />
+        <View className="size-2.5 rounded-[2px] border-[1.5px] border-[#9ca3af]" />
       );
     default:
       return null;

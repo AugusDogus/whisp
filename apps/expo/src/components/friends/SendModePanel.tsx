@@ -49,8 +49,7 @@ function GroupRowItem({
 }) {
   return (
     <Pressable
-      className="flex-row items-center justify-between px-4"
-      style={{ minHeight: 68 }}
+      className="min-h-[68px] flex-row items-center justify-between px-4"
       onPress={onPress}
       android_ripple={{ color: "rgba(128,128,128,0.12)" }}
     >
@@ -87,8 +86,7 @@ function FriendRowItem({
 }) {
   return (
     <Pressable
-      className="flex-row items-center justify-between px-4"
-      style={{ minHeight: 68 }}
+      className="min-h-[68px] flex-row items-center justify-between px-4"
       onPress={onPress}
       android_ripple={{ color: "rgba(128,128,128,0.12)" }}
     >
@@ -172,12 +170,9 @@ export function SendModePanel({
         paddingRight: insets.right,
       }}
     >
-      <View className="flex-1" style={{ minHeight: 0 }}>
+      <View className="min-h-0 flex-1">
         {/* Preview + search */}
-        <View
-          className="flex w-full flex-row items-center gap-4 px-4 py-4"
-          style={{ flexShrink: 0 }}
-        >
+        <View className="flex w-full shrink-0 flex-row items-center gap-4 px-4 py-4">
           <View className="size-16 flex-shrink-0 overflow-hidden rounded-md bg-secondary">
             <Image
               source={previewSource}

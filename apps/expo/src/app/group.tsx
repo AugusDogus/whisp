@@ -180,8 +180,7 @@ export default function GroupScreen() {
             const member = getMemberInfo(item.senderId);
             return (
               <Pressable
-                className="flex-row items-center px-4"
-                style={{ minHeight: 68 }}
+                className="min-h-[68px] flex-row items-center px-4"
                 onPress={() => openViewer(inboxRaw, index)}
                 android_ripple={{ color: "rgba(128,128,128,0.12)" }}
               >

@@ -1,5 +1,7 @@
+import { useEffect } from "react";
 import Animated, {
   Easing,
+  cancelAnimation,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
@@ -14,11 +16,16 @@ function Skeleton({
 }: React.ComponentPropsWithoutRef<typeof Animated.View>) {
   const opacity = useSharedValue(0.5);
 
-  opacity.value = withRepeat(
-    withTiming(1, { duration: 1000, easing: Easing.ease }),
-    -1,
-    true,
-  );
+  useEffect(() => {
+    opacity.value = withRepeat(
+      withTiming(1, { duration: 1000, easing: Easing.ease }),
+      -1,
+      true,
+    );
+    return () => {
+      cancelAnimation(opacity);
+    };
+  }, [opacity]);
 
   const animatedStyle = useAnimatedStyle(() => ({
     opacity: opacity.value,

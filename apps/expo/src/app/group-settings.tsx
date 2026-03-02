@@ -109,100 +109,99 @@ export default function GroupSettingsScreen() {
         </View>
       ) : (
         <>
-          <ScrollView
-            className="flex-1"
-            contentContainerClassName="gap-3 px-4 pb-4"
-          >
-            {/* Group name card */}
-            <View className="rounded-lg border border-border bg-background p-4 shadow-sm shadow-black/5">
-              <View className="flex-row items-center gap-3 pb-3">
-                <View className="size-10 items-center justify-center rounded-full bg-primary/10">
-                  <Ionicons name="text" size={20} color="#666" />
-                </View>
-                <View className="flex-1">
-                  <Text className="text-base font-semibold">Group name</Text>
-                  <Text variant="muted" className="text-xs">
-                    Visible to all members
-                  </Text>
-                </View>
-              </View>
-              {editingName ? (
-                <View className="gap-2 pt-1">
-                  <Input
-                    value={nameInput}
-                    onChangeText={setNameInput}
-                    autoFocus
-                  />
-                  <View className="flex-row justify-end gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onPress={() => setEditingName(false)}
-                    >
-                      <Text>Cancel</Text>
-                    </Button>
-                    <Button
-                      size="sm"
-                      onPress={saveName}
-                      disabled={rename.isPending || !nameInput.trim()}
-                    >
-                      <Text>Save</Text>
-                    </Button>
+          <ScrollView className="flex-1">
+            <View className="gap-3 px-4 pb-4">
+              {/* Group name card */}
+              <View className="rounded-lg border border-border bg-background p-4 shadow-sm shadow-black/5">
+                <View className="flex-row items-center gap-3 pb-3">
+                  <View className="size-10 items-center justify-center rounded-full bg-primary/10">
+                    <Ionicons name="text" size={20} color="#666" />
+                  </View>
+                  <View className="flex-1">
+                    <Text className="text-base font-semibold">Group name</Text>
+                    <Text variant="muted" className="text-xs">
+                      Visible to all members
+                    </Text>
                   </View>
                 </View>
-              ) : (
-                <Pressable
-                  onPress={startEditingName}
-                  className="flex-row items-center justify-between rounded-md bg-secondary/50 px-3 py-2.5"
-                >
-                  <Text className="text-base">{group.name}</Text>
-                  <Ionicons name="pencil" size={16} color="#888" />
-                </Pressable>
-              )}
-            </View>
-
-            {/* Members card */}
-            <View className="rounded-lg border border-border bg-background p-4 shadow-sm shadow-black/5">
-              <View className="flex-row items-center gap-3 pb-3">
-                <View className="size-10 items-center justify-center rounded-full bg-primary/10">
-                  <Ionicons name="people" size={20} color="#666" />
-                </View>
-                <View className="flex-1">
-                  <Text className="text-base font-semibold">
-                    Members ({group.members.length})
-                  </Text>
-                  <Text variant="muted" className="text-xs">
-                    Anyone can add friends
-                  </Text>
-                </View>
-              </View>
-              <View className="gap-0.5">
-                {group.members.map((member, index) => (
-                  <View key={member.id}>
-                    <View className="flex-row items-center gap-3 py-2">
-                      <Avatar
-                        userId={member.id}
-                        image={member.image}
-                        name={member.name}
-                        size={36}
-                      />
-                      <Text className="text-sm">{member.name}</Text>
+                {editingName ? (
+                  <View className="gap-2 pt-1">
+                    <Input
+                      value={nameInput}
+                      onChangeText={setNameInput}
+                      autoFocus
+                    />
+                    <View className="flex-row justify-end gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onPress={() => setEditingName(false)}
+                      >
+                        <Text>Cancel</Text>
+                      </Button>
+                      <Button
+                        size="sm"
+                        onPress={saveName}
+                        disabled={rename.isPending || !nameInput.trim()}
+                      >
+                        <Text>Save</Text>
+                      </Button>
                     </View>
-                    {index < group.members.length - 1 && (
-                      <View className="ml-12 h-px bg-border" />
-                    )}
                   </View>
-                ))}
+                ) : (
+                  <Pressable
+                    onPress={startEditingName}
+                    className="flex-row items-center justify-between rounded-md bg-secondary/50 px-3 py-2.5"
+                  >
+                    <Text className="text-base">{group.name}</Text>
+                    <Ionicons name="pencil" size={16} color="#888" />
+                  </Pressable>
+                )}
               </View>
-              <Button
-                variant="outline"
-                className="mt-3"
-                onPress={() =>
-                  navigation.navigate("GroupAddMembers", { groupId })
-                }
-              >
-                <Text>Add members</Text>
-              </Button>
+
+              {/* Members card */}
+              <View className="rounded-lg border border-border bg-background p-4 shadow-sm shadow-black/5">
+                <View className="flex-row items-center gap-3 pb-3">
+                  <View className="size-10 items-center justify-center rounded-full bg-primary/10">
+                    <Ionicons name="people" size={20} color="#666" />
+                  </View>
+                  <View className="flex-1">
+                    <Text className="text-base font-semibold">
+                      Members ({group.members.length})
+                    </Text>
+                    <Text variant="muted" className="text-xs">
+                      Anyone can add friends
+                    </Text>
+                  </View>
+                </View>
+                <View className="gap-0.5">
+                  {group.members.map((member, index) => (
+                    <View key={member.id}>
+                      <View className="flex-row items-center gap-3 py-2">
+                        <Avatar
+                          userId={member.id}
+                          image={member.image}
+                          name={member.name}
+                          size={36}
+                        />
+                        <Text className="text-sm">{member.name}</Text>
+                      </View>
+                      {index < group.members.length - 1 && (
+                        <View className="ml-12 h-px bg-border" />
+                      )}
+                    </View>
+                  ))}
+                </View>
+                <Button
+                  variant="outline"
+                  className="mt-3"
+                  onPress={() =>
+                    navigation.navigate("GroupAddMembers", { groupId })
+                  }
+                >
+                  <Text>Add members</Text>
+                </Button>
+              </View>
             </View>
           </ScrollView>
 

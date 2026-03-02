@@ -45,7 +45,7 @@ function AppContent() {
 
   return (
     <BottomSheetModalProvider>
-      <View style={{ flex: 1 }}>
+      <View className="flex-1">
         <RootNavigator />
         <StatusBar />
         <PortalHost />

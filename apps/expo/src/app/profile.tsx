@@ -1,12 +1,12 @@
 import { useRef, useState } from "react";
 import { Linking, Pressable, ScrollView, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 
 import Constants from "expo-constants";
 import { Image } from "expo-image";
 
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 
+import { SafeAreaView } from "~/components/styled";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -99,7 +99,7 @@ export default function ProfileScreen() {
   };
 
   return (
-    <SafeAreaView className="bg-background">
+    <SafeAreaView className="flex-1 bg-background">
       <View className="h-full w-full">
         <View className="items-center px-4 py-3 pb-4">
           <Text className="text-lg font-semibold">Profile</Text>

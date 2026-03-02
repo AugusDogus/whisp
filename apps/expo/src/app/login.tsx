@@ -2,11 +2,11 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
 import { useEffect, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useNavigation } from "@react-navigation/native";
 import { usePostHog } from "posthog-react-native";
 
+import { SafeAreaView } from "~/components/styled";
 import { Button } from "~/components/ui/button";
 import {
   Card,
@@ -37,7 +37,7 @@ export default function LoginPage() {
   }, [session, navigation, posthog]);
 
   return (
-    <SafeAreaView className="bg-background">
+    <SafeAreaView className="flex-1 bg-background">
       <View className="h-full w-full items-center justify-center px-6 py-10">
         <View className="w-full max-w-xl">
           <Card className="w-full">
@@ -71,10 +71,7 @@ export default function LoginPage() {
       </View>
 
       {isSigningIn && (
-        <View
-          className="absolute inset-0 z-50 items-center justify-center bg-background/80"
-          style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
-        >
+        <View className="absolute inset-0 z-50 items-center justify-center bg-background/80">
           <ActivityIndicator size="large" color="white" />
         </View>
       )}

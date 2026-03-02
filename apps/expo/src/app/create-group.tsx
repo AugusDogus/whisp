@@ -157,8 +157,7 @@ export default function CreateGroupScreen() {
           keyboardShouldPersistTaps="handled"
           renderItem={({ item }) => (
             <Pressable
-              className="flex-row items-center justify-between px-4"
-              style={{ minHeight: 56 }}
+              className="min-h-14 flex-row items-center justify-between px-4"
               onPress={() => toggleFriend(item.id)}
               android_ripple={{ color: "rgba(128,128,128,0.12)" }}
             >

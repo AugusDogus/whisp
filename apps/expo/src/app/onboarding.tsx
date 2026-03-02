@@ -10,7 +10,6 @@ import {
   requestNotifications,
   RESULTS,
 } from "react-native-permissions";
-import { SafeAreaView } from "react-native-safe-area-context";
 
 import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
@@ -18,6 +17,7 @@ import * as SecureStore from "expo-secure-store";
 
 import { useNavigation } from "@react-navigation/native";
 
+import { SafeAreaView } from "~/components/styled";
 import { Button } from "~/components/ui/button";
 import { Text } from "~/components/ui/text";
 import type { RootStackParamList } from "~/navigation/types";

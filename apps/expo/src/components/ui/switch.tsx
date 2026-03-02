@@ -1,10 +1,8 @@
 import type { SwitchProps } from "react-native";
-import { Switch as RNSwitch } from "react-native";
-
-import { useColorScheme } from "nativewind";
+import { Switch as RNSwitch, useColorScheme } from "react-native";
 
 function Switch({ value, ...props }: SwitchProps) {
-  const { colorScheme } = useColorScheme();
+  const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
 
   // Track colors matching the original switch component

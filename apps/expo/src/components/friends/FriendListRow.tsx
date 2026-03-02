@@ -30,8 +30,7 @@ export function FriendListRow({
 }) {
   return (
     <Pressable
-      className="flex-row items-center px-4"
-      style={{ minHeight: 68 }}
+      className="min-h-[68px] flex-row items-center px-4"
       onPress={onPress}
       delayLongPress={300}
       onLongPress={onLongPress}
@@ -62,12 +61,13 @@ export function FriendListRow({
                   {item.streak}
                 </Text>
                 {item.hoursRemaining !== null && item.hoursRemaining < 4 && (
-                  <Ionicons
-                    name="hourglass"
-                    size={12}
-                    color={colorScheme === "dark" ? "#fff" : "#000"}
-                    style={{ marginLeft: 2 }}
-                  />
+                  <View className="ml-0.5">
+                    <Ionicons
+                      name="hourglass"
+                      size={12}
+                      color={colorScheme === "dark" ? "#fff" : "#000"}
+                    />
+                  </View>
                 )}
               </View>
             )}

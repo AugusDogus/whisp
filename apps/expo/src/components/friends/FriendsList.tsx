@@ -25,8 +25,7 @@ function GroupListRow({
 
   return (
     <Pressable
-      className="flex-row items-center px-4"
-      style={{ minHeight: 68 }}
+      className="min-h-[68px] flex-row items-center px-4"
       onPress={onPress}
       delayLongPress={300}
       onLongPress={onLongPress}
@@ -50,12 +49,8 @@ function GroupListRow({
           {group.unreadCount > 0 ? (
             <>
               <View
-                style={{
-                  width: 10,
-                  height: 10,
-                  borderRadius: 2,
-                  backgroundColor: color,
-                }}
+                className="size-2.5 rounded-[2px]"
+                style={{ backgroundColor: color }}
               />
               <Text className="text-xs font-semibold" style={{ color }}>
                 New Whisp
@@ -78,15 +73,7 @@ function GroupListRow({
             </>
           ) : group.lastMessageAt ? (
             <>
-              <View
-                style={{
-                  width: 10,
-                  height: 10,
-                  borderRadius: 2,
-                  borderWidth: 1.5,
-                  borderColor: "#9ca3af",
-                }}
-              />
+              <View className="size-2.5 rounded-[2px] border-[1.5px] border-[#9ca3af]" />
               <Text className="text-xs text-muted-foreground">Received</Text>
               <Text className="text-xs text-muted-foreground">
                 {"· "}

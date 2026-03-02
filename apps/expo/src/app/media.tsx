@@ -452,7 +452,7 @@ export default function MediaScreen() {
         <View style={styles.controlsRow}>
           {editingCaptionId ? (
             <>
-              <View style={{ flex: 1 }} />
+              <View className="flex-1" />
               <Button className="px-6" onPress={handleStopEditing}>
                 <Text>Done</Text>
               </Button>
