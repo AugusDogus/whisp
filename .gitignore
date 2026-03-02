@@ -20,7 +20,6 @@ next-env.d.ts
 # expo
 .expo/
 expo-env.d.ts
-apps/expo/uniwind-types.d.ts
 apps/expo/.gitignore
 apps/expo/ios
 apps/expo/android
