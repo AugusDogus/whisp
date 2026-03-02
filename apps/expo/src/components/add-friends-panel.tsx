@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { View } from "react-native";
 
-import { Button } from "~/components/ui/button";
-import { Input } from "~/components/ui/input";
+import { Button } from "heroui-native/button";
+import { Input } from "heroui-native/input";
+
 import { Text as UIText } from "~/components/ui/text";
 import { trpc } from "~/utils/api";
 
@@ -146,7 +147,7 @@ export function AddFriendsPanel() {
             (results as SearchUserResult[]).map((u) => (
               <View
                 key={u.id}
-                className="flex-row items-center justify-between rounded-md bg-secondary px-3 py-2"
+                className="bg-default flex-row items-center justify-between rounded-md px-3 py-2"
               >
                 <UIText>{u.name}</UIText>
                 {u.isFriend ? (
@@ -162,7 +163,7 @@ export function AddFriendsPanel() {
                     size="sm"
                     onPress={() => sendReq.mutate({ toUserId: u.id })}
                   >
-                    <UIText>Add</UIText>
+                    Add
                   </Button>
                 )}
               </View>
@@ -185,7 +186,7 @@ export function AddFriendsPanel() {
           (incoming as IncomingRequestRow[]).map((r) => (
             <View
               key={r.requestId}
-              className="flex-row items-center justify-between rounded-md bg-secondary px-3 py-2"
+              className="bg-default flex-row items-center justify-between rounded-md px-3 py-2"
             >
               <UIText>{r.fromUser.name}</UIText>
               <View className="flex-row gap-2">
@@ -194,13 +195,13 @@ export function AddFriendsPanel() {
                   variant="outline"
                   onPress={() => declineReq.mutate({ requestId: r.requestId })}
                 >
-                  <UIText>Decline</UIText>
+                  Decline
                 </Button>
                 <Button
                   size="sm"
                   onPress={() => acceptReq.mutate({ requestId: r.requestId })}
                 >
-                  <UIText>Accept</UIText>
+                  Accept
                 </Button>
               </View>
             </View>

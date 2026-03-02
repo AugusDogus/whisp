@@ -1,16 +1,18 @@
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { TextInput } from "react-native";
 import { FlatList, Pressable, useColorScheme, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
+import { Button } from "heroui-native/button";
+import { Dialog } from "heroui-native/dialog";
+import { Input } from "heroui-native/input";
 import { toast } from "sonner-native";
 
 import { Avatar } from "~/components/ui/avatar";
-import { Button } from "~/components/ui/button";
-import { Input } from "~/components/ui/input";
 import { Text } from "~/components/ui/text";
 import type { RootStackParamList } from "~/navigation/types";
 import { trpc } from "~/utils/api";
@@ -22,16 +24,18 @@ export default function CreateGroupScreen() {
   const colorScheme = useColorScheme();
   const iconColor = colorScheme === "dark" ? "#fff" : "#000";
 
-  const [name, setName] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
+  const [nameDialogOpen, setNameDialogOpen] = useState(false);
+  const [name, setName] = useState("");
+  const nameInputRef = useRef<TextInput>(null);
 
   const { data: friends = [], isLoading } = trpc.friends.list.useQuery();
   const utils = trpc.useUtils();
   const createGroup = trpc.groups.create.useMutation({
-    onSuccess: async (data) => {
-      await utils.groups.list.invalidate();
+    onSuccess: (data) => {
       navigation.replace("Group", { groupId: data.groupId });
+      void utils.groups.list.invalidate();
     },
     onError: (err) => {
       toast.error(err.message);
@@ -58,23 +62,30 @@ export default function CreateGroupScreen() {
     });
   };
 
+  const handleNext = () => {
+    setName("");
+    setNameDialogOpen(true);
+  };
+
   const handleCreate = () => {
     const trimmed = name.trim();
     if (!trimmed) {
       toast.error("Enter a group name");
       return;
     }
-    if (selectedIds.size === 0) {
-      toast.error("Select at least one friend");
-      return;
-    }
+    setNameDialogOpen(false);
     createGroup.mutate({
       name: trimmed,
       memberIds: Array.from(selectedIds),
     });
   };
 
-  const canCreate = name.trim().length > 0 && selectedIds.size > 0;
+  useEffect(() => {
+    if (nameDialogOpen) {
+      const timeout = setTimeout(() => nameInputRef.current?.focus(), 350);
+      return () => clearTimeout(timeout);
+    }
+  }, [nameDialogOpen]);
 
   return (
     <View
@@ -98,30 +109,20 @@ export default function CreateGroupScreen() {
         <Text className="flex-1 text-lg font-semibold">New Group</Text>
       </View>
 
-      {/* Group name input */}
-      <View className="px-4 pb-3">
-        <Input
-          placeholder="Group name"
-          value={name}
-          onChangeText={setName}
-          autoCapitalize="words"
-        />
-      </View>
-
-      {/* Selected friends summary */}
+      {/* Selected chips */}
       {selectedFriends.length > 0 && (
-        <View className="flex-row flex-wrap gap-2 px-4 pb-3">
+        <View className="flex-row flex-wrap gap-1.5 px-4 pb-2">
           {selectedFriends.map((f) => (
             <Pressable
               key={f.id}
               onPress={() => toggleFriend(f.id)}
-              className="flex-row items-center gap-1.5 rounded-full bg-primary/10 py-1 pl-1 pr-2.5"
+              className="bg-default flex-row items-center gap-1.5 rounded-full py-1 pl-1 pr-2"
             >
-              <Avatar userId={f.id} image={f.image} name={f.name} size={22} />
-              <Text className="text-xs font-medium" numberOfLines={1}>
+              <Avatar userId={f.id} image={f.image} name={f.name} size={20} />
+              <Text className="text-xs" numberOfLines={1}>
                 {f.name}
               </Text>
-              <Ionicons name="close" size={14} color={iconColor} />
+              <Ionicons name="close" size={12} color={iconColor} />
             </Pressable>
           ))}
         </View>
@@ -136,14 +137,14 @@ export default function CreateGroupScreen() {
         />
       </View>
 
-      {/* Friend selection list */}
+      {/* Friend list */}
       {isLoading ? (
         <View className="flex-1 items-center justify-center">
-          <Text className="text-muted-foreground">Loading friends...</Text>
+          <Text className="text-muted">Loading friends...</Text>
         </View>
       ) : filteredFriends.length === 0 ? (
         <View className="flex-1 items-center justify-center px-8">
-          <Text className="text-center text-muted-foreground">
+          <Text className="text-center text-muted">
             {searchQuery.trim()
               ? "No friends match your search"
               : "Add some friends first to create a group"}
@@ -155,53 +156,102 @@ export default function CreateGroupScreen() {
           data={filteredFriends}
           keyExtractor={(item) => item.id}
           keyboardShouldPersistTaps="handled"
-          renderItem={({ item }) => (
-            <Pressable
-              className="min-h-14 flex-row items-center justify-between px-4"
-              onPress={() => toggleFriend(item.id)}
-              android_ripple={{ color: "rgba(128,128,128,0.12)" }}
-            >
-              <View className="flex-row items-center gap-3 py-2">
-                <Avatar
-                  userId={item.id}
-                  image={item.image}
-                  name={item.name}
-                  size={44}
-                />
-                <Text className="text-base">{item.name}</Text>
-              </View>
-              <View
-                className={
-                  selectedIds.has(item.id)
-                    ? "size-6 items-center justify-center rounded-full bg-primary"
-                    : "size-6 rounded-full border-2 border-border"
-                }
+          renderItem={({ item }) => {
+            const selected = selectedIds.has(item.id);
+            return (
+              <Pressable
+                className="min-h-14 flex-row items-center justify-between px-4"
+                onPress={() => toggleFriend(item.id)}
+                android_ripple={{ color: "rgba(128,128,128,0.12)" }}
               >
-                {selectedIds.has(item.id) && (
-                  <Ionicons name="checkmark" size={14} color="#fff" />
-                )}
-              </View>
-            </Pressable>
-          )}
+                <View className="flex-row items-center gap-3 py-2">
+                  <Avatar
+                    userId={item.id}
+                    image={item.image}
+                    name={item.name}
+                    size={44}
+                  />
+                  <Text className="text-base">{item.name}</Text>
+                </View>
+                <View
+                  className={
+                    selected
+                      ? "size-6 items-center justify-center rounded-full bg-foreground"
+                      : "border-separator size-6 rounded-full border-2"
+                  }
+                >
+                  {selected && (
+                    <Ionicons
+                      name="checkmark"
+                      size={14}
+                      color={colorScheme === "dark" ? "#000" : "#fff"}
+                    />
+                  )}
+                </View>
+              </Pressable>
+            );
+          }}
           ItemSeparatorComponent={() => (
-            <View className="ml-[68px] h-px bg-border" />
+            <View className="bg-separator ml-[68px] h-px" />
           )}
         />
       )}
 
-      {/* Create button */}
-      <View className="border-t border-border px-4 py-3">
+      {/* Bottom bar */}
+      <View className="px-4 py-3">
         <Button
-          onPress={handleCreate}
-          disabled={!canCreate || createGroup.isPending}
+          onPress={handleNext}
+          isDisabled={selectedIds.size === 0 || createGroup.isPending}
         >
-          <Text>
-            {selectedIds.size > 0
-              ? `Create group (${selectedIds.size})`
-              : "Create group"}
-          </Text>
+          {selectedIds.size > 0
+            ? `Next (${selectedIds.size} selected)`
+            : "Select friends"}
         </Button>
       </View>
+
+      {/* Name dialog */}
+      <Dialog isOpen={nameDialogOpen} onOpenChange={setNameDialogOpen}>
+        <Dialog.Portal>
+          <Dialog.Overlay />
+          <Dialog.Content>
+            <Dialog.Title>Name your group</Dialog.Title>
+            <Dialog.Description>
+              Choose a name for your group with{" "}
+              {selectedIds.size === 1
+                ? "1 member"
+                : `${selectedIds.size} members`}
+              .
+            </Dialog.Description>
+            <View className="pt-4">
+              <Input
+                ref={nameInputRef}
+                placeholder="Group name"
+                value={name}
+                onChangeText={setName}
+                autoCapitalize="words"
+                onSubmitEditing={handleCreate}
+                returnKeyType="done"
+              />
+            </View>
+            <View className="flex-row justify-end gap-3 pt-4">
+              <Button
+                variant="ghost"
+                size="sm"
+                onPress={() => setNameDialogOpen(false)}
+              >
+                Back
+              </Button>
+              <Button
+                size="sm"
+                onPress={handleCreate}
+                isDisabled={!name.trim() || createGroup.isPending}
+              >
+                Create
+              </Button>
+            </View>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog>
     </View>
   );
 }

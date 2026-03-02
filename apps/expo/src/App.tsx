@@ -8,9 +8,9 @@ import {
 import { StatusBar } from "expo-status-bar";
 
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
-import { PortalHost } from "@rn-primitives/portal";
 import * as Sentry from "@sentry/react-native";
 import { QueryClientProvider } from "@tanstack/react-query";
+import { HeroUINativeProvider } from "heroui-native/provider";
 import { PostHogProvider } from "posthog-react-native";
 
 import { usePushNotifications } from "~/hooks/usePushNotifications";
@@ -48,7 +48,6 @@ function AppContent() {
       <View className="flex-1">
         <RootNavigator />
         <StatusBar />
-        <PortalHost />
       </View>
     </BottomSheetModalProvider>
   );
@@ -57,28 +56,30 @@ function AppContent() {
 export default Sentry.wrap(function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaProvider initialMetrics={initialWindowMetrics}>
-        <PostHogProvider
-          apiKey={POSTHOG_API_KEY}
-          options={{
-            host: POSTHOG_HOST,
-            enableSessionReplay: false,
-          }}
-          autocapture={{
-            captureScreens: false,
-            captureTouches: true,
-          }}
-        >
-          <QueryClientProvider client={queryClient}>
-            <trpc.Provider
-              client={createExpoTRPCClient()}
-              queryClient={queryClient}
-            >
-              <AppContent />
-            </trpc.Provider>
-          </QueryClientProvider>
-        </PostHogProvider>
-      </SafeAreaProvider>
+      <HeroUINativeProvider>
+        <SafeAreaProvider initialMetrics={initialWindowMetrics}>
+          <PostHogProvider
+            apiKey={POSTHOG_API_KEY}
+            options={{
+              host: POSTHOG_HOST,
+              enableSessionReplay: false,
+            }}
+            autocapture={{
+              captureScreens: false,
+              captureTouches: true,
+            }}
+          >
+            <QueryClientProvider client={queryClient}>
+              <trpc.Provider
+                client={createExpoTRPCClient()}
+                queryClient={queryClient}
+              >
+                <AppContent />
+              </trpc.Provider>
+            </QueryClientProvider>
+          </PostHogProvider>
+        </SafeAreaProvider>
+      </HeroUINativeProvider>
     </GestureHandlerRootView>
   );
 });

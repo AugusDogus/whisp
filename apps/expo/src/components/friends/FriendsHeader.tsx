@@ -25,7 +25,7 @@ export function FriendsHeader({
         {onNewGroup && (
           <Pressable
             onPress={onNewGroup}
-            className="size-10 items-center justify-center rounded-full bg-secondary"
+            className="bg-default size-10 items-center justify-center rounded-full"
             accessibilityLabel="Create new group"
           >
             <Ionicons name="people-outline" size={20} color={iconColor} />
@@ -33,7 +33,7 @@ export function FriendsHeader({
         )}
         <Pressable
           onPress={onToggleAddFriends}
-          className="size-10 items-center justify-center rounded-full bg-secondary"
+          className="bg-default size-10 items-center justify-center rounded-full"
           accessibilityLabel={
             showAddFriends ? "Close add friends" : "Add friends"
           }

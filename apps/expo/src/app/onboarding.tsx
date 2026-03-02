@@ -16,9 +16,9 @@ import * as Notifications from "expo-notifications";
 import * as SecureStore from "expo-secure-store";
 
 import { useNavigation } from "@react-navigation/native";
+import { Button } from "heroui-native/button";
 
 import { SafeAreaView } from "~/components/styled";
-import { Button } from "~/components/ui/button";
 import { Text } from "~/components/ui/text";
 import type { RootStackParamList } from "~/navigation/types";
 import { trpc } from "~/utils/api";
@@ -207,7 +207,7 @@ export default function OnboardingScreen() {
     return (
       <SafeAreaView className="flex-1 bg-background">
         <View className="flex-1 items-center justify-center">
-          <Text className="text-muted-foreground">Checking permissions...</Text>
+          <Text className="text-muted">Checking permissions...</Text>
         </View>
       </SafeAreaView>
     );
@@ -220,17 +220,17 @@ export default function OnboardingScreen() {
         <View className="flex-row justify-center gap-2 py-8">
           <View
             className={`h-2 w-2 rounded-full ${
-              currentStep === "camera" ? "bg-primary" : "bg-muted"
+              currentStep === "camera" ? "bg-foreground" : "bg-default"
             }`}
           />
           <View
             className={`h-2 w-2 rounded-full ${
-              currentStep === "microphone" ? "bg-primary" : "bg-muted"
+              currentStep === "microphone" ? "bg-foreground" : "bg-default"
             }`}
           />
           <View
             className={`h-2 w-2 rounded-full ${
-              currentStep === "notifications" ? "bg-primary" : "bg-muted"
+              currentStep === "notifications" ? "bg-foreground" : "bg-default"
             }`}
           />
         </View>
@@ -240,13 +240,13 @@ export default function OnboardingScreen() {
           {currentStep === "camera" && (
             <>
               <View className="items-center gap-4">
-                <View className="h-24 w-24 items-center justify-center rounded-full bg-primary/10">
+                <View className="bg-default h-24 w-24 items-center justify-center rounded-full">
                   <Text className="text-5xl">📷</Text>
                 </View>
                 <Text className="text-center text-3xl font-bold">
                   Camera Access
                 </Text>
-                <Text className="text-center text-lg text-muted-foreground">
+                <Text className="text-center text-lg text-muted">
                   Whisp needs camera access to capture and send photos and
                   videos to your friends.
                 </Text>
@@ -257,13 +257,13 @@ export default function OnboardingScreen() {
           {currentStep === "microphone" && (
             <>
               <View className="items-center gap-4">
-                <View className="h-24 w-24 items-center justify-center rounded-full bg-primary/10">
+                <View className="bg-default h-24 w-24 items-center justify-center rounded-full">
                   <Text className="text-5xl">🎤</Text>
                 </View>
                 <Text className="text-center text-3xl font-bold">
                   Microphone Access
                 </Text>
-                <Text className="text-center text-lg text-muted-foreground">
+                <Text className="text-center text-lg text-muted">
                   Enable microphone access to record videos with sound.
                 </Text>
               </View>
@@ -273,13 +273,13 @@ export default function OnboardingScreen() {
           {currentStep === "notifications" && (
             <>
               <View className="items-center gap-4">
-                <View className="h-24 w-24 items-center justify-center rounded-full bg-primary/10">
+                <View className="bg-default h-24 w-24 items-center justify-center rounded-full">
                   <Text className="text-5xl">🔔</Text>
                 </View>
                 <Text className="text-center text-3xl font-bold">
                   Stay Updated
                 </Text>
-                <Text className="text-center text-lg text-muted-foreground">
+                <Text className="text-center text-lg text-muted">
                   Get notified when friends send you whisps or accept your
                   friend requests.
                 </Text>
@@ -298,21 +298,23 @@ export default function OnboardingScreen() {
                   ? requestMicrophonePermission
                   : requestNotificationPermission
             }
-            disabled={isRequesting}
+            isDisabled={isRequesting}
             size="lg"
           >
-            <Text className="text-lg font-semibold text-primary-foreground">
+            <Button.Label className="text-lg font-semibold">
               {isRequesting ? "Please wait..." : "Allow"}
-            </Text>
+            </Button.Label>
           </Button>
           {currentStep === "notifications" && (
             <Button
               variant="ghost"
               onPress={handleSkip}
-              disabled={isRequesting}
+              isDisabled={isRequesting}
               size="lg"
             >
-              <Text className="text-lg text-muted-foreground">Maybe Later</Text>
+              <Button.Label className="text-lg text-muted">
+                Maybe Later
+              </Button.Label>
             </Button>
           )}
         </View>

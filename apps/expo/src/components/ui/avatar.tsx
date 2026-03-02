@@ -50,7 +50,7 @@ export function Avatar({ userId, image, name, size = 40 }: AvatarProps) {
 
   return (
     <View
-      className="overflow-hidden rounded-full bg-secondary"
+      className="bg-default overflow-hidden rounded-full"
       style={{ width: size, height: size }}
     >
       {showImage ? (

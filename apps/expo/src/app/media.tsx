@@ -31,13 +31,12 @@ import {
   useCanvasRef,
   useImage,
 } from "@shopify/react-native-skia";
+import { Button } from "heroui-native/button";
 import { toast } from "sonner-native";
 
 import type { CaptionData } from "~/components/caption-editor";
 import { CaptionEditor } from "~/components/caption-editor";
 import { SkiaCaptionRenderer } from "~/components/skia-caption-renderer";
-import { Button } from "~/components/ui/button";
-import { Text } from "~/components/ui/text";
 import type { RootStackParamList } from "~/navigation/types";
 import { uploadMedia } from "~/utils/media-upload";
 import { markWhispFailed, markWhispUploading } from "~/utils/outbox-status";
@@ -454,7 +453,7 @@ export default function MediaScreen() {
             <>
               <View className="flex-1" />
               <Button className="px-6" onPress={handleStopEditing}>
-                <Text>Done</Text>
+                Done
               </Button>
             </>
           ) : (
@@ -465,13 +464,13 @@ export default function MediaScreen() {
                 onPress={() => void handleSave()}
               >
                 <AntDesign name="download" size={18} color="white" />
-                <Text>Save</Text>
+                <Button.Label>Save</Button.Label>
               </Button>
               <Button
                 className="flex-row items-center gap-2 px-6"
                 onPress={() => void handleSend()}
               >
-                <Text>Send</Text>
+                <Button.Label>Send</Button.Label>
                 <AntDesign name="send" size={18} color="black" />
               </Button>
             </>

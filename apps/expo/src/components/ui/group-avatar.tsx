@@ -36,7 +36,7 @@ function MiniCircle({
   if (member.image) {
     return (
       <View
-        className="overflow-hidden rounded-full bg-secondary"
+        className="bg-default overflow-hidden rounded-full"
         style={{ width: diameter, height: diameter }}
       >
         <Image
@@ -50,7 +50,7 @@ function MiniCircle({
 
   return (
     <View
-      className="items-center justify-center rounded-full bg-secondary"
+      className="bg-default items-center justify-center rounded-full"
       style={{ width: diameter, height: diameter }}
     >
       <Text className="font-semibold" style={{ fontSize: diameter * 0.4 }}>

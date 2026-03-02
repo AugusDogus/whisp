@@ -7,12 +7,12 @@ import type { EdgeInsets } from "react-native-safe-area-context";
 import { Image } from "expo-image";
 
 import { Ionicons } from "@expo/vector-icons";
+import { Button } from "heroui-native/button";
+import { Input } from "heroui-native/input";
 
 import { FriendsListSkeletonVaried } from "~/components/friends-skeleton";
 import { Avatar } from "~/components/ui/avatar";
-import { Button } from "~/components/ui/button";
 import { GroupAvatar } from "~/components/ui/group-avatar";
-import { Input } from "~/components/ui/input";
 import { Text } from "~/components/ui/text";
 
 type PreviewSource = ComponentProps<typeof Image>["source"];
@@ -57,7 +57,7 @@ function GroupRowItem({
         <GroupAvatar members={group.memberAvatars} size={44} />
         <View>
           <Text className="text-base">{group.name}</Text>
-          <Text className="text-xs text-muted-foreground">
+          <Text className="text-xs text-muted">
             {group.memberCount} member{group.memberCount !== 1 ? "s" : ""}
           </Text>
         </View>
@@ -65,8 +65,8 @@ function GroupRowItem({
       <View
         className={
           isSelected
-            ? "size-6 items-center justify-center rounded-full bg-primary"
-            : "size-6 rounded-full border-2 border-border"
+            ? "size-6 items-center justify-center rounded-full bg-accent"
+            : "border-separator size-6 rounded-full border-2"
         }
       >
         {isSelected && <Ionicons name="checkmark" size={14} color="#fff" />}
@@ -102,8 +102,8 @@ function FriendRowItem({
       <View
         className={
           isSelected
-            ? "size-6 items-center justify-center rounded-full bg-primary"
-            : "size-6 rounded-full border-2 border-border"
+            ? "size-6 items-center justify-center rounded-full bg-accent"
+            : "border-separator size-6 rounded-full border-2"
         }
       >
         {isSelected && <Ionicons name="checkmark" size={14} color="#fff" />}
@@ -173,7 +173,7 @@ export function SendModePanel({
       <View className="min-h-0 flex-1">
         {/* Preview + search */}
         <View className="flex w-full shrink-0 flex-row items-center gap-4 px-4 py-4">
-          <View className="size-16 flex-shrink-0 overflow-hidden rounded-md bg-secondary">
+          <View className="bg-default size-16 flex-shrink-0 overflow-hidden rounded-md">
             <Image
               source={previewSource}
               style={{ width: 64, height: 64 }}
@@ -231,13 +231,13 @@ export function SendModePanel({
         )}
 
         {/* Action buttons */}
-        <View className="flex flex-row gap-2 border-t border-border px-4 py-3">
+        <View className="border-separator flex flex-row gap-2 border-t px-4 py-3">
           <Button variant="secondary" className="flex-1" onPress={onBack}>
-            <Text>Back</Text>
+            Back
           </Button>
           <Button
             className="flex-1"
-            disabled={!canSend}
+            isDisabled={!canSend}
             onPress={() => {
               if (hasGroupSelected && selectedGroupId) {
                 void onSend({ groupId: selectedGroupId });
@@ -246,13 +246,11 @@ export function SendModePanel({
               }
             }}
           >
-            <Text>
-              {hasGroupSelected
-                ? "Send to group"
-                : numFriendsSelected > 0
-                  ? `Send (${numFriendsSelected})`
-                  : "Send"}
-            </Text>
+            {hasGroupSelected
+              ? "Send to group"
+              : numFriendsSelected > 0
+                ? `Send (${numFriendsSelected})`
+                : "Send"}
           </Button>
         </View>
       </View>

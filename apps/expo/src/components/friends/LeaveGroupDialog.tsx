@@ -1,16 +1,9 @@
 import type { GroupRow } from "./types";
 
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "~/components/ui/alert-dialog";
-import { Text } from "~/components/ui/text";
+import { View } from "react-native";
+
+import { Button } from "heroui-native/button";
+import { Dialog } from "heroui-native/dialog";
 
 export function LeaveGroupDialog({
   open,
@@ -24,24 +17,32 @@ export function LeaveGroupDialog({
   onConfirmLeave: () => void;
 }) {
   return (
-    <AlertDialog open={open} onOpenChange={setOpen}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Leave Group</AlertDialogTitle>
-          <AlertDialogDescription>
+    <Dialog isOpen={open} onOpenChange={setOpen}>
+      <Dialog.Portal>
+        <Dialog.Overlay />
+        <Dialog.Content>
+          <Dialog.Title>Leave Group</Dialog.Title>
+          <Dialog.Description>
             Are you sure you want to leave {selectedGroup?.name}? If you&apos;re
             the last member, the group will be deleted.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>
-            <Text>Cancel</Text>
-          </AlertDialogCancel>
-          <AlertDialogAction onPress={onConfirmLeave}>
-            <Text>Leave</Text>
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+          </Dialog.Description>
+          <View className="flex-row justify-end gap-3 pt-4">
+            <Button variant="ghost" size="sm" onPress={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              onPress={() => {
+                onConfirmLeave();
+                setOpen(false);
+              }}
+            >
+              Leave
+            </Button>
+          </View>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog>
   );
 }

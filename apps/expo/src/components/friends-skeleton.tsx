@@ -1,6 +1,6 @@
 import { View } from "react-native";
 
-import { Skeleton } from "~/components/ui/skeleton";
+import { Skeleton } from "heroui-native/skeleton";
 
 export function FriendRowSkeleton() {
   return (

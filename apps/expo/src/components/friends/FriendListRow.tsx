@@ -73,8 +73,8 @@ export function FriendListRow({
             )}
           </View>
           {item.hasUnread && (
-            <View className="ml-2 items-center justify-center rounded-full bg-primary px-2 py-0.5">
-              <Text className="text-xs font-semibold tabular-nums text-primary-foreground">
+            <View className="ml-2 items-center justify-center rounded-full bg-accent px-2 py-0.5">
+              <Text className="text-xs font-semibold tabular-nums text-accent-foreground">
                 {item.unreadCount}
               </Text>
             </View>
@@ -88,12 +88,12 @@ export function FriendListRow({
               size="small"
               color={colorScheme === "dark" ? "#9ca3af" : "#6b7280"}
             />
-            <Text className="text-xs text-muted-foreground">Sending...</Text>
+            <Text className="text-xs text-muted">Sending...</Text>
           </View>
         ) : item.outboxState === "failed" ? (
           <View className="mt-0.5 flex-row items-center gap-1.5">
             <Ionicons name="alert-circle-outline" size={14} color="#ef4444" />
-            <Text className="text-xs font-semibold text-destructive">
+            <Text className="text-danger text-xs font-semibold">
               Failed to send
             </Text>
           </View>
@@ -108,7 +108,7 @@ export function FriendListRow({
                 "text-xs",
                 item.lastMessageStatus === "received"
                   ? "font-semibold"
-                  : "text-muted-foreground",
+                  : "text-muted",
               )}
               style={
                 item.lastMessageStatus === "received"
@@ -119,16 +119,14 @@ export function FriendListRow({
               {getStatusText(item.lastMessageStatus, item.lastMediaKind)}
             </Text>
             {item.lastMessageAt && (
-              <Text className="text-xs text-muted-foreground">
+              <Text className="text-xs text-muted">
                 {"· "}
                 {getRelativeTime(item.lastMessageAt)}
               </Text>
             )}
           </View>
         ) : (
-          <Text className="mt-0.5 text-xs text-muted-foreground">
-            Tap to send a whisp
-          </Text>
+          <Text className="mt-0.5 text-xs text-muted">Tap to send a whisp</Text>
         )}
       </View>
     </Pressable>

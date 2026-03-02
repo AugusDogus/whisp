@@ -38,8 +38,8 @@ function GroupListRow({
             {group.name}
           </Text>
           {group.unreadCount > 0 && (
-            <View className="ml-2 items-center justify-center rounded-full bg-primary px-2 py-0.5">
-              <Text className="text-xs font-semibold tabular-nums text-primary-foreground">
+            <View className="ml-2 items-center justify-center rounded-full bg-accent px-2 py-0.5">
+              <Text className="text-xs font-semibold tabular-nums text-accent-foreground">
                 {group.unreadCount}
               </Text>
             </View>
@@ -56,7 +56,7 @@ function GroupListRow({
                 New Whisp
               </Text>
               {group.lastMessageAt && (
-                <Text className="text-xs text-muted-foreground">
+                <Text className="text-xs text-muted">
                   {"· "}
                   {getRelativeTime(group.lastMessageAt)}
                 </Text>
@@ -65,8 +65,8 @@ function GroupListRow({
           ) : group.lastSentByMe && group.lastMessageAt ? (
             <>
               <Ionicons name="arrow-redo" size={14} color={color} />
-              <Text className="text-xs text-muted-foreground">Sent</Text>
-              <Text className="text-xs text-muted-foreground">
+              <Text className="text-xs text-muted">Sent</Text>
+              <Text className="text-xs text-muted">
                 {"· "}
                 {getRelativeTime(group.lastMessageAt)}
               </Text>
@@ -74,14 +74,14 @@ function GroupListRow({
           ) : group.lastMessageAt ? (
             <>
               <View className="size-2.5 rounded-[2px] border-[1.5px] border-[#9ca3af]" />
-              <Text className="text-xs text-muted-foreground">Received</Text>
-              <Text className="text-xs text-muted-foreground">
+              <Text className="text-xs text-muted">Received</Text>
+              <Text className="text-xs text-muted">
                 {"· "}
                 {getRelativeTime(group.lastMessageAt)}
               </Text>
             </>
           ) : (
-            <Text className="text-xs text-muted-foreground">
+            <Text className="text-xs text-muted">
               {group.memberCount} member{group.memberCount !== 1 ? "s" : ""}
             </Text>
           )}

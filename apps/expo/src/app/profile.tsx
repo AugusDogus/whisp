@@ -1,64 +1,47 @@
 import { useRef, useState } from "react";
-import { Linking, Pressable, ScrollView, View } from "react-native";
+import {
+  Linking,
+  Pressable,
+  ScrollView,
+  useColorScheme,
+  View,
+} from "react-native";
 
 import Constants from "expo-constants";
 import { Image } from "expo-image";
 
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
+import { Button } from "heroui-native/button";
+import { Dialog } from "heroui-native/dialog";
+import { Switch } from "heroui-native/switch";
 
 import { SafeAreaView } from "~/components/styled";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "~/components/ui/alert-dialog";
-import { Button } from "~/components/ui/button";
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "~/components/ui/dialog";
-import { Switch } from "~/components/ui/switch";
 import { Text } from "~/components/ui/text";
 import { trpc } from "~/utils/api";
 import { authClient } from "~/utils/auth";
 import { getBaseUrl } from "~/utils/base-url";
 
 export default function ProfileScreen() {
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const { data: session } = authClient.useSession();
+  const colorScheme = useColorScheme();
+  const iconColor = colorScheme === "dark" ? "#aaa" : "#666";
   const utils = trpc.useUtils();
   const { data: preferences } = trpc.notifications.getPreferences.useQuery(
     undefined,
     {
-      // Use cached data immediately if available, fallback to defaults
       initialData: () =>
         utils.notifications.getPreferences.getData() ?? {
           notifyOnMessages: true,
           notifyOnFriendActivity: true,
         },
-      // Still fetch in background to ensure fresh data
       staleTime: 0,
     },
   );
   const updatePreferences = trpc.notifications.updatePreferences.useMutation({
     onMutate: async (newPrefs) => {
-      // Cancel outgoing refetches
       await utils.notifications.getPreferences.cancel();
-
-      // Snapshot the previous value
       const previousPrefs = utils.notifications.getPreferences.getData();
-
-      // Optimistically update to the new value
       utils.notifications.getPreferences.setData(undefined, (old) => {
         if (!old) return old;
         return {
@@ -67,12 +50,9 @@ export default function ProfileScreen() {
           ...newPrefs,
         };
       });
-
-      // Return context with the snapshot
       return { previousPrefs };
     },
     onError: (_err, _newPrefs, context) => {
-      // Rollback to the previous value on error
       if (context?.previousPrefs) {
         utils.notifications.getPreferences.setData(
           undefined,
@@ -81,7 +61,6 @@ export default function ProfileScreen() {
       }
     },
     onSettled: () => {
-      // Refetch after mutation
       void utils.notifications.getPreferences.refetch();
     },
   });
@@ -101,14 +80,14 @@ export default function ProfileScreen() {
   return (
     <SafeAreaView className="flex-1 bg-background">
       <View className="h-full w-full">
-        <View className="items-center px-4 py-3 pb-4">
+        <View className="items-center px-4 py-3">
           <Text className="text-lg font-semibold">Profile</Text>
         </View>
 
         <ScrollView className="flex-1 px-4">
-          {/* Top section - Avatar and info */}
-          <View className="items-center gap-4 pt-8">
-            <View className="h-24 w-24 items-center justify-center overflow-hidden rounded-full bg-secondary">
+          {/* Avatar and info */}
+          <View className="items-center gap-4 pt-6">
+            <View className="bg-default size-24 items-center justify-center overflow-hidden rounded-full">
               {session?.user.image ? (
                 <Image
                   source={{ uri: session.user.image }}
@@ -116,154 +95,171 @@ export default function ProfileScreen() {
                   contentFit="cover"
                 />
               ) : (
-                <Ionicons name="person" size={48} color="#666" />
+                <Ionicons name="person" size={48} color={iconColor} />
               )}
             </View>
-
             <View className="items-center gap-1">
               <Text className="text-2xl font-bold">
                 {session?.user.name ?? "User"}
               </Text>
               {session?.user.email && (
-                <Text variant="muted" className="text-sm">
-                  {session.user.email}
-                </Text>
+                <Text className="text-sm text-muted">{session.user.email}</Text>
               )}
             </View>
           </View>
 
-          {/* Cards section */}
+          {/* Cards */}
           <View className="mt-8 gap-3 pb-4">
-            {/* Discord Card */}
+            {/* Discord */}
             <Pressable
               onPress={() => {
                 void Linking.openURL("https://discord.gg/DkFmaDDqgW");
               }}
-              className="rounded-lg border border-border bg-background p-4 shadow-sm shadow-black/5 active:opacity-70"
+              className="bg-surface rounded-xl p-4 active:opacity-70"
             >
               <View className="flex-row items-center gap-3">
-                <View className="h-10 w-10 items-center justify-center rounded-full bg-primary/10">
-                  <MaterialIcons name="discord" size={20} color="#666" />
+                <View className="bg-default size-10 items-center justify-center rounded-full">
+                  <MaterialIcons name="discord" size={20} color={iconColor} />
                 </View>
                 <View className="flex-1">
                   <Text className="text-base font-semibold">
                     Join our Discord
                   </Text>
-                  <Text variant="muted" className="text-xs">
+                  <Text className="text-xs text-muted">
                     Connect with the community
                   </Text>
                 </View>
-                <Ionicons name="open-outline" size={20} color="#666" />
+                <Ionicons name="open-outline" size={18} color={iconColor} />
               </View>
             </Pressable>
 
-            {/* Notifications Card */}
-            <View className="rounded-lg border border-border bg-background p-4 shadow-sm shadow-black/5">
-              <View className="flex-row items-center gap-3 pb-3">
-                <View className="h-10 w-10 items-center justify-center rounded-full bg-primary/10">
-                  <Ionicons name="notifications" size={20} color="#666" />
+            {/* Notifications */}
+            <View className="bg-surface rounded-xl p-4">
+              <View className="flex-row items-center gap-3">
+                <View className="bg-default size-10 items-center justify-center rounded-full">
+                  <Ionicons name="notifications" size={20} color={iconColor} />
                 </View>
                 <View className="flex-1">
                   <Text className="text-base font-semibold">Notifications</Text>
-                  <Text variant="muted" className="text-xs">
+                  <Text className="text-xs text-muted">
                     Manage push notifications
                   </Text>
                 </View>
               </View>
-              <View className="gap-3 pt-2">
+              <View className="mt-4 gap-4">
                 <View className="flex-row items-center justify-between">
                   <Text className="text-sm">New whisps</Text>
                   <Switch
-                    value={preferences.notifyOnMessages}
-                    onValueChange={() => handleToggle("notifyOnMessages")}
+                    isSelected={preferences.notifyOnMessages}
+                    onSelectedChange={() => handleToggle("notifyOnMessages")}
                   />
                 </View>
                 <View className="flex-row items-center justify-between">
                   <Text className="text-sm">Friend requests</Text>
                   <Switch
-                    value={preferences.notifyOnFriendActivity}
-                    onValueChange={() => handleToggle("notifyOnFriendActivity")}
+                    isSelected={preferences.notifyOnFriendActivity}
+                    onSelectedChange={() =>
+                      handleToggle("notifyOnFriendActivity")
+                    }
                   />
                 </View>
               </View>
             </View>
 
-            {/* About Card */}
-            <View className="rounded-lg border border-border bg-background p-4 shadow-sm shadow-black/5">
-              <View className="flex-row items-center gap-3 pb-3">
-                <View className="h-10 w-10 items-center justify-center rounded-full bg-primary/10">
-                  <Ionicons name="information-circle" size={20} color="#666" />
+            {/* About */}
+            <View className="bg-surface rounded-xl p-4">
+              <View className="flex-row items-center gap-3">
+                <View className="bg-default size-10 items-center justify-center rounded-full">
+                  <Ionicons
+                    name="information-circle"
+                    size={20}
+                    color={iconColor}
+                  />
                 </View>
                 <View className="flex-1">
                   <Text className="text-base font-semibold">About</Text>
-                  <Text variant="muted" className="text-xs">
+                  <Text className="text-xs text-muted">
                     App information and legal
                   </Text>
                 </View>
               </View>
-              <View className="gap-3 pt-2">
+              <View className="mt-4 gap-3">
                 <BuildInfo />
                 <Pressable
                   onPress={() => {
                     void Linking.openURL("https://whisp.chat/terms");
                   }}
-                  className="active:opacity-70"
+                  className="flex-row items-center justify-between active:opacity-70"
                 >
-                  <Text className="text-sm text-primary">Terms of Service</Text>
+                  <Text className="text-sm">Terms of Service</Text>
+                  <Ionicons name="open-outline" size={14} color={iconColor} />
                 </Pressable>
                 <Pressable
                   onPress={() => {
                     void Linking.openURL("https://whisp.chat/privacy");
                   }}
-                  className="active:opacity-70"
+                  className="flex-row items-center justify-between active:opacity-70"
                 >
-                  <Text className="text-sm text-primary">Privacy Policy</Text>
+                  <Text className="text-sm">Privacy Policy</Text>
+                  <Ionicons name="open-outline" size={14} color={iconColor} />
                 </Pressable>
               </View>
             </View>
           </View>
         </ScrollView>
 
-        {/* Bottom section - Delete Account & Sign out */}
-        <View className="gap-3 px-4 pb-4">
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
+        {/* Bottom actions */}
+        <View className="gap-2 px-4 pb-4">
+          <Dialog isOpen={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+            <Dialog.Trigger asChild>
               <Button variant="ghost" className="w-full">
-                <Text>Delete Account</Text>
+                Delete Account
               </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Delete Account</AlertDialogTitle>
-                <AlertDialogDescription>
+            </Dialog.Trigger>
+            <Dialog.Portal>
+              <Dialog.Overlay />
+              <Dialog.Content>
+                <Dialog.Title>Delete Account</Dialog.Title>
+                <Dialog.Description>
                   Are you sure you want to delete your Whisp account? This will
                   permanently delete all your messages, friend connections, and
                   account data. This action cannot be undone.
                   {"\n\n"}
                   Note: This only deletes your Whisp account. Your Discord
                   account will remain active.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>
-                  <Text>Cancel</Text>
-                </AlertDialogCancel>
-                <AlertDialogAction onPress={handleDeleteAccount}>
-                  <Text>Delete Account</Text>
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+                </Dialog.Description>
+                <View className="flex-row justify-end gap-3 pt-4">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onPress={() => setDeleteDialogOpen(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    onPress={() => {
+                      void handleDeleteAccount();
+                      setDeleteDialogOpen(false);
+                    }}
+                  >
+                    Delete Account
+                  </Button>
+                </View>
+              </Dialog.Content>
+            </Dialog.Portal>
+          </Dialog>
 
           <Button
-            variant="destructive"
+            variant="secondary"
             onPress={async () => {
               console.log("[ProfileScreen] Signing out");
               await authClient.signOut();
             }}
             className="w-full"
           >
-            <Text>Sign Out</Text>
+            Sign Out
           </Button>
         </View>
       </View>
@@ -277,20 +273,14 @@ function BuildInfo() {
   const [showDialog, setShowDialog] = useState(false);
 
   function handleTap() {
-    // Clear existing timeout
     if (tapTimeout.current) {
       clearTimeout(tapTimeout.current);
     }
-
-    // Increment tap count
     tapCount.current += 1;
-
-    // If we hit 3 taps, show env vars
     if (tapCount.current === 3) {
       setShowDialog(true);
       tapCount.current = 0;
     } else {
-      // Reset tap count after 500ms
       tapTimeout.current = setTimeout(() => {
         tapCount.current = 0;
       }, 500);
@@ -312,7 +302,6 @@ function BuildInfo() {
         value: (value as string | undefined) ?? "undefined",
       }));
 
-    // Add computed API Server at the end
     envVars.push({
       key: "API Server",
       value: getBaseUrl(),
@@ -334,46 +323,46 @@ function BuildInfo() {
         className="flex-row items-center justify-between active:opacity-70"
       >
         <Text className="text-sm">Version</Text>
-        <Text variant="muted" className="text-sm">
+        <Text className="text-sm tabular-nums text-muted">
           {buildNumber} ({nativeBuildVersion})
         </Text>
       </Pressable>
 
-      <Dialog open={showDialog} onOpenChange={setShowDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Environment</DialogTitle>
-            <DialogDescription>
+      <Dialog isOpen={showDialog} onOpenChange={setShowDialog}>
+        <Dialog.Portal>
+          <Dialog.Overlay />
+          <Dialog.Content>
+            <Dialog.Close />
+            <Dialog.Title>Environment</Dialog.Title>
+            <Dialog.Description>
               Current environment configuration
-            </DialogDescription>
-          </DialogHeader>
-          <ScrollView className="max-h-96">
-            <View className="overflow-hidden rounded-lg border border-border">
-              {getEnvVars().map((item, index) => (
-                <View
-                  key={item.key}
-                  className={`p-3 ${
-                    index % 2 === 0 ? "bg-secondary/50" : "bg-background"
-                  }`}
-                >
-                  <Text className="text-xs font-semibold text-foreground">
-                    {item.key}
-                  </Text>
-                  <Text className="mt-1 text-xs text-muted-foreground">
-                    {item.value}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          </ScrollView>
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button>
-                <Text>Close</Text>
+            </Dialog.Description>
+            <ScrollView className="max-h-96">
+              <View className="bg-surface-secondary overflow-hidden rounded-lg">
+                {getEnvVars().map((item, index) => (
+                  <View
+                    key={item.key}
+                    className={`p-3 ${
+                      index % 2 === 0 ? "bg-default/50" : "bg-transparent"
+                    }`}
+                  >
+                    <Text className="text-xs font-semibold text-foreground">
+                      {item.key}
+                    </Text>
+                    <Text className="mt-1 text-xs text-muted">
+                      {item.value}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            </ScrollView>
+            <View className="flex-row justify-end pt-4">
+              <Button size="sm" onPress={() => setShowDialog(false)}>
+                Close
               </Button>
-            </DialogClose>
-          </DialogFooter>
-        </DialogContent>
+            </View>
+          </Dialog.Content>
+        </Dialog.Portal>
       </Dialog>
     </>
   );

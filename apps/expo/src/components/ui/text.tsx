@@ -1,69 +1,43 @@
-import type { VariantProps } from "class-variance-authority";
-
 import * as React from "react";
 import type { Role } from "react-native";
-import { Platform, Text as RNText } from "react-native";
-
-import * as Slot from "@rn-primitives/slot";
-import { cva } from "class-variance-authority";
+import { Text as RNText } from "react-native";
 
 import { cn } from "~/lib/utils";
 
-const textVariants = cva(
-  cn(
-    "text-base text-foreground",
-    Platform.select({
-      web: "select-text",
-    }),
-  ),
-  {
-    variants: {
-      variant: {
-        default: "",
-        h1: cn(
-          "text-center text-4xl font-extrabold tracking-tight",
-          Platform.select({ web: "scroll-m-20 text-balance" }),
-        ),
-        h2: cn(
-          "border-b border-border pb-2 text-3xl font-semibold tracking-tight",
-          Platform.select({ web: "scroll-m-20 first:mt-0" }),
-        ),
-        h3: cn(
-          "text-2xl font-semibold tracking-tight",
-          Platform.select({ web: "scroll-m-20" }),
-        ),
-        h4: cn(
-          "text-xl font-semibold tracking-tight",
-          Platform.select({ web: "scroll-m-20" }),
-        ),
-        p: "mt-3 leading-7 sm:mt-6",
-        blockquote: "mt-4 border-l-2 pl-3 italic sm:mt-6 sm:pl-6",
-        code: cn(
-          "relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-sm font-semibold",
-        ),
-        lead: "text-xl text-muted-foreground",
-        large: "text-lg font-semibold",
-        small: "text-sm font-medium leading-none",
-        muted: "text-sm text-muted-foreground",
-      },
-    },
-    defaultVariants: {
-      variant: "default",
-    },
-  },
-);
+type TextVariant =
+  | "default"
+  | "h1"
+  | "h2"
+  | "h3"
+  | "h4"
+  | "p"
+  | "blockquote"
+  | "code"
+  | "lead"
+  | "large"
+  | "small"
+  | "muted";
 
-type TextVariantProps = VariantProps<typeof textVariants>;
-
-type TextVariant = NonNullable<TextVariantProps["variant"]>;
+const VARIANT_CLASSES: Record<TextVariant, string> = {
+  default: "",
+  h1: "text-center text-4xl font-extrabold tracking-tight",
+  h2: "border-b border-separator pb-2 text-3xl font-semibold tracking-tight",
+  h3: "text-2xl font-semibold tracking-tight",
+  h4: "text-xl font-semibold tracking-tight",
+  p: "mt-3 leading-7",
+  blockquote: "mt-4 border-l-2 pl-3 italic",
+  code: "relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-sm font-semibold",
+  lead: "text-xl text-muted",
+  large: "text-lg font-semibold",
+  small: "text-sm font-medium leading-none",
+  muted: "text-sm text-muted",
+};
 
 const ROLE: Partial<Record<TextVariant, Role>> = {
   h1: "heading",
   h2: "heading",
   h3: "heading",
   h4: "heading",
-  blockquote: Platform.select({ web: "blockquote" as Role }),
-  code: Platform.select({ web: "code" as Role }),
 };
 
 const ARIA_LEVEL: Partial<Record<TextVariant, string>> = {
@@ -73,28 +47,24 @@ const ARIA_LEVEL: Partial<Record<TextVariant, string>> = {
   h4: "4",
 };
 
-const TextClassContext = React.createContext<string | undefined>(undefined);
+interface TextProps extends React.ComponentProps<typeof RNText> {
+  variant?: TextVariant;
+}
 
-function Text({
-  className,
-  asChild = false,
-  variant = "default",
-  ...props
-}: React.ComponentProps<typeof RNText> &
-  TextVariantProps &
-  React.RefAttributes<RNText> & {
-    asChild?: boolean;
-  }) {
-  const textClass = React.useContext(TextClassContext);
-  const Component = asChild ? Slot.Text : RNText;
+function Text({ className, variant = "default", ...props }: TextProps) {
   return (
-    <Component
-      className={cn(textVariants({ variant }), textClass, className)}
-      role={variant ? ROLE[variant] : undefined}
-      aria-level={variant ? ARIA_LEVEL[variant] : undefined}
+    <RNText
+      className={cn(
+        "text-base text-foreground",
+        VARIANT_CLASSES[variant],
+        className,
+      )}
+      role={ROLE[variant]}
+      aria-level={ARIA_LEVEL[variant]}
       {...props}
     />
   );
 }
 
-export { Text, TextClassContext };
+export { Text };
+export type { TextVariant, TextProps };

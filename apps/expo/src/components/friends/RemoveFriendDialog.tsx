@@ -1,18 +1,10 @@
 import type { FriendRow } from "./types";
 
 import type { MutableRefObject } from "react";
+import { View } from "react-native";
 
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "~/components/ui/alert-dialog";
-import { Text } from "~/components/ui/text";
+import { Button } from "heroui-native/button";
+import { Dialog } from "heroui-native/dialog";
 
 export function RemoveFriendDialog({
   open,
@@ -30,40 +22,57 @@ export function RemoveFriendDialog({
   onConfirmRemove: () => void;
 }) {
   return (
-    <AlertDialog
-      open={open}
+    <Dialog
+      isOpen={open}
       onOpenChange={(nextOpen) => {
         console.log(
-          "AlertDialog onOpenChange:",
+          "Dialog onOpenChange:",
           nextOpen,
           "selectedFriend:",
           selectedFriend,
         );
         setOpen(nextOpen);
         isShowingDialogRef.current = nextOpen;
-        // Clear selected friend when dialog closes
         if (!nextOpen) {
           clearSelectedFriendAfterDelay();
         }
       }}
     >
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Remove Friend</AlertDialogTitle>
-          <AlertDialogDescription>
+      <Dialog.Portal>
+        <Dialog.Overlay />
+        <Dialog.Content>
+          <Dialog.Title>Remove Friend</Dialog.Title>
+          <Dialog.Description>
             Are you sure you want to remove {selectedFriend?.name} from your
             friends list? This action cannot be undone.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>
-            <Text>Cancel</Text>
-          </AlertDialogCancel>
-          <AlertDialogAction onPress={onConfirmRemove}>
-            <Text>Remove</Text>
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+          </Dialog.Description>
+          <View className="flex-row justify-end gap-3 pt-4">
+            <Button
+              variant="ghost"
+              size="sm"
+              onPress={() => {
+                setOpen(false);
+                isShowingDialogRef.current = false;
+                clearSelectedFriendAfterDelay();
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              onPress={() => {
+                onConfirmRemove();
+                setOpen(false);
+                isShowingDialogRef.current = false;
+                clearSelectedFriendAfterDelay();
+              }}
+            >
+              Remove
+            </Button>
+          </View>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog>
   );
 }

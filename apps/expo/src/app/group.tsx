@@ -15,10 +15,10 @@ import { Image } from "expo-image";
 
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation, useRoute } from "@react-navigation/native";
+import { Button } from "heroui-native/button";
 
 import { MessageViewerModal } from "~/components/friends/MessageViewerModal";
 import { Avatar } from "~/components/ui/avatar";
-import { Button } from "~/components/ui/button";
 import { GroupAvatar } from "~/components/ui/group-avatar";
 import { Text } from "~/components/ui/text";
 import { useGroupMessageViewer } from "~/hooks/useGroupMessageViewer";
@@ -121,10 +121,7 @@ export default function GroupScreen() {
                 {group?.name ?? "..."}
               </Text>
               {group?.members && (
-                <Text
-                  className="text-xs text-muted-foreground"
-                  numberOfLines={1}
-                >
+                <Text className="text-xs text-muted" numberOfLines={1}>
                   {group.members.length} member
                   {group.members.length !== 1 ? "s" : ""}
                 </Text>
@@ -144,7 +141,7 @@ export default function GroupScreen() {
       {/* Content */}
       {isLoading ? (
         <View className="flex-1 items-center justify-center">
-          <Text className="text-muted-foreground">Loading...</Text>
+          <Text className="text-muted">Loading...</Text>
         </View>
       ) : inboxRaw.length === 0 ? (
         <View className="flex-1 items-center justify-center gap-3 px-8">
@@ -153,11 +150,9 @@ export default function GroupScreen() {
             style={{ width: 56, height: 56, opacity: 0.35 }}
             contentFit="contain"
           />
-          <Text className="text-center text-muted-foreground">
-            No unread whisps
-          </Text>
+          <Text className="text-center text-muted">No unread whisps</Text>
           <Button className="mt-2" onPress={onSendWhisp}>
-            <Text>Send a whisp</Text>
+            Send a whisp
           </Button>
         </View>
       ) : (
@@ -170,7 +165,7 @@ export default function GroupScreen() {
           }
           ListHeaderComponent={
             <View className="px-4 py-2">
-              <Text className="text-sm font-medium text-muted-foreground">
+              <Text className="text-sm font-medium text-muted">
                 {inboxRaw.length} unread whisp
                 {inboxRaw.length !== 1 ? "s" : ""}
               </Text>
@@ -192,12 +187,10 @@ export default function GroupScreen() {
                 />
                 <View className="ml-3 flex-1 justify-center py-3">
                   <Text className="text-base font-semibold">{member.name}</Text>
-                  <Text className="mt-0.5 text-xs text-muted-foreground">
-                    Tap to view
-                  </Text>
+                  <Text className="mt-0.5 text-xs text-muted">Tap to view</Text>
                 </View>
-                <View className="items-center justify-center rounded-full bg-primary px-2 py-0.5">
-                  <Text className="text-xs font-semibold tabular-nums text-primary-foreground">
+                <View className="items-center justify-center rounded-full bg-accent px-2 py-0.5">
+                  <Text className="text-xs font-semibold tabular-nums text-accent-foreground">
                     New
                   </Text>
                 </View>
@@ -212,10 +205,8 @@ export default function GroupScreen() {
 
       {/* Bottom send button when there are messages */}
       {inboxRaw.length > 0 && (
-        <View className="border-t border-border px-4 py-3">
-          <Button onPress={onSendWhisp}>
-            <Text>Send a whisp</Text>
-          </Button>
+        <View className="border-separator border-t px-4 py-3">
+          <Button onPress={onSendWhisp}>Send a whisp</Button>
         </View>
       )}
 
