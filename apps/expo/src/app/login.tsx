@@ -37,20 +37,22 @@ export default function LoginPage() {
 
   return (
     <SafeAreaView className="flex-1 bg-background">
-      <View className="flex-1 items-center justify-center px-8">
-        <View className="items-center gap-12">
-          <View className="items-center gap-4">
-            <Image
-              source={colorScheme === "dark" ? logoDark : logoLight}
-              style={{ width: 64, height: 64 }}
-              contentFit="contain"
-            />
-            <Text className="text-3xl font-bold">whisp</Text>
-            <Text className="text-sm text-muted">Sign in to continue</Text>
-          </View>
+      <View className="flex-1 px-6">
+        {/* Centered branding */}
+        <View className="flex-1 items-center justify-center gap-5">
+          <Image
+            source={colorScheme === "dark" ? logoDark : logoLight}
+            style={{ width: 44, height: 44 }}
+            contentFit="contain"
+          />
+          <Text className="text-2xl font-bold">whisp</Text>
+        </View>
 
+        {/* Button pinned at bottom */}
+        <View className="pb-8">
           <Button
             variant="primary"
+            className="w-full"
             isDisabled={isSigningIn}
             onPress={async () => {
               setIsSigningIn(true);
