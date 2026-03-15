@@ -75,7 +75,7 @@ export const Friendship = sqliteTable(
       .integer({ mode: "timestamp" })
       .$defaultFn(() => new Date())
       .notNull(),
-    // Streak tracking - uses 24-hour rolling windows from last activity
+    // Streak tracking - counts consecutive UTC days where both users send
     currentStreak: t.integer().notNull().default(0),
     lastActivityTimestampA: t.integer({ mode: "timestamp" }), // Full timestamp for userA's last activity
     lastActivityTimestampB: t.integer({ mode: "timestamp" }), // Full timestamp for userB's last activity

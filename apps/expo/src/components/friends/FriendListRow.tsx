@@ -50,7 +50,7 @@ export function FriendListRow({
             >
               {item.name}
             </Text>
-            {item.streak > 0 && (
+            {item.shouldShowStreak && (
               <View className="ml-1.5 flex-row items-center">
                 <Image
                   style={{ width: 20, height: 20, margin: -4 }}

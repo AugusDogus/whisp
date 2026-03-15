@@ -18,6 +18,7 @@ import {
   notifyFriendAccept,
   notifyFriendRequest,
 } from "../utils/send-notification";
+import { deriveDisplayedStreakState } from "../utils/streak-state";
 
 export const friendsRouter = {
   searchUsers: protectedProcedure
@@ -123,6 +124,10 @@ export const friendsRouter = {
         image: string | null;
         discordId: string | null;
         streak: number;
+        shouldShowStreak: boolean;
+        bothSentToday: boolean;
+        isStreakAtRisk: boolean;
+        streakDayEndsAt: Date | null;
         lastActivityTimestamp: Date | null;
         partnerLastActivityTimestamp: Date | null;
         lastSentOpened: boolean | null;
@@ -130,21 +135,36 @@ export const friendsRouter = {
       }[];
 
     const friends = await getFriendsWithDiscordIds(ctx.db, friendIds);
+    const now = new Date();
 
     const friendshipMap = new Map(
       rows.map((r) => {
         const isUserA = r.userIdA === me;
         const friendId = isUserA ? r.userIdB : r.userIdA;
+        const myLastActivity = isUserA
+          ? r.lastActivityTimestampA
+          : r.lastActivityTimestampB;
+        const partnerLastActivity = isUserA
+          ? r.lastActivityTimestampB
+          : r.lastActivityTimestampA;
+        const streakState = deriveDisplayedStreakState({
+          currentStreak: r.currentStreak,
+          streakUpdatedAt: r.streakUpdatedAt,
+          myLastActivity,
+          partnerLastActivity,
+          now,
+        });
+
         return [
           friendId,
           {
-            streak: r.currentStreak,
-            myLastActivity: isUserA
-              ? r.lastActivityTimestampA
-              : r.lastActivityTimestampB,
-            partnerLastActivity: isUserA
-              ? r.lastActivityTimestampB
-              : r.lastActivityTimestampA,
+            streak: streakState.streak,
+            shouldShowStreak: streakState.shouldShowStreak,
+            bothSentToday: streakState.bothSentToday,
+            isStreakAtRisk: streakState.isStreakAtRisk,
+            streakDayEndsAt: streakState.streakDayEndsAt,
+            myLastActivity,
+            partnerLastActivity,
           },
         ];
       }),
@@ -187,6 +207,10 @@ export const friendsRouter = {
         image: u.image ?? null,
         discordId: u.discordId ?? null,
         streak: streakInfo?.streak ?? 0,
+        shouldShowStreak: streakInfo?.shouldShowStreak ?? false,
+        bothSentToday: streakInfo?.bothSentToday ?? false,
+        isStreakAtRisk: streakInfo?.isStreakAtRisk ?? false,
+        streakDayEndsAt: streakInfo?.streakDayEndsAt ?? null,
         lastActivityTimestamp: streakInfo?.myLastActivity ?? null,
         partnerLastActivityTimestamp: streakInfo?.partnerLastActivity ?? null,
         lastSentOpened,

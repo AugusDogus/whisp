@@ -2,29 +2,31 @@ import { and, eq } from "@acme/db";
 import type { db as Database } from "@acme/db/client";
 import { Friendship } from "@acme/db/schema";
 
+import { calculateStreakUpdate } from "./streak-state";
+
 /**
  * Streak System - Expected Behavior
  * ==================================
  *
- * The streak represents consecutive days where BOTH friends have sent messages.
- * A "day" is defined as a 24-hour rolling window from the last activity.
+ * The streak represents consecutive UTC days where BOTH friends have sent
+ * at least one direct message.
  *
  * Rules:
- * 1. Both users must send at least one message within any 24-hour period to maintain/grow the streak
- * 2. Each user can only contribute ONCE per streak cycle (prevents spam from incrementing streak)
- * 3. The streak increments only when:
- *    - User A sends (after last update)
- *    - User B sends within 24 hours (completes the cycle)
- * 4. The streak resets to 0 if either user fails to send within 24 hours of the other's last message
- * 5. The streak starts at 0 until both users have sent their first message
+ * 1. A UTC day counts only when both users send at least once that day.
+ * 2. Each UTC day can increase the streak at most once.
+ * 3. Repeated sends by the same user on the same day never double-count.
+ * 4. Missing a UTC day breaks the streak; the next shared day restarts at 1.
+ * 5. The streak is tracked internally from day 1, but the UI should only
+ *    display it once it reaches 3.
  *
  * Example Timeline:
- * - Day 1, 10:00 AM: Alice sends → streak stays 0 (waiting for Bob)
- * - Day 1, 2:00 PM:  Bob sends → streak increments to 1 (both participated)
- * - Day 1, 8:00 PM:  Alice sends again → streak stays 1 (already contributed this cycle)
- * - Day 2, 1:00 PM:  Alice sends → streak stays 1 (waiting for Bob to complete next cycle)
- * - Day 2, 5:00 PM:  Bob sends → streak increments to 2 (both participated again)
- * - Day 4, 6:00 PM:  Alice sends → streak resets to 0 (>24h gap since Bob's last message)
+ * - 2026-03-10 09:00 UTC: Alice sends → streak stays 0 (waiting for Bob)
+ * - 2026-03-10 15:00 UTC: Bob sends   → streak becomes 1
+ * - 2026-03-10 20:00 UTC: Alice sends → streak stays 1 (day already counted)
+ * - 2026-03-11 18:00 UTC: Bob sends   → streak stays 1 (waiting for Alice)
+ * - 2026-03-11 22:00 UTC: Alice sends → streak becomes 2
+ * - 2026-03-13 12:00 UTC: Bob sends   → streak still appears expired until
+ *   Alice also sends on 2026-03-13, at which point it restarts at 1
  */
 
 /**
@@ -36,9 +38,11 @@ import { Friendship } from "@acme/db/schema";
  *
  * Expected behavior:
  * - Updates the sender's last activity timestamp
- * - Checks if conditions are met to increment the streak
- * - Increments streak only if both users have now participated since last update
- * - Resets streak to 0 if there's a gap > 24 hours
+ * - Checks if both users have now sent on the current UTC day
+ * - Credits the UTC day once, even if one user sends repeatedly
+ * - Increments the streak only when the newly credited day follows the
+ *   previous credited UTC day
+ * - Restarts at 1 when the newly credited day follows a missed UTC day
  */
 export async function updateStreak(
   db: typeof Database,
@@ -59,13 +63,9 @@ export async function updateStreak(
   if (!friendship) return;
 
   const now = new Date();
-  const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
 
   // Determine which user is sending and get their timestamps
   const isSenderA = senderId === userA;
-  const senderLastTimestamp = isSenderA
-    ? friendship.lastActivityTimestampA
-    : friendship.lastActivityTimestampB;
   const otherLastTimestamp = isSenderA
     ? friendship.lastActivityTimestampB
     : friendship.lastActivityTimestampA;
@@ -84,10 +84,8 @@ export async function updateStreak(
   const streakUpdate = calculateStreakUpdate({
     currentStreak: friendship.currentStreak,
     streakUpdatedAt: friendship.streakUpdatedAt,
-    senderLastTimestamp,
     otherLastTimestamp,
     now,
-    twentyFourHoursMs: TWENTY_FOUR_HOURS_MS,
   });
 
   // Apply streak updates
@@ -99,93 +97,4 @@ export async function updateStreak(
     .update(Friendship)
     .set(updates)
     .where(and(eq(Friendship.userIdA, userA), eq(Friendship.userIdB, userB)));
-}
-
-/**
- * Calculates the new streak value based on user activity
- *
- * Expected behavior:
- * - Returns the same streak if conditions aren't met to increment
- * - Returns streak + 1 if this message completes a cycle
- * - Returns 0 if there's a gap that breaks the streak
- * - Returns updatedAt as now if streak increments, null if reset
- */
-function calculateStreakUpdate(params: {
-  currentStreak: number;
-  streakUpdatedAt: Date | null;
-  senderLastTimestamp: Date | null;
-  otherLastTimestamp: Date | null;
-  now: Date;
-  twentyFourHoursMs: number;
-}): { newStreak: number; updatedAt: Date | null } {
-  const {
-    currentStreak,
-    streakUpdatedAt,
-    senderLastTimestamp,
-    otherLastTimestamp,
-    now,
-    twentyFourHoursMs,
-  } = params;
-
-  // Case 1: Other user hasn't sent anything yet
-  // Expected: Keep streak at 0, wait for other user to participate
-  if (!otherLastTimestamp) {
-    return {
-      newStreak: currentStreak, // Stay at 0
-      updatedAt: null, // No update until both participate
-    };
-  }
-
-  // Calculate time since other user's last activity
-  const timeSinceOther = now.getTime() - otherLastTimestamp.getTime();
-
-  // Case 2: Other user's last activity is > 24 hours ago
-  // Expected: Gap detected, reset streak to 0
-  if (timeSinceOther > twentyFourHoursMs) {
-    return {
-      newStreak: 0,
-      updatedAt: null, // Clear the update timestamp
-    };
-  }
-
-  // Case 3: Other user sent within 24 hours (streak is alive)
-
-  // Sub-case 3a: Sender is sending for the first time (no previous timestamp)
-  // Expected: Complete the first day, set streak to 1
-  if (!senderLastTimestamp) {
-    return {
-      newStreak: 1,
-      updatedAt: now, // Mark when first cycle completed
-    };
-  }
-
-  // Sub-case 3b: Both users have sent before, check if we should increment
-
-  // Check if other user has sent since the last streak update
-  // Expected: If yes, they've done their part for this cycle
-  const otherSentSinceUpdate =
-    !streakUpdatedAt ||
-    otherLastTimestamp.getTime() > streakUpdatedAt.getTime();
-
-  // Check if sender has already sent since the last streak update
-  // Expected: If yes, they've already contributed to current cycle
-  const senderSentSinceUpdate =
-    !streakUpdatedAt ||
-    senderLastTimestamp.getTime() > streakUpdatedAt.getTime();
-
-  // Sub-case 3b-i: Other user completed their part, sender hasn't yet
-  // Expected: This message completes a new cycle, increment streak
-  if (otherSentSinceUpdate && !senderSentSinceUpdate) {
-    return {
-      newStreak: currentStreak + 1,
-      updatedAt: now, // Mark when this cycle completed
-    };
-  }
-
-  // Sub-case 3b-ii: Either waiting for other user OR sender already contributed
-  // Expected: Keep current streak, no changes to update timestamp
-  return {
-    newStreak: currentStreak,
-    updatedAt: streakUpdatedAt, // Keep existing timestamp
-  };
 }

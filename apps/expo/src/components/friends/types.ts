@@ -17,6 +17,7 @@ export interface FriendRow {
   unreadCount: number;
   isSelected: boolean;
   streak: number;
+  shouldShowStreak: boolean;
   lastActivityTimestamp: Date | null;
   partnerLastActivityTimestamp: Date | null;
   hoursRemaining: number | null;

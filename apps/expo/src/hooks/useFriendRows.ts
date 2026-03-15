@@ -6,6 +6,8 @@ import type { MediaKind } from "~/utils/media-kind";
 import { mimeToMediaKind } from "~/utils/media-kind";
 import type { OutboxState, OutboxStatus } from "~/utils/outbox-status";
 
+const MS_PER_HOUR = 60 * 60 * 1000;
+
 interface UseFriendRowsParams {
   friends: FriendsListOutput;
   inbox: (InboxMessage | null)[];
@@ -23,7 +25,8 @@ export function useFriendRows({
   outboxStatus,
   selfUserId,
 }: UseFriendRowsParams) {
-  const rows = useMemo<FriendRow[]>(() => {
+  return useMemo<FriendRow[]>(() => {
+    const now = Date.now();
     const senderToMessages = new Map<string, number>();
     const senderToLatestTimestamp = new Map<string, Date>();
     const senderToLatestMime = new Map<string, string | undefined>();
@@ -45,6 +48,11 @@ export function useFriendRows({
       const lastActivity = f.lastActivityTimestamp;
       const partnerLastActivity = f.partnerLastActivityTimestamp;
       const lastSentOpened = f.lastSentOpened;
+      const hoursRemaining =
+        f.isStreakAtRisk && f.streakDayEndsAt
+          ? Math.max(new Date(f.streakDayEndsAt).getTime() - now, 0) /
+            MS_PER_HOUR
+          : null;
 
       const unreadCount = senderToMessages.get(f.id) ?? 0;
       const hasUnread = unreadCount > 0;
@@ -111,9 +119,10 @@ export function useFriendRows({
         isSelected:
           hasMedia && defaultRecipientId ? f.id === defaultRecipientId : false,
         streak,
+        shouldShowStreak: f.shouldShowStreak,
         lastActivityTimestamp: lastActivity,
         partnerLastActivityTimestamp: partnerLastActivity,
-        hoursRemaining: null,
+        hoursRemaining,
         lastMessageStatus,
         lastMediaKind,
         lastMessageAt,
@@ -122,28 +131,4 @@ export function useFriendRows({
       };
     });
   }, [friends, inbox, hasMedia, defaultRecipientId, outboxStatus, selfUserId]);
-
-  const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
-
-  const rowsWithTimeRemaining = useMemo(() => {
-    const now = new Date();
-    return rows.map((row) => {
-      if (row.streak === 0 || !row.partnerLastActivityTimestamp) {
-        return row;
-      }
-
-      const timeSincePartner =
-        now.getTime() - new Date(row.partnerLastActivityTimestamp).getTime();
-      const timeRemaining = TWENTY_FOUR_HOURS_MS - timeSincePartner;
-
-      if (timeRemaining <= 0) {
-        return { ...row, streak: 0, hoursRemaining: null };
-      }
-
-      const hoursRemaining = timeRemaining / (60 * 60 * 1000);
-      return { ...row, hoursRemaining };
-    });
-  }, [rows, TWENTY_FOUR_HOURS_MS]);
-
-  return rowsWithTimeRemaining;
 }
