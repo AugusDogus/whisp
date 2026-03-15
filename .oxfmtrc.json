@@ -2,7 +2,7 @@
   "$schema": "./node_modules/oxfmt/configuration_schema.json",
   "printWidth": 80,
   "sortPackageJson": false,
-  "ignorePatterns": ["**/*.hbs"],
+  "ignorePatterns": ["**/*.hbs", "apps/expo/uniwind-types.d.ts"],
   "sortImports": {
     "newlinesBetween": true,
     "customGroups": [
