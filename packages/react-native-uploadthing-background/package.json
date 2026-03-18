@@ -1,17 +1,20 @@
 {
   "name": "react-native-uploadthing-background",
   "version": "0.0.1",
-  "description": "react-native-uploadthing-background",
-  "main": "lib/index",
-  "module": "lib/index",
-  "types": "lib/index.d.ts",
-  "react-native": "src/index",
-  "source": "src/index",
+  "description": "Background UploadThing uploads for Expo apps using Nitro Modules.",
+  "main": "./src/index.ts",
+  "module": "./src/index.ts",
+  "types": "./src/index.ts",
+  "react-native": "./src/index.ts",
+  "source": "./src/index.ts",
   "files": [
     "src",
-    "react-native.config.js",
-    "lib",
     "nitrogen",
+    "plugin",
+    "react-native.config.js",
+    "expo-module.config.json",
+    "app.plugin.js",
+    "nitro.json",
     "android/build.gradle",
     "android/gradle.properties",
     "android/fix-prefab.gradle",
@@ -23,86 +26,52 @@
     "ios/**/*.mm",
     "ios/**/*.cpp",
     "ios/**/*.swift",
-    "app.plugin.js",
-    "nitro.json",
     "*.podspec",
     "README.md"
   ],
   "scripts": {
-    "typecheck": "tsc --noEmit",
-    "clean": "rm -rf android/build node_modules/**/android/build lib",
-    "lint": "eslint \"**/*.{js,ts,tsx}\" --fix",
-    "lint-ci": "eslint \"**/*.{js,ts,tsx}\" -f @jamesacarr/github-actions",
-    "typescript": "tsc",
-    "specs": "tsc --noEmit false && nitrogen --logLevel=\"debug\""
+    "clean": "git clean -xdf android/build lib node_modules",
+    "specs": "bunx nitrogen --log-level debug",
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [
     "react-native",
+    "expo",
+    "uploadthing",
+    "background-upload",
     "nitro"
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/mrousavy/nitro.git"
+    "url": "git+https://github.com/AugusDogus/whisp.git"
   },
-  "author": "Marc Rousavy <me@mrousavy.com> (https://github.com/mrousavy)",
+  "author": "Whisp",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/mrousavy/nitro/issues"
+    "url": "https://github.com/AugusDogus/whisp/issues"
   },
-  "homepage": "https://github.com/mrousavy/nitro#readme",
+  "homepage": "https://github.com/AugusDogus/whisp#readme",
   "publishConfig": {
+    "access": "public",
     "registry": "https://registry.npmjs.org/"
   },
-  "devDependencies": {
-    "@react-native/eslint-config": "0.83.0",
-    "@types/react": "^19.1.03",
-    "eslint": "^8.57.0",
-    "eslint-config-prettier": "^9.1.0",
-    "eslint-plugin-prettier": "^5.2.1",
-    "nitrogen": "*",
-    "prettier": "^3.3.3",
-    "react": "19.2.0",
-    "react-native": "0.83.0",
-    "react-native-nitro-modules": "*",
-    "typescript": "^5.8.3"
-  },
   "peerDependencies": {
+    "expo": "*",
     "react": "*",
     "react-native": "*",
     "react-native-nitro-modules": "*"
   },
-  "eslintConfig": {
-    "root": true,
-    "extends": [
-      "@react-native",
-      "prettier"
-    ],
-    "plugins": [
-      "prettier"
-    ],
-    "rules": {
-      "prettier/prettier": [
-        "warn",
-        {
-          "quoteProps": "consistent",
-          "singleQuote": true,
-          "tabWidth": 2,
-          "trailingComma": "es5",
-          "useTabs": false
-        }
-      ]
+  "peerDependenciesMeta": {
+    "expo": {
+      "optional": true
     }
   },
-  "eslintIgnore": [
-    "node_modules/",
-    "lib/"
-  ],
-  "prettier": {
-    "quoteProps": "consistent",
-    "singleQuote": true,
-    "tabWidth": 2,
-    "trailingComma": "es5",
-    "useTabs": false,
-    "semi": false
+  "dependencies": {
+    "uploadthing": "catalog:"
+  },
+  "devDependencies": {
+    "@acme/tsconfig": "workspace:*",
+    "nitrogen": "0.35.2",
+    "typescript": "catalog:"
   }
 }
