@@ -12,8 +12,20 @@
     ],
     "androidCxxLibName": "NitroUploadthingBackground"
   },
-  "autolinking": {},
+  "autolinking": {
+    "UploadthingBackground": {
+      "ios": {
+        "language": "swift",
+        "implementationClassName": "HybridUploadthingBackground"
+      },
+      "android": {
+        "language": "kotlin",
+        "implementationClassName": "HybridUploadthingBackground"
+      }
+    }
+  },
   "ignorePaths": [
-    "**/node_modules"
+    "**/node_modules",
+    "opensrc/**"
   ]
 }

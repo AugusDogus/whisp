@@ -1,31 +1,15 @@
 {
-  "include": [
-    "src"
-  ],
+  "extends": ["@acme/tsconfig/base.json"],
   "compilerOptions": {
-    "composite": true,
-    "outDir": "lib",
-    "rootDir": "src",
-    "allowUnreachableCode": false,
-    "allowUnusedLabels": false,
-    "esModuleInterop": true,
-    "forceConsistentCasingInFileNames": true,
-    "jsx": "react",
-    "lib": ["esnext"],
-    "module": "esnext",
-    "moduleResolution": "node",
-    "noEmit": false,
-    "noFallthroughCasesInSwitch": true,
-    "noImplicitReturns": true,
-    "noImplicitUseStrict": false,
-    "noStrictGenericChecks": false,
-    "noUncheckedIndexedAccess": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "resolveJsonModule": true,
-    "skipLibCheck": true,
-    "strict": true,
-    "target": "esnext",
-    "verbatimModuleSyntax": true
-  }
+    "jsx": "react-native",
+    "lib": ["ES2022", "DOM"],
+    "noEmit": true,
+    "types": ["react-native"]
+  },
+  "include": [
+    "src",
+    "plugin",
+    "app.plugin.js"
+  ],
+  "exclude": ["node_modules", "android/build", "ios/build", "nitrogen/generated"]
 }
