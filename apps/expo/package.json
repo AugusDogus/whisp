@@ -62,6 +62,8 @@
     "react-native": "0.81.5",
     "react-native-compressor": "^1.13.0",
     "react-native-gesture-handler": "~2.28.0",
+    "react-native-media-compositor": "^1.0.2",
+    "react-native-nitro-modules": "^0.35.2",
     "react-native-pager-view": "6.9.1",
     "react-native-permissions": "^5.4.2",
     "react-native-reanimated": "~4.1.1",

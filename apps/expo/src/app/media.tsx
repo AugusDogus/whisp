@@ -11,10 +11,14 @@ import {
   StyleSheet,
   View,
 } from "react-native";
+import {
+  composeImage,
+  composeVideo,
+  type MediaCompositorTextOverlay,
+} from "react-native-media-compositor";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ResizeMode, Video } from "expo-av";
-import { File, Paths } from "expo-file-system";
 import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
 import * as MediaLibrary from "expo-media-library";
@@ -25,18 +29,11 @@ import {
   useNavigation,
   useRoute,
 } from "@react-navigation/native";
-import {
-  Canvas,
-  Image as SkiaImage,
-  useCanvasRef,
-  useImage,
-} from "@shopify/react-native-skia";
 import { Button } from "heroui-native/button";
 import { toast } from "sonner-native";
 
 import type { CaptionData } from "~/components/caption-editor";
 import { CaptionEditor } from "~/components/caption-editor";
-import { SkiaCaptionRenderer } from "~/components/skia-caption-renderer";
 import type { RootStackParamList } from "~/navigation/types";
 import { uploadMedia } from "~/utils/media-upload";
 import { markWhispFailed, markWhispUploading } from "~/utils/outbox-status";
@@ -60,10 +57,6 @@ export default function MediaScreen() {
   const source = useMemo(() => ({ uri: `file://${path}` }), [path]);
   const isFocused = useIsFocused();
   const videoRef = useRef<Video>(null);
-
-  // Skia refs for rasterization
-  const canvasRef = useCanvasRef();
-  const skiaImage = useImage(`file://${path}`);
 
   // Caption state - support multiple captions
   // Initialize from route params if coming back from Friends screen
@@ -186,30 +179,126 @@ export default function MediaScreen() {
     setEditingCaptionId(null);
   }
 
-  // Function to rasterize image with captions in background
-  async function rasterizeImage(): Promise<string> {
-    console.log("[Media] Starting background rasterization");
+  function toOverlay(caption: CaptionData): MediaCompositorTextOverlay {
+    const fontSize = caption.fontSize > 0 ? caption.fontSize : 18;
+    const previewWidth = containerLayout?.width ?? 0;
+    const previewHeight = containerLayout?.height ?? 0;
+    const horizontalPadding = 12;
+    const verticalPadding = 6;
+    const maxTextWidth = Math.max(1, previewWidth - horizontalPadding * 2);
+    const approxCharWidth = Math.max(1, fontSize * 0.56);
+    const approxCharsPerLine = Math.max(
+      1,
+      Math.floor(maxTextWidth / approxCharWidth),
+    );
+    const explicitLines = caption.text.split("\n");
 
-    const snapshot = await canvasRef.current?.makeImageSnapshotAsync();
-    if (!snapshot) {
-      console.error("[Media] Failed to create snapshot");
-      throw new Error("Failed to create snapshot");
+    let lineCount = 0;
+    for (const explicitLine of explicitLines) {
+      if (explicitLine.trim().length === 0) {
+        lineCount += 1;
+        continue;
+      }
+
+      const words = explicitLine.split(" ");
+      let currentLength = 0;
+      let wrappedLines = 1;
+      for (const word of words) {
+        const wordLength = word.length;
+        if (currentLength === 0) {
+          currentLength = wordLength;
+          continue;
+        }
+        const nextLength = currentLength + 1 + wordLength;
+        if (nextLength > approxCharsPerLine) {
+          wrappedLines += 1;
+          currentLength = wordLength;
+        } else {
+          currentLength = nextLength;
+        }
+      }
+      lineCount += wrappedLines;
     }
 
-    const bytes = snapshot.encodeToBytes();
+    const safeLineCount = Math.max(1, lineCount);
+    const minHeight = fontSize * 1.2 + verticalPadding * 2;
+    const bubbleHeight = Math.max(
+      minHeight,
+      safeLineCount * fontSize * 1.2 + verticalPadding * 2,
+    );
+    const normalizedHeight =
+      previewHeight > 0
+        ? Math.min(1, Math.max(0.01, bubbleHeight / previewHeight))
+        : 0.16;
 
-    // Create a File reference in the cache directory
-    const tempFile = new File(Paths.cache, `whisp-${Date.now()}.jpg`);
+    return {
+      id: caption.id,
+      text: caption.text,
+      rect: {
+        x: 0,
+        y: caption.y,
+        width: 1,
+        height: normalizedHeight,
+      },
+      style: {
+        fontSize,
+        textColor: caption.color || "#FFFFFF",
+        backgroundColor: "#99000000",
+        paddingHorizontal: horizontalPadding,
+        paddingVertical: verticalPadding,
+        textAlign: "center",
+        opacity: 1,
+        cornerRadius: 0,
+      },
+    };
+  }
 
-    // On iOS, the stream writer can throw if the file doesn't already exist.
-    // Create the file first, then write bytes synchronously via the module.
-    tempFile.create({ intermediates: true, overwrite: true });
-    tempFile.write(bytes);
+  async function composeMediaWithCaptions(): Promise<string> {
+    if (captions.length === 0) {
+      return `file://${path}`;
+    }
+    if (
+      !containerLayout ||
+      containerLayout.width <= 0 ||
+      containerLayout.height <= 0
+    ) {
+      throw new Error("Preview is not ready yet.");
+    }
 
-    // Keep the file URI intact; callers can pass this directly to libraries
-    // that expect `file://` URIs (VisionCamera, expo-image, compressor, etc).
-    console.log("[Media] Background rasterization complete:", tempFile.uri);
-    return tempFile.uri;
+    const overlays = captions
+      .filter((caption) => caption.text.trim().length > 0)
+      .map(toOverlay);
+    if (overlays.length === 0) {
+      return `file://${path}`;
+    }
+
+    if (type === "video") {
+      console.log("[Media] Starting video composition");
+      const result = await composeVideo({
+        inputPath: `file://${path}`,
+        preserveAudio: true,
+        preview: {
+          width: containerLayout.width,
+          height: containerLayout.height,
+        },
+        overlays,
+      });
+      console.log("[Media] Video composition complete:", result.filePath);
+      return result.filePath;
+    }
+
+    console.log("[Media] Starting image composition");
+    const result = await composeImage({
+      inputPath: `file://${path}`,
+      outputFormat: "png",
+      preview: {
+        width: containerLayout.width,
+        height: containerLayout.height,
+      },
+      overlays,
+    });
+    console.log("[Media] Image composition complete:", result.filePath);
+    return result.filePath;
   }
 
   async function handleSave() {
@@ -227,34 +316,26 @@ export default function MediaScreen() {
         return;
       }
 
-      if (type === "photo") {
-        // For photos, rasterize captions and save
-        if (captions.length > 0) {
-          console.log("[Media] Rasterizing photo with captions");
-          const rasterizedUri = await rasterizeImage();
-          await MediaLibrary.saveToLibraryAsync(rasterizedUri);
-        } else {
-          // No captions, save original
-          await MediaLibrary.saveToLibraryAsync(`file://${path}`);
-        }
-        toast.success("Saved to camera roll");
-      } else {
-        // For videos, save original and show alert about captions
-        await MediaLibrary.saveToLibraryAsync(`file://${path}`);
+      const outputUri =
+        captions.length > 0
+          ? await composeMediaWithCaptions()
+          : `file://${path}`;
+      await MediaLibrary.saveToLibraryAsync(outputUri);
 
-        // Show one-time alert about captions not being burned in
+      if (type === "video" && captions.length > 0) {
+        // Preserve one-time UX guidance while transitioning users to burned-in output.
         const showAlert = await shouldShowVideoSaveAlert();
         if (showAlert) {
           Alert.alert(
             "Video Saved",
-            "Captions are not yet supported for video saves. Only the original video was saved.",
+            "Captions are now burned into the exported video.",
             [{ text: "OK" }],
           );
           await markVideoSaveAlertShown();
-        } else {
-          toast.success("Saved to camera roll");
         }
       }
+
+      toast.success("Saved to camera roll");
     } catch (error) {
       console.error("[Media] Failed to save media:", error);
       toast.error("Failed to save media");
@@ -264,20 +345,20 @@ export default function MediaScreen() {
   function handleSend() {
     console.log("[Media] handleSend called");
 
-    // If we have captions and type is photo, start rasterization in background
-    if (type === "photo" && captions.length > 0) {
+    // If we have captions, compose in the background and navigate immediately.
+    if (captions.length > 0) {
       console.log(
-        "[Media] Starting background rasterization and navigating immediately",
+        "[Media] Starting background composition and navigating immediately",
       );
-      const rasterizationPromise = rasterizeImage();
+      const rasterizationPromise = composeMediaWithCaptions();
 
       if (defaultRecipientId) {
         markWhispUploading([defaultRecipientId]);
         navigation.reset({ index: 0, routes: [{ name: "Main" }] });
         void rasterizationPromise
-          .then((rasterizedUri) => {
+          .then((composedUri) => {
             void uploadMedia({
-              uri: rasterizedUri,
+              uri: composedUri,
               type,
               recipients: [defaultRecipientId],
               groupId: groupId,
@@ -291,9 +372,9 @@ export default function MediaScreen() {
       } else if (groupId) {
         navigation.reset({ index: 0, routes: [{ name: "Main" }] });
         void rasterizationPromise
-          .then((rasterizedUri) => {
+          .then((composedUri) => {
             void uploadMedia({
-              uri: rasterizedUri,
+              uri: composedUri,
               type,
               recipients: [],
               groupId,
@@ -354,33 +435,6 @@ export default function MediaScreen() {
     <View style={styles.container} onLayout={handleLayout}>
       {type === "photo" ? (
         <>
-          {/* Hidden Canvas for rasterization */}
-          {skiaImage && containerLayout && (
-            <Canvas
-              ref={canvasRef}
-              style={[
-                StyleSheet.absoluteFill,
-                {
-                  width: containerLayout.width,
-                  height: containerLayout.height,
-                },
-              ]}
-            >
-              <SkiaImage
-                image={skiaImage}
-                fit="cover"
-                x={0}
-                y={0}
-                width={containerLayout.width}
-                height={containerLayout.height}
-              />
-              <SkiaCaptionRenderer
-                captions={captions}
-                containerWidth={containerLayout.width}
-                containerHeight={containerLayout.height}
-              />
-            </Canvas>
-          )}
           {/* Display Image (visible to user) */}
           <Image
             source={source}
