@@ -94,6 +94,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       },
     ],
     "react-native-compressor",
+    "react-native-uploadthing-background",
     [
       "@sentry/react-native/expo",
       {

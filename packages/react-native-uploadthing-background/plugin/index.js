@@ -46,8 +46,10 @@ function ensureForegroundService(manifest) {
 }
 
 const withUploadthingBackground = (config, options = {}) => {
-  return withAndroidManifest(config, (config) => {
-    const manifest = AndroidConfig.Manifest.ensureToolsAvailable(config.modResults);
+  return withAndroidManifest(config, (modConfig) => {
+    const manifest = AndroidConfig.Manifest.ensureToolsAvailable(
+      modConfig.modResults,
+    );
 
     ensurePermission(manifest, "android.permission.FOREGROUND_SERVICE");
     ensurePermission(
@@ -60,7 +62,7 @@ const withUploadthingBackground = (config, options = {}) => {
     }
 
     ensureForegroundService(manifest);
-    return config;
+    return modConfig;
   });
 };
 

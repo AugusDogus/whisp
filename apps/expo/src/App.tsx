@@ -1,4 +1,5 @@
-import { View } from "react-native";
+import { useEffect } from "react";
+import { AppState, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import {
   initialWindowMetrics,
@@ -17,6 +18,10 @@ import { usePushNotifications } from "~/hooks/usePushNotifications";
 import { createExpoTRPCClient, queryClient, trpc } from "~/utils/api";
 import { authClient } from "~/utils/auth";
 import { POSTHOG_API_KEY, POSTHOG_HOST } from "~/utils/constants";
+import {
+  listBackgroundUploadTasks,
+  removeBackgroundUploadTask,
+} from "~/utils/uploadthing";
 
 import { RootNavigator } from "./navigation/RootNavigator";
 import "./styles.css";
@@ -42,6 +47,65 @@ function AppContent() {
   // Request notification permissions immediately (before auth)
   // but only register token after authentication
   usePushNotifications(session?.user != null);
+
+  useEffect(() => {
+    async function reconcileBackgroundUploads() {
+      try {
+        const tasks = await listBackgroundUploadTasks();
+        const terminalTasks = tasks.filter(
+          (task) =>
+            task.status === "completed" ||
+            task.status === "failed" ||
+            task.status === "cancelled",
+        );
+
+        if (terminalTasks.length === 0) {
+          return;
+        }
+
+        await Promise.all(
+          terminalTasks.map((task) => removeBackgroundUploadTask(task.taskId)),
+        );
+
+        void queryClient.invalidateQueries({
+          queryKey: [["friends", "list"]] as const,
+        });
+        void queryClient.invalidateQueries({
+          queryKey: [["messages", "inbox"]] as const,
+        });
+        void queryClient.invalidateQueries({
+          queryKey: [["groups", "list"]] as const,
+        });
+        void queryClient.invalidateQueries({
+          predicate: (query) => {
+            const key = query.queryKey as [string[], ...unknown[]];
+            return (
+              Array.isArray(key[0]) &&
+              key[0][0] === "groups" &&
+              key[0][1] === "inbox"
+            );
+          },
+        });
+      } catch (error) {
+        console.warn(
+          "[Upload] Failed to reconcile background upload tasks:",
+          error,
+        );
+      }
+    }
+
+    void reconcileBackgroundUploads();
+
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      if (nextState === "active") {
+        void reconcileBackgroundUploads();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
 
   return (
     <BottomSheetModalProvider>

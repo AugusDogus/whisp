@@ -1,4 +1,8 @@
-import { generateReactNativeHelpers } from "@uploadthing/expo";
+import {
+  createUploadthingBackgroundClient,
+  listBackgroundUploadTasks,
+  removeBackgroundUploadTask,
+} from "react-native-uploadthing-background";
 
 import type { UploadRouter } from "@acme/api";
 
@@ -6,47 +10,39 @@ import { authClient } from "~/utils/auth";
 import { getBaseUrl } from "~/utils/base-url";
 import { compressImage, compressVideo } from "~/utils/media-compression";
 
-export const {
-  useImageUploader,
-  useDocumentUploader,
-  useUploadThing,
-  uploadFiles,
-} = generateReactNativeHelpers<UploadRouter>({
-  /**
-   * Your server url.
-   * @default process.env.EXPO_PUBLIC_SERVER_URL
-   * @remarks In dev we will also try to use Expo.debuggerHost
-   */
-  url: getBaseUrl() + "/api/uploadthing",
-  fetch: (input, init) => {
-    const cookies = authClient.getCookie();
-    const betterAuthHeaders = {
-      Cookie: cookies,
-    };
+export type { BackgroundUploadTask } from "react-native-uploadthing-background";
 
-    return fetch(input, {
-      ...(init as RequestInit),
-      credentials: "include",
-      headers: {
-        ...init?.headers,
-        ...betterAuthHeaders,
-      },
-    });
-  },
-});
+export function uploadthingFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+) {
+  const cookies = authClient.getCookie();
+  const betterAuthHeaders = {
+    Cookie: cookies,
+  };
 
-// Temporary wrapper to allow passing `input` until types catch up
-type UploadFilesRoute = Parameters<typeof uploadFiles>[0];
-type UploadFilesBaseParams = Parameters<typeof uploadFiles>[1];
-type UploadFilesResult = ReturnType<typeof uploadFiles>;
-
-export function uploadFilesWithInput<I = unknown>(
-  route: UploadFilesRoute,
-  params: UploadFilesBaseParams & { input: I },
-): UploadFilesResult {
-  // Cast params back to the base type; runtime still forwards `input`
-  return uploadFiles(route, params as UploadFilesBaseParams);
+  return fetch(input, {
+    ...(init as RequestInit),
+    credentials: "include",
+    headers: {
+      ...init?.headers,
+      ...betterAuthHeaders,
+    },
+  });
 }
+
+export const { uploadFilesWithInputInBackground } =
+  createUploadthingBackgroundClient<UploadRouter>({
+    url: getBaseUrl() + "/api/uploadthing",
+    fetch: uploadthingFetch,
+    notificationTitle: "Sending whisp",
+    notificationBody: "Your media will keep uploading in the background.",
+  });
+
+export {
+  listBackgroundUploadTasks,
+  removeBackgroundUploadTask,
+} from "react-native-uploadthing-background";
 
 /**
  * Creates a File object from a URI with automatic compression

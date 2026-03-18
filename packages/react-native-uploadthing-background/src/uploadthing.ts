@@ -41,6 +41,8 @@ interface UploadFilesWithInputResult {
   completion: Promise<BackgroundUploadTask[]>;
 }
 
+type HeaderInput = Record<string, string> | Array<[string, string]> | undefined;
+
 let uploadthingBackground: UploadthingBackground | null = null;
 
 function getUploadthingBackground(): UploadthingBackground {
@@ -92,12 +94,18 @@ function ensureFileUri(file: CompatibleUploadFile): string {
 }
 
 function normalizeHeaders(
-  headers: HeadersInit | undefined,
+  headers: HeaderInput,
 ): BackgroundUploadHeader[] {
   if (!headers) return [];
 
-  const normalized = new Headers(headers);
-  return Array.from(normalized.entries()).map(([key, value]) => ({
+  if (Array.isArray(headers)) {
+    return headers.map(([key, value]) => ({
+      key,
+      value,
+    }));
+  }
+
+  return Object.entries(headers).map(([key, value]) => ({
     key,
     value,
   }));
