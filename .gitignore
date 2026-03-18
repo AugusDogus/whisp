@@ -57,3 +57,6 @@ dist/
 
 # turbo
 .turbo
+
+# opensrc - source code for packages
+opensrc/
