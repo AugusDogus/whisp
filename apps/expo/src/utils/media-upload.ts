@@ -11,13 +11,101 @@ import {
   markWhispSent,
   markWhispUploading,
 } from "~/utils/outbox-status";
-import { createFile, uploadFilesWithInput } from "~/utils/uploadthing";
+import {
+  createFile,
+  removeBackgroundUploadTask,
+  type BackgroundUploadTask,
+  uploadFilesWithInputInBackground,
+} from "~/utils/uploadthing";
 
 interface UploadMediaParams {
   uri: string;
   type: "photo" | "video";
   recipients: string[];
   groupId?: string;
+}
+
+function isSuccessfulBackgroundTask(task: BackgroundUploadTask) {
+  return task.status === "completed";
+}
+
+async function cleanupBackgroundTasks(tasks: BackgroundUploadTask[]) {
+  await Promise.all(
+    tasks.map((task) => removeBackgroundUploadTask(task.taskId)),
+  );
+}
+
+function invalidateUploadRelatedQueries(isGroupSend: boolean, groupId?: string) {
+  void queryClient.invalidateQueries({
+    queryKey: [["friends", "list"]] as const,
+  });
+  void queryClient.invalidateQueries({
+    queryKey: [["messages", "inbox"]] as const,
+  });
+  if (isGroupSend && groupId) {
+    void queryClient.invalidateQueries({
+      queryKey: [["groups", "list"]] as const,
+    });
+    void queryClient.invalidateQueries({
+      predicate: (query) => {
+        const key = query.queryKey as [string[], ...unknown[]];
+        return (
+          Array.isArray(key[0]) &&
+          key[0][0] === "groups" &&
+          key[0][1] === "inbox"
+        );
+      },
+    });
+  }
+}
+
+function applySuccessfulUploadSideEffects(params: {
+  recipients: string[];
+  mediaKind: MediaKind;
+  isGroupSend: boolean;
+  groupId?: string;
+}) {
+  const { recipients, mediaKind, isGroupSend, groupId } = params;
+
+  toast.success("whisp sent");
+  if (!isGroupSend && recipients.length > 0) {
+    markWhispSent(recipients, mediaKind);
+  }
+
+  if (!isGroupSend) {
+    const friendsKeyPrefix = [["friends", "list"]] as const;
+    queryClient.setQueriesData<FriendsListOutput>(
+      { queryKey: friendsKeyPrefix },
+      (old) => {
+        if (!old) return old;
+        const now = new Date();
+        const recipientSet = new Set(recipients);
+        return old.map((f) => {
+          if (!recipientSet.has(f.id)) return f;
+          return {
+            ...f,
+            lastActivityTimestamp: now,
+            lastSentOpened: false,
+          } as typeof f;
+        });
+      },
+    );
+  }
+
+  invalidateUploadRelatedQueries(isGroupSend, groupId);
+}
+
+function applyFailedUploadSideEffects(params: {
+  recipients: string[];
+  isGroupSend: boolean;
+  message?: string;
+}) {
+  const { recipients, isGroupSend, message } = params;
+
+  if (!isGroupSend && recipients.length > 0) {
+    markWhispFailed(recipients);
+  }
+  toast.error(message ?? "Upload failed");
 }
 
 /**
@@ -78,69 +166,50 @@ export async function uploadMedia(params: UploadMediaParams): Promise<void> {
       ? { groupId: groupId ?? "", mimeType, thumbhash }
       : { recipients, mimeType, thumbhash };
 
-    void uploadFilesWithInput("imageUploader", {
+    const backgroundBatch = await uploadFilesWithInputInBackground(
+      "imageUploader",
+      {
       files: [file],
       input: uploadInput,
-    })
-      .then(() => {
-        toast.success("whisp sent");
-        if (!isGroupSend && recipients.length > 0) {
-          markWhispSent(recipients, mediaKind);
-        }
+      },
+    );
 
-        if (!isGroupSend) {
-          const friendsKeyPrefix = [["friends", "list"]] as const;
-          queryClient.setQueriesData<FriendsListOutput>(
-            { queryKey: friendsKeyPrefix },
-            (old) => {
-              if (!old) return old;
-              const now = new Date();
-              const recipientSet = new Set(recipients);
-              return old.map((f) => {
-                if (!recipientSet.has(f.id)) return f;
-                return {
-                  ...f,
-                  lastActivityTimestamp: now,
-                  lastSentOpened: false,
-                } as typeof f;
-              });
-            },
-          );
-        }
+    void backgroundBatch.completion
+      .then(async (tasks) => {
+        try {
+          const failedTask = tasks.find((task) => !isSuccessfulBackgroundTask(task));
+          if (failedTask) {
+            applyFailedUploadSideEffects({
+              recipients,
+              isGroupSend,
+              message: failedTask.errorMessage ?? "Upload failed",
+            });
+            return;
+          }
 
-        void queryClient.invalidateQueries({
-          queryKey: [["friends", "list"]] as const,
-        });
-        void queryClient.invalidateQueries({
-          queryKey: [["messages", "inbox"]] as const,
-        });
-        if (isGroupSend && groupId) {
-          void queryClient.invalidateQueries({
-            queryKey: [["groups", "list"]] as const,
+          applySuccessfulUploadSideEffects({
+            recipients,
+            mediaKind,
+            isGroupSend,
+            groupId,
           });
-          void queryClient.invalidateQueries({
-            predicate: (query) => {
-              const key = query.queryKey as [string[], ...unknown[]];
-              return (
-                Array.isArray(key[0]) &&
-                key[0][0] === "groups" &&
-                key[0][1] === "inbox"
-              );
-            },
-          });
+        } finally {
+          await cleanupBackgroundTasks(tasks);
         }
       })
       .catch((err: unknown) => {
-        if (!isGroupSend && recipients.length > 0) {
-          markWhispFailed(recipients);
-        }
-        toast.error(err instanceof Error ? err.message : "Upload failed");
+        applyFailedUploadSideEffects({
+          recipients,
+          isGroupSend,
+          message: err instanceof Error ? err.message : "Upload failed",
+        });
       });
   } catch (err) {
     console.error("[Upload] Failed to prepare file for upload:", err);
-    if (!isGroupSend && recipients.length > 0) {
-      markWhispFailed(recipients);
-    }
-    toast.error("Failed to prepare media");
+    applyFailedUploadSideEffects({
+      recipients,
+      isGroupSend,
+      message: "Failed to prepare media",
+    });
   }
 }
