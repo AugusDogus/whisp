@@ -52,6 +52,53 @@ internal object BackgroundUploadStore {
     updated
   }
 
+  fun claimForAttempt(
+    context: Context,
+    taskId: String,
+    attemptId: String,
+    totalBytes: Double,
+  ): StoredBackgroundUploadTaskRecord? = synchronized(lock) {
+    val records = readAll(context).toMutableMap()
+    val existing = records[taskId] ?: return null
+    if (
+      existing.status == BackgroundUploadTaskStatus.COMPLETED ||
+      existing.status == BackgroundUploadTaskStatus.FAILED ||
+      existing.status == BackgroundUploadTaskStatus.CANCELLED
+    ) {
+      return null
+    }
+
+    val updated = existing.copy(
+      status = BackgroundUploadTaskStatus.UPLOADING,
+      totalBytes = totalBytes,
+      bytesSent = 0.0,
+      errorMessage = null,
+      attemptId = attemptId,
+      updatedAt = nowMs(),
+    )
+    records[taskId] = updated
+    persist(context, records)
+    updated
+  }
+
+  fun updateForAttempt(
+    context: Context,
+    taskId: String,
+    attemptId: String,
+    mutate: (StoredBackgroundUploadTaskRecord) -> StoredBackgroundUploadTaskRecord,
+  ): StoredBackgroundUploadTaskRecord? = synchronized(lock) {
+    val records = readAll(context).toMutableMap()
+    val existing = records[taskId] ?: return null
+    if (existing.attemptId != attemptId) {
+      return null
+    }
+
+    val updated = mutate(existing).copy(updatedAt = nowMs())
+    records[taskId] = updated
+    persist(context, records)
+    updated
+  }
+
   fun remove(context: Context, taskId: String): StoredBackgroundUploadTaskRecord? =
     synchronized(lock) {
       val records = readAll(context).toMutableMap()
@@ -105,6 +152,7 @@ internal data class StoredBackgroundUploadTaskRecord(
   val errorMessage: String?,
   val createdAt: Double,
   val updatedAt: Double,
+  val attemptId: String?,
   val method: String,
   val headers: List<BackgroundUploadHeader>,
   val notificationTitle: String?,
@@ -142,6 +190,7 @@ internal data class StoredBackgroundUploadTaskRecord(
     json.put("errorMessage", errorMessage)
     json.put("createdAt", createdAt)
     json.put("updatedAt", updatedAt)
+    json.put("attemptId", attemptId)
     json.put("method", method)
     json.put(
       "headers",
@@ -178,6 +227,7 @@ internal data class StoredBackgroundUploadTaskRecord(
         errorMessage = null,
         createdAt = now,
         updatedAt = now,
+        attemptId = null,
         method = request.method ?: "PUT",
         headers = request.headers?.toList() ?: emptyList(),
         notificationTitle = request.notificationTitle,
@@ -214,6 +264,7 @@ internal data class StoredBackgroundUploadTaskRecord(
         errorMessage = json.optString("errorMessage").takeUnless { json.isNull("errorMessage") },
         createdAt = json.optDouble("createdAt", now),
         updatedAt = json.optDouble("updatedAt", now),
+        attemptId = json.optString("attemptId").takeUnless { json.isNull("attemptId") },
         method = json.optString("method", "PUT"),
         headers = headers,
         notificationTitle = json.optString("notificationTitle")

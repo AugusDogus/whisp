@@ -194,7 +194,8 @@ final class BackgroundUploadStore {
     }
 
     do {
-      let data = try Data(contentsOf: storageURL())
+      let url = try storageURL()
+      let data = try Data(contentsOf: url)
       let decoded = try decoder.decode(
         [String: StoredBackgroundUploadTaskRecord].self,
         from: data
@@ -202,8 +203,19 @@ final class BackgroundUploadStore {
       cachedRecords = decoded
       return decoded
     } catch {
-      cachedRecords = [:]
-      return [:]
+      let storagePath = (try? storageURL().path) ?? ""
+      if storagePath.isEmpty || !FileManager.default.fileExists(atPath: storagePath) {
+        cachedRecords = [:]
+        return [:]
+      }
+
+      persistenceErrorHandler?(error)
+      NotificationCenter.default.post(
+        name: .uploadthingBackgroundStorePersistenceFailed,
+        object: self,
+        userInfo: ["error": error]
+      )
+      return cachedRecords ?? [:]
     }
   }
 
