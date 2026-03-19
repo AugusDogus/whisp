@@ -40,11 +40,15 @@ export interface BackgroundUploadTask {
   updatedAt: number;
 }
 
-export interface UploadthingBackground
-  extends HybridObject<{ ios: "swift"; android: "kotlin" }> {
+export interface UploadthingBackground extends HybridObject<{
+  ios: "swift";
+  android: "kotlin";
+}> {
   readonly activeTaskCount: number;
 
-  enqueueUpload(request: BackgroundUploadRequest): Promise<BackgroundUploadTask>;
+  enqueueUpload(
+    request: BackgroundUploadRequest,
+  ): Promise<BackgroundUploadTask>;
   getTask(taskId: string): Promise<BackgroundUploadTask | null>;
   listTasks(): Promise<BackgroundUploadTask[]>;
   cancelUpload(taskId: string): Promise<void>;

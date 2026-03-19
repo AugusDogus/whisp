@@ -66,11 +66,10 @@ It exposes:
 ```ts
 import { createUploadthingBackgroundClient } from "react-native-uploadthing-background";
 
-const { uploadFilesWithInputInBackground } =
-  createUploadthingBackgroundClient({
-    url: "https://example.com/api/uploadthing",
-    fetch,
-  });
+const { uploadFilesWithInputInBackground } = createUploadthingBackgroundClient({
+  url: "https://example.com/api/uploadthing",
+  fetch,
+});
 ```
 
 `uploadFilesWithInputInBackground(route, { files, input })` returns:
@@ -96,7 +95,7 @@ plugins: [
 ];
 ```
 
-The plugin ensures Android prebuild adds:
+The Android integration for this package adds:
 
 - `android.permission.FOREGROUND_SERVICE`
 - `android.permission.FOREGROUND_SERVICE_DATA_SYNC`
@@ -119,11 +118,11 @@ The app:
 ## Current limitations
 
 - uploads are persistent, but task event delivery to JavaScript is polling-based
-  rather than push/event-emitter based
+  rather than push/event-emitter-based
 - Android retries currently rely on WorkManager reruns instead of resumable byte
   ranges
-- iOS uploads rebuild a multipart body file on disk before scheduling the native
-  background transfer
+- non-`PUT` uploads rebuild a multipart body file on disk before scheduling the
+  native background transfer
 - end-to-end device validation still needs a logged-in Expo dev client / device
 
 ## Suggested manual QA

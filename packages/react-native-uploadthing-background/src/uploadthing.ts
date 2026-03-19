@@ -1,14 +1,16 @@
-import { NitroModules } from "react-native-nitro-modules";
-import { version as uploadthingVersion } from "uploadthing/client";
-import type { FileRouter } from "uploadthing/types";
-
 import type {
   BackgroundUploadHeader,
   BackgroundUploadTask,
   UploadthingBackground,
 } from "./specs/uploadthing-background.nitro";
+import type { FileRouter } from "uploadthing/types";
+
+import { NitroModules } from "react-native-nitro-modules";
+
+import { version as uploadthingVersion } from "uploadthing/client";
 
 const DEFAULT_POLL_INTERVAL_MS = 1_000;
+const DEFAULT_MAX_WAIT_MS = 10 * 60 * 1_000;
 const PACKAGE_NAME = "react-native-uploadthing-background";
 const TERMINAL_STATUSES = new Set(["completed", "failed", "cancelled"]);
 
@@ -25,6 +27,7 @@ interface CreateUploadthingBackgroundClientOptions {
   url: string | URL;
   fetch?: typeof globalThis.fetch;
   pollIntervalMs?: number;
+  maxWaitMs?: number;
   notificationTitle?: string;
   notificationBody?: string;
 }
@@ -72,14 +75,14 @@ function sleep(ms: number) {
   });
 }
 
-function isTerminalTask(task: BackgroundUploadTask | null): task is BackgroundUploadTask {
+function isTerminalTask(
+  task: BackgroundUploadTask | null,
+): task is BackgroundUploadTask {
   return (
     task != null &&
-    TERMINAL_STATUSES.has(task.status as (typeof TERMINAL_STATUSES extends Set<
-      infer T
-    >
-      ? T
-      : never))
+    TERMINAL_STATUSES.has(
+      task.status as typeof TERMINAL_STATUSES extends Set<infer T> ? T : never,
+    )
   );
 }
 
@@ -93,9 +96,7 @@ function ensureFileUri(file: CompatibleUploadFile): string {
   );
 }
 
-function normalizeHeaders(
-  headers: HeaderInput,
-): BackgroundUploadHeader[] {
+function normalizeHeaders(headers: HeaderInput): BackgroundUploadHeader[] {
   if (!headers) return [];
 
   if (Array.isArray(headers)) {
@@ -173,15 +174,27 @@ async function requestUploadTargets<TInput>(
 
 export async function waitForBackgroundUploadTask(
   taskId: string,
-  options?: { pollIntervalMs?: number },
+  options?: { pollIntervalMs?: number; maxWaitMs?: number },
 ): Promise<BackgroundUploadTask> {
   const pollIntervalMs = options?.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
+  const maxWaitMs = options?.maxWaitMs ?? DEFAULT_MAX_WAIT_MS;
+  const startedAt = Date.now();
 
   // eslint-disable-next-line no-constant-condition -- intentional polling loop
   while (true) {
     const task = await getUploadthingBackground().getTask(taskId);
+    if (task == null) {
+      throw new Error(
+        `Background upload task "${taskId}" was removed before it reached a terminal state.`,
+      );
+    }
     if (isTerminalTask(task)) {
       return task;
+    }
+    if (Date.now() - startedAt >= maxWaitMs) {
+      throw new Error(
+        `Timed out while waiting for background upload task "${taskId}".`,
+      );
     }
     await sleep(pollIntervalMs);
   }
@@ -189,7 +202,7 @@ export async function waitForBackgroundUploadTask(
 
 export async function waitForBackgroundUploadTasks(
   taskIds: string[],
-  options?: { pollIntervalMs?: number },
+  options?: { pollIntervalMs?: number; maxWaitMs?: number },
 ): Promise<BackgroundUploadTask[]> {
   return Promise.all(
     taskIds.map((taskId) => waitForBackgroundUploadTask(taskId, options)),
@@ -222,14 +235,16 @@ export function createUploadthingBackgroundClient<TRouter extends FileRouter>(
       );
     }
 
-    const tasks = await Promise.all(
-      params.files.map(async (file, index) => {
+    const tasks: BackgroundUploadTask[] = [];
+
+    try {
+      for (const [index, file] of params.files.entries()) {
         const uploadTarget = uploadTargets[index];
         if (!uploadTarget) {
           throw new Error("Missing upload target for file.");
         }
 
-        return getUploadthingBackground().enqueueUpload({
+        const task = await getUploadthingBackground().enqueueUpload({
           taskId: createTaskId(),
           url: uploadTarget.url,
           method: "PUT",
@@ -239,17 +254,30 @@ export function createUploadthingBackgroundClient<TRouter extends FileRouter>(
           headers: normalizeHeaders(undefined),
           notificationTitle:
             params.notificationTitle ?? options.notificationTitle,
-          notificationBody:
-            params.notificationBody ?? options.notificationBody,
+          notificationBody: params.notificationBody ?? options.notificationBody,
         });
-      }),
-    );
+        tasks.push(task);
+      }
+    } catch (error) {
+      await Promise.allSettled(
+        tasks.map(async (task) => {
+          await getUploadthingBackground().cancelUpload(task.taskId);
+          await getUploadthingBackground().removeTask(task.taskId);
+        }),
+      );
+      throw error instanceof Error
+        ? error
+        : new Error("Failed to enqueue background upload tasks.");
+    }
 
     return {
       tasks,
       completion: waitForBackgroundUploadTasks(
         tasks.map((task) => task.taskId),
-        { pollIntervalMs: options.pollIntervalMs },
+        {
+          pollIntervalMs: options.pollIntervalMs,
+          maxWaitMs: options.maxWaitMs,
+        },
       ),
     };
   }

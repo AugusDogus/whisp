@@ -1,5 +1,11 @@
 import Foundation
 
+extension Notification.Name {
+  static let uploadthingBackgroundStorePersistenceFailed = Notification.Name(
+    "UploadthingBackgroundStorePersistenceFailed"
+  )
+}
+
 private enum StoredBackgroundUploadTaskStatus: String, Codable {
   case queued
   case uploading
@@ -106,6 +112,7 @@ final class BackgroundUploadStore {
   private let encoder = JSONEncoder()
   private let decoder = JSONDecoder()
   private var cachedRecords: [String: StoredBackgroundUploadTaskRecord]?
+  var persistenceErrorHandler: ((Error) -> Void)?
 
   private init() {}
 
@@ -215,6 +222,12 @@ final class BackgroundUploadStore {
     } catch {
       NSLog(
         "[UploadthingBackground] Failed to persist background upload store: \(error.localizedDescription)"
+      )
+      persistenceErrorHandler?(error)
+      NotificationCenter.default.post(
+        name: .uploadthingBackgroundStorePersistenceFailed,
+        object: self,
+        userInfo: ["error": error]
       )
     }
   }

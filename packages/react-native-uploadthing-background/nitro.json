@@ -1,15 +1,11 @@
 {
   "$schema": "https://nitro.margelo.com/nitro.schema.json",
-  "cxxNamespace": [
-    "uploadthingbackground"
-  ],
+  "cxxNamespace": ["uploadthingbackground"],
   "ios": {
     "iosModuleName": "NitroUploadthingBackground"
   },
   "android": {
-    "androidNamespace": [
-      "uploadthingbackground"
-    ],
+    "androidNamespace": ["uploadthingbackground"],
     "androidCxxLibName": "NitroUploadthingBackground"
   },
   "autolinking": {
@@ -24,8 +20,5 @@
       }
     }
   },
-  "ignorePaths": [
-    "**/node_modules",
-    "opensrc/**"
-  ]
+  "ignorePaths": ["**/node_modules", "opensrc/**"]
 }

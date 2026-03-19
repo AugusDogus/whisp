@@ -1,10 +1,10 @@
-import { NitroModules } from "react-native-nitro-modules";
-
 import type {
   BackgroundUploadRequest,
   BackgroundUploadTask,
   UploadthingBackground,
 } from "./specs/uploadthing-background.nitro";
+
+import { NitroModules } from "react-native-nitro-modules";
 
 export type {
   BackgroundUploadHeader,
@@ -42,7 +42,9 @@ export async function getBackgroundUploadTask(
   return getUploadthingBackground().getTask(taskId);
 }
 
-export async function listBackgroundUploadTasks(): Promise<BackgroundUploadTask[]> {
+export async function listBackgroundUploadTasks(): Promise<
+  BackgroundUploadTask[]
+> {
   return getUploadthingBackground().listTasks();
 }
 
@@ -50,6 +52,8 @@ export async function cancelBackgroundUpload(taskId: string): Promise<void> {
   return getUploadthingBackground().cancelUpload(taskId);
 }
 
-export async function removeBackgroundUploadTask(taskId: string): Promise<void> {
+export async function removeBackgroundUploadTask(
+  taskId: string,
+): Promise<void> {
   return getUploadthingBackground().removeTask(taskId);
 }

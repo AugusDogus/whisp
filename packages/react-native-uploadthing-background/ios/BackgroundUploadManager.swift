@@ -58,35 +58,56 @@ final class BackgroundUploadManager: NSObject, URLSessionDataDelegate, URLSessio
     Promise.parallel { [self] in
       let uploadURL = try makeUploadURL(from: request.url)
       let sourceFileURL = try makeLocalFileURL(from: request.fileUri)
-      let multipartBody = try createMultipartBody(
-        request: request,
-        sourceFileURL: sourceFileURL
-      )
+      let method = (request.method ?? "PUT").uppercased()
+      let fileSize = try sourceFileSize(for: sourceFileURL)
+      let uploadPayload: (fileURL: URL, contentType: String, totalBytes: Double, multipartFilePath: String?)
+
+      if method == "PUT" {
+        uploadPayload = (
+          fileURL: sourceFileURL,
+          contentType: request.mimeType,
+          totalBytes: fileSize,
+          multipartFilePath: nil
+        )
+      } else {
+        let multipartBody = try createMultipartBody(
+          request: request,
+          sourceFileURL: sourceFileURL
+        )
+        uploadPayload = (
+          fileURL: multipartBody.fileURL,
+          contentType: multipartBody.contentType,
+          totalBytes: multipartBody.totalBytes,
+          multipartFilePath: multipartBody.fileURL.path
+        )
+      }
 
       var urlRequest = URLRequest(url: uploadURL)
-      urlRequest.httpMethod = request.method ?? "PUT"
+      urlRequest.httpMethod = method
       for header in request.headers ?? [] {
         urlRequest.setValue(header.value, forHTTPHeaderField: header.key)
       }
+      if urlRequest.value(forHTTPHeaderField: "Content-Type") == nil {
+        urlRequest.setValue(
+          uploadPayload.contentType,
+          forHTTPHeaderField: "Content-Type"
+        )
+      }
       urlRequest.setValue(
-        multipartBody.contentType,
-        forHTTPHeaderField: "Content-Type"
-      )
-      urlRequest.setValue(
-        String(Int64(multipartBody.totalBytes)),
+        String(Int64(uploadPayload.totalBytes)),
         forHTTPHeaderField: "Content-Length"
       )
 
       let uploadTask = session.uploadTask(
         with: urlRequest,
-        fromFile: multipartBody.fileURL
+        fromFile: uploadPayload.fileURL
       )
 
       let record = StoredBackgroundUploadTaskRecord(
         request: request,
-        totalBytes: multipartBody.totalBytes,
+        totalBytes: uploadPayload.totalBytes,
         sessionTaskIdentifier: uploadTask.taskIdentifier,
-        multipartFilePath: multipartBody.fileURL.path
+        multipartFilePath: uploadPayload.multipartFilePath
       )
 
       store.upsert(record)
@@ -204,36 +225,36 @@ final class BackgroundUploadManager: NSObject, URLSessionDataDelegate, URLSessio
     }
 
     let responseCode = (task.response as? HTTPURLResponse)?.statusCode
-    let responseBody = queue.sync {
-      let data = responseData.removeValue(forKey: task.taskIdentifier)
-      return data.flatMap { String(data: $0, encoding: .utf8) }
-    }
+    queue.async {
+      let data = self.responseData.removeValue(forKey: task.taskIdentifier)
+      let responseBody = data.flatMap { String(data: $0, encoding: .utf8) }
 
-    _ = store.update(taskId: record.taskId) { record in
-      record.bytesSent = max(record.bytesSent, record.totalBytes)
-      record.responseCode = responseCode.map(Double.init)
-      record.responseBody = responseBody
+      _ = self.store.update(taskId: record.taskId) { record in
+        record.bytesSent = max(record.bytesSent, record.totalBytes)
+        record.responseCode = responseCode.map(Double.init)
+        record.responseBody = responseBody
 
-      if let nsError = error as NSError? {
-        if nsError.code == NSURLErrorCancelled {
-          record.status = .cancelled
-        } else {
+        if let nsError = error as NSError? {
+          if nsError.code == NSURLErrorCancelled {
+            record.status = .cancelled
+          } else {
+            record.status = .failed
+          }
+          record.errorMessage = nsError.localizedDescription
+        } else if let responseCode, !(200..<300).contains(responseCode) {
           record.status = .failed
+          record.errorMessage =
+            responseBody ??
+            HTTPURLResponse.localizedString(forStatusCode: responseCode)
+        } else {
+          record.status = .completed
+          record.errorMessage = nil
         }
-        record.errorMessage = nsError.localizedDescription
-      } else if let responseCode, !(200..<300).contains(responseCode) {
-        record.status = .failed
-        record.errorMessage =
-          responseBody ??
-          HTTPURLResponse.localizedString(forStatusCode: responseCode)
-      } else {
-        record.status = .completed
-        record.errorMessage = nil
       }
-    }
 
-    if let multipartFilePath = record.multipartFilePath {
-      try? FileManager.default.removeItem(atPath: multipartFilePath)
+      if let multipartFilePath = record.multipartFilePath {
+        try? FileManager.default.removeItem(atPath: multipartFilePath)
+      }
     }
   }
 
@@ -301,6 +322,9 @@ final class BackgroundUploadManager: NSObject, URLSessionDataDelegate, URLSessio
 
     let inputStream = InputStream(url: sourceFileURL)
     inputStream?.open()
+    if let inputStream, inputStream.streamStatus == .error {
+      throw inputStream.streamError ?? BackgroundUploadManagerError.invalidFileURI(sourceFileURL.path)
+    }
     defer {
       inputStream?.close()
     }
@@ -321,12 +345,9 @@ final class BackgroundUploadManager: NSObject, URLSessionDataDelegate, URLSessio
 
     try write(data: Data(footer.utf8), to: outputStream)
 
-    let fileSize = try FileManager.default.attributesOfItem(
-      atPath: sourceFileURL.path
-    )[.size] as? NSNumber
     let totalBytes =
       Double(Data(header.utf8).count) +
-      Double(fileSize?.int64Value ?? 0) +
+      sourceFileSize(for: sourceFileURL) +
       Double(Data(footer.utf8).count)
 
     return (bodyURL, contentType, totalBytes)
@@ -371,5 +392,12 @@ final class BackgroundUploadManager: NSObject, URLSessionDataDelegate, URLSessio
         totalBytesWritten += bytesWritten
       }
     }
+  }
+
+  private func sourceFileSize(for sourceFileURL: URL) throws -> Double {
+    let fileSize = try FileManager.default.attributesOfItem(
+      atPath: sourceFileURL.path
+    )[.size] as? NSNumber
+    return Double(fileSize?.int64Value ?? 0)
   }
 }

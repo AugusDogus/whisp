@@ -30,12 +30,16 @@ function isSuccessfulBackgroundTask(task: BackgroundUploadTask) {
 }
 
 async function cleanupBackgroundTasks(tasks: BackgroundUploadTask[]) {
-  await Promise.all(
-    tasks.map((task) => removeBackgroundUploadTask(task.taskId)),
+  const uniqueTaskIds = [...new Set(tasks.map((task) => task.taskId))];
+  await Promise.allSettled(
+    uniqueTaskIds.map((taskId) => removeBackgroundUploadTask(taskId)),
   );
 }
 
-function invalidateUploadRelatedQueries(isGroupSend: boolean, groupId?: string) {
+function invalidateUploadRelatedQueries(
+  isGroupSend: boolean,
+  groupId?: string,
+) {
   void queryClient.invalidateQueries({
     queryKey: [["friends", "list"]] as const,
   });
@@ -169,33 +173,34 @@ export async function uploadMedia(params: UploadMediaParams): Promise<void> {
     const backgroundBatch = await uploadFilesWithInputInBackground(
       "imageUploader",
       {
-      files: [file],
-      input: uploadInput,
+        files: [file],
+        input: uploadInput,
       },
     );
 
-    void backgroundBatch.completion
-      .then(async (tasks) => {
-        try {
-          const failedTask = tasks.find((task) => !isSuccessfulBackgroundTask(task));
-          if (failedTask) {
-            applyFailedUploadSideEffects({
-              recipients,
-              isGroupSend,
-              message: failedTask.errorMessage ?? "Upload failed",
-            });
-            return;
-          }
+    let tasksForCleanup: BackgroundUploadTask[] = backgroundBatch.tasks;
 
-          applySuccessfulUploadSideEffects({
+    void backgroundBatch.completion
+      .then((tasks) => {
+        tasksForCleanup = tasks;
+        const failedTask = tasks.find(
+          (task) => !isSuccessfulBackgroundTask(task),
+        );
+        if (failedTask) {
+          applyFailedUploadSideEffects({
             recipients,
-            mediaKind,
             isGroupSend,
-            groupId,
+            message: failedTask.errorMessage ?? "Upload failed",
           });
-        } finally {
-          await cleanupBackgroundTasks(tasks);
+          return;
         }
+
+        applySuccessfulUploadSideEffects({
+          recipients,
+          mediaKind,
+          isGroupSend,
+          groupId,
+        });
       })
       .catch((err: unknown) => {
         applyFailedUploadSideEffects({
@@ -203,6 +208,9 @@ export async function uploadMedia(params: UploadMediaParams): Promise<void> {
           isGroupSend,
           message: err instanceof Error ? err.message : "Upload failed",
         });
+      })
+      .finally(() => {
+        void cleanupBackgroundTasks(tasksForCleanup);
       });
   } catch (err) {
     console.error("[Upload] Failed to prepare file for upload:", err);
