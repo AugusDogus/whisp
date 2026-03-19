@@ -1,6 +1,7 @@
 import {
   createUploadthingBackgroundClient,
   listBackgroundUploadTasks,
+  markBackgroundUploadTaskObserved,
   removeBackgroundUploadTask,
 } from "react-native-uploadthing-background";
 
@@ -38,6 +39,7 @@ export const { uploadFilesWithInputInBackground } =
 
 export {
   listBackgroundUploadTasks,
+  markBackgroundUploadTaskObserved,
   removeBackgroundUploadTask,
 } from "react-native-uploadthing-background";
 

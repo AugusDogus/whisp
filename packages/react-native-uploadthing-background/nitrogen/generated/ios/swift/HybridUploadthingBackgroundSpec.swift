@@ -16,6 +16,7 @@ public protocol HybridUploadthingBackgroundSpec_protocol: HybridObject {
   func enqueueUpload(request: BackgroundUploadRequest) throws -> Promise<BackgroundUploadTask>
   func getTask(taskId: String) throws -> Promise<Variant_NullType_BackgroundUploadTask>
   func listTasks() throws -> Promise<[BackgroundUploadTask]>
+  func markTaskObserved(taskId: String) throws -> Promise<Variant_NullType_BackgroundUploadTask>
   func cancelUpload(taskId: String) throws -> Promise<Void>
   func removeTask(taskId: String) throws -> Promise<Void>
 }

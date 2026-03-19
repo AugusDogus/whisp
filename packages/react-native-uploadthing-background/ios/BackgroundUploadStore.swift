@@ -48,10 +48,12 @@ struct StoredBackgroundUploadTaskRecord: Codable {
   var errorMessage: String?
   let createdAt: Double
   var updatedAt: Double
+  var observedAt: Double?
   let method: String
   let headers: [StoredBackgroundUploadHeader]
   var sessionTaskIdentifier: Int?
   var multipartFilePath: String?
+  var pendingRemoval: Bool?
   let notificationTitle: String?
   let notificationBody: String?
 
@@ -76,12 +78,14 @@ struct StoredBackgroundUploadTaskRecord: Codable {
     errorMessage = nil
     createdAt = now
     updatedAt = now
+    observedAt = nil
     method = request.method ?? "PUT"
     headers = (request.headers ?? []).map {
       StoredBackgroundUploadHeader(key: $0.key, value: $0.value)
     }
     self.sessionTaskIdentifier = sessionTaskIdentifier
     self.multipartFilePath = multipartFilePath
+    pendingRemoval = false
     notificationTitle = request.notificationTitle
     notificationBody = request.notificationBody
   }
@@ -100,7 +104,8 @@ struct StoredBackgroundUploadTaskRecord: Codable {
       responseBody: responseBody,
       errorMessage: errorMessage,
       createdAt: createdAt,
-      updatedAt: updatedAt
+      updatedAt: updatedAt,
+      observedAt: observedAt
     )
   }
 }
@@ -142,6 +147,22 @@ final class BackgroundUploadStore {
   func record(taskId: String) -> StoredBackgroundUploadTaskRecord? {
     queue.sync {
       recordsLocked()[taskId]
+    }
+  }
+
+  func markObserved(taskId: String) -> BackgroundUploadTask? {
+    queue.sync {
+      var records = recordsLocked()
+      guard var record = records[taskId] else {
+        return nil
+      }
+
+      let now = Date().timeIntervalSince1970 * 1000
+      record.observedAt = record.observedAt ?? now
+      record.updatedAt = now
+      records[taskId] = record
+      persistLocked(records)
+      return record.asTask()
     }
   }
 

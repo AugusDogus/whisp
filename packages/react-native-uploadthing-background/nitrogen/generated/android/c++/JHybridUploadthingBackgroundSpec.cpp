@@ -129,6 +129,22 @@ namespace margelo::nitro::uploadthingbackground {
       return __promise;
     }();
   }
+  std::shared_ptr<Promise<std::variant<nitro::NullType, BackgroundUploadTask>>> JHybridUploadthingBackgroundSpec::markTaskObserved(const std::string& taskId) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>(jni::alias_ref<jni::JString> /* taskId */)>("markTaskObserved");
+    auto __result = method(_javaPart, jni::make_jstring(taskId));
+    return [&]() {
+      auto __promise = Promise<std::variant<nitro::NullType, BackgroundUploadTask>>::create();
+      __result->cthis()->addOnResolvedListener([=](const jni::alias_ref<jni::JObject>& __boxedResult) {
+        auto __result = jni::static_ref_cast<JVariant_NullType_BackgroundUploadTask>(__boxedResult);
+        __promise->resolve(__result->toCpp());
+      });
+      __result->cthis()->addOnRejectedListener([=](const jni::alias_ref<jni::JThrowable>& __throwable) {
+        jni::JniException __jniError(__throwable);
+        __promise->reject(std::make_exception_ptr(__jniError));
+      });
+      return __promise;
+    }();
+  }
   std::shared_ptr<Promise<void>> JHybridUploadthingBackgroundSpec::cancelUpload(const std::string& taskId) {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>(jni::alias_ref<jni::JString> /* taskId */)>("cancelUpload");
     auto __result = method(_javaPart, jni::make_jstring(taskId));

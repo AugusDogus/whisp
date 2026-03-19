@@ -189,7 +189,9 @@ export async function waitForBackgroundUploadTask(
       );
     }
     if (isTerminalTask(task)) {
-      return task;
+      const observedTask =
+        await getUploadthingBackground().markTaskObserved(taskId);
+      return observedTask ?? task;
     }
     if (Date.now() - startedAt >= maxWaitMs) {
       throw new Error(

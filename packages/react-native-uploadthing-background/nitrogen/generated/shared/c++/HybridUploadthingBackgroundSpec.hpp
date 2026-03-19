@@ -60,6 +60,7 @@ namespace margelo::nitro::uploadthingbackground {
       virtual std::shared_ptr<Promise<BackgroundUploadTask>> enqueueUpload(const BackgroundUploadRequest& request) = 0;
       virtual std::shared_ptr<Promise<std::variant<nitro::NullType, BackgroundUploadTask>>> getTask(const std::string& taskId) = 0;
       virtual std::shared_ptr<Promise<std::vector<BackgroundUploadTask>>> listTasks() = 0;
+      virtual std::shared_ptr<Promise<std::variant<nitro::NullType, BackgroundUploadTask>>> markTaskObserved(const std::string& taskId) = 0;
       virtual std::shared_ptr<Promise<void>> cancelUpload(const std::string& taskId) = 0;
       virtual std::shared_ptr<Promise<void>> removeTask(const std::string& taskId) = 0;
 

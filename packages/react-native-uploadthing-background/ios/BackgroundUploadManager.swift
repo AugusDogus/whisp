@@ -133,6 +133,14 @@ final class BackgroundUploadManager: NSObject, URLSessionDataDelegate, URLSessio
     store.listTasks()
   }
 
+  func markTaskObserved(taskId: String) -> Variant_NullType_BackgroundUploadTask {
+    if let task = store.markObserved(taskId: taskId) {
+      return .second(task)
+    }
+
+    return .first(.null)
+  }
+
   func cancelUpload(taskId: String) -> Promise<Void> {
     Promise.async { [self] in
       let record = store.record(taskId: taskId)
@@ -147,7 +155,31 @@ final class BackgroundUploadManager: NSObject, URLSessionDataDelegate, URLSessio
   }
 
   func removeTask(taskId: String) -> Promise<Void> {
-    Promise.parallel { [self] in
+    Promise.async { [self] in
+      let record = store.record(taskId: taskId)
+      if let sessionTaskIdentifier = record?.sessionTaskIdentifier {
+        let sessionTasks = await allSessionTasks()
+        if let task = sessionTasks.first(where: { $0.taskIdentifier == sessionTaskIdentifier }) {
+          switch task.state {
+          case .running, .suspended:
+            _ = store.update(taskId: taskId) { record in
+              record.pendingRemoval = true
+            }
+            task.cancel()
+            return
+          case .canceling:
+            _ = store.update(taskId: taskId) { record in
+              record.pendingRemoval = true
+            }
+            return
+          case .completed:
+            break
+          @unknown default:
+            break
+          }
+        }
+      }
+
       let removed = store.remove(taskId: taskId)
       if let multipartFilePath = removed?.multipartFilePath {
         try? FileManager.default.removeItem(atPath: multipartFilePath)
@@ -247,8 +279,19 @@ final class BackgroundUploadManager: NSObject, URLSessionDataDelegate, URLSessio
         }
       }
 
-      if let multipartFilePath = record.multipartFilePath {
-        try? FileManager.default.removeItem(atPath: multipartFilePath)
+      if let refreshedRecord = self.store.record(taskId: record.taskId) {
+        if refreshedRecord.pendingRemoval == true {
+          let removed = self.store.remove(taskId: record.taskId)
+          if let multipartFilePath = removed?.multipartFilePath {
+            try? FileManager.default.removeItem(atPath: multipartFilePath)
+          }
+        } else if let multipartFilePath = refreshedRecord.multipartFilePath,
+          refreshedRecord.status == .completed
+            || refreshedRecord.status == .failed
+            || refreshedRecord.status == .cancelled
+        {
+          try? FileManager.default.removeItem(atPath: multipartFilePath)
+        }
       }
     }
   }
@@ -291,10 +334,10 @@ final class BackgroundUploadManager: NSObject, URLSessionDataDelegate, URLSessio
     let bodyURL = try makeMultipartBodyURL(taskId: request.taskId)
     let contentType = "multipart/form-data; boundary=\(boundary)"
 
-    let escapedFileName = request.fileName.replacingOccurrences(
-      of: "\"",
-      with: "'"
-    )
+    let escapedFileName = request.fileName
+      .replacingOccurrences(of: "\r", with: "_")
+      .replacingOccurrences(of: "\n", with: "_")
+      .replacingOccurrences(of: "\"", with: "_")
     let header = """
       --\(boundary)\r
       Content-Disposition: form-data; name=\"file\"; filename=\"\(escapedFileName)\"\r

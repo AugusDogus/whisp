@@ -24,6 +24,12 @@ final class HybridUploadthingBackground: HybridUploadthingBackgroundSpec {
     Promise.resolved(withResult: manager.listTasks())
   }
 
+  func markTaskObserved(
+    taskId: String
+  ) throws -> Promise<Variant_NullType_BackgroundUploadTask> {
+    Promise.resolved(withResult: manager.markTaskObserved(taskId: taskId))
+  }
+
   func cancelUpload(taskId: String) throws -> Promise<Void> {
     manager.cancelUpload(taskId: taskId)
   }

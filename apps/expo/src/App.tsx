@@ -20,13 +20,12 @@ import { authClient } from "~/utils/auth";
 import { POSTHOG_API_KEY, POSTHOG_HOST } from "~/utils/constants";
 import {
   listBackgroundUploadTasks,
+  markBackgroundUploadTaskObserved,
   removeBackgroundUploadTask,
 } from "~/utils/uploadthing";
 
 import { RootNavigator } from "./navigation/RootNavigator";
 import "./styles.css";
-
-const TERMINAL_TASK_RETENTION_MS = 5 * 60 * 1_000;
 
 async function removeBackgroundUploadTasks(taskIds: string[]) {
   const uniqueTaskIds = [...new Set(taskIds)];
@@ -72,16 +71,22 @@ function AppContent() {
           return;
         }
 
-        // Keep terminal tasks around briefly so any in-flight JS waiters can
-        // still observe the non-null terminal snapshot before reconciliation
-        // deletes the record on app foreground.
-        const staleTerminalTasks = terminalTasks.filter(
-          (task) => Date.now() - task.updatedAt >= TERMINAL_TASK_RETENTION_MS,
+        const unobservedTerminalTasks = terminalTasks.filter(
+          (task) => task.observedAt == null,
+        );
+        await Promise.allSettled(
+          unobservedTerminalTasks.map((task) =>
+            markBackgroundUploadTaskObserved(task.taskId),
+          ),
         );
 
-        if (staleTerminalTasks.length > 0) {
+        const observedTerminalTasks = terminalTasks.filter(
+          (task) => task.observedAt != null,
+        );
+
+        if (observedTerminalTasks.length > 0) {
           await removeBackgroundUploadTasks(
-            staleTerminalTasks.map((task) => task.taskId),
+            observedTerminalTasks.map((task) => task.taskId),
           );
         }
 

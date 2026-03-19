@@ -18,6 +18,7 @@ namespace margelo::nitro::uploadthingbackground {
       prototype.registerHybridMethod("enqueueUpload", &HybridUploadthingBackgroundSpec::enqueueUpload);
       prototype.registerHybridMethod("getTask", &HybridUploadthingBackgroundSpec::getTask);
       prototype.registerHybridMethod("listTasks", &HybridUploadthingBackgroundSpec::listTasks);
+      prototype.registerHybridMethod("markTaskObserved", &HybridUploadthingBackgroundSpec::markTaskObserved);
       prototype.registerHybridMethod("cancelUpload", &HybridUploadthingBackgroundSpec::cancelUpload);
       prototype.registerHybridMethod("removeTask", &HybridUploadthingBackgroundSpec::removeTask);
     });

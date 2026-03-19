@@ -46,6 +46,10 @@ abstract class HybridUploadthingBackgroundSpec: HybridObject() {
   
   @DoNotStrip
   @Keep
+  abstract fun markTaskObserved(taskId: String): Promise<Variant_NullType_BackgroundUploadTask>
+  
+  @DoNotStrip
+  @Keep
   abstract fun cancelUpload(taskId: String): Promise<Unit>
   
   @DoNotStrip

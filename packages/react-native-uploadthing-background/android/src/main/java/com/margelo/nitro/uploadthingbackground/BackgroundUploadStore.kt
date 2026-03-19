@@ -24,6 +24,22 @@ internal object BackgroundUploadStore {
       .toTypedArray()
   }
 
+  fun markObserved(
+    context: Context,
+    taskId: String,
+  ): BackgroundUploadTask? = synchronized(lock) {
+    val records = readAll(context).toMutableMap()
+    val existing = records[taskId] ?: return null
+    val now = nowMs()
+    val updated = existing.copy(
+      observedAt = existing.observedAt ?: now,
+      updatedAt = now,
+    )
+    records[taskId] = updated
+    persist(context, records)
+    updated.toPublicTask()
+  }
+
   fun getTask(context: Context, taskId: String): BackgroundUploadTask? = synchronized(lock) {
     readAll(context)[taskId]?.toPublicTask()
   }
@@ -152,6 +168,7 @@ internal data class StoredBackgroundUploadTaskRecord(
   val errorMessage: String?,
   val createdAt: Double,
   val updatedAt: Double,
+  val observedAt: Double?,
   val attemptId: String?,
   val method: String,
   val headers: List<BackgroundUploadHeader>,
@@ -173,6 +190,7 @@ internal data class StoredBackgroundUploadTaskRecord(
       errorMessage = errorMessage,
       createdAt = createdAt,
       updatedAt = updatedAt,
+      observedAt = observedAt,
     )
 
   fun toJson(): JSONObject {
@@ -190,6 +208,7 @@ internal data class StoredBackgroundUploadTaskRecord(
     json.put("errorMessage", errorMessage)
     json.put("createdAt", createdAt)
     json.put("updatedAt", updatedAt)
+    json.put("observedAt", observedAt)
     json.put("attemptId", attemptId)
     json.put("method", method)
     json.put(
@@ -227,6 +246,7 @@ internal data class StoredBackgroundUploadTaskRecord(
         errorMessage = null,
         createdAt = now,
         updatedAt = now,
+        observedAt = null,
         attemptId = null,
         method = request.method ?: "PUT",
         headers = request.headers?.toList() ?: emptyList(),
@@ -264,6 +284,11 @@ internal data class StoredBackgroundUploadTaskRecord(
         errorMessage = json.optString("errorMessage").takeUnless { json.isNull("errorMessage") },
         createdAt = json.optDouble("createdAt", now),
         updatedAt = json.optDouble("updatedAt", now),
+        observedAt = if (json.has("observedAt") && !json.isNull("observedAt")) {
+          json.optDouble("observedAt", now)
+        } else {
+          null
+        },
         attemptId = json.optString("attemptId").takeUnless { json.isNull("attemptId") },
         method = json.optString("method", "PUT"),
         headers = headers,

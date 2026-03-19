@@ -105,6 +105,9 @@ class UploadthingBackgroundWorker(
 
         val responseCode = connection.responseCode
         val responseBody = readResponseBody(connection)
+        if (responseCode in 200..299) {
+          updateProgress(record, totalBytes, totalBytes)
+        }
         UploadRunResult(
           responseCode = responseCode,
           responseBody = responseBody,
@@ -230,7 +233,6 @@ class UploadthingBackgroundWorker(
       }
     }
 
-    updateProgress(record, totalBytes, totalBytes)
   }
 
   private suspend fun updateProgress(
