@@ -40,13 +40,6 @@ project.xcworkspace
 local.properties
 android.iml
 
-# Cocoapods
-#
-example/ios/Pods
-
-# Ruby
-example/vendor/
-
 # node.js
 #
 node_modules/
@@ -67,9 +60,6 @@ android/keystores/debug.keystore
 !.yarn/releases
 !.yarn/sdks
 !.yarn/versions
-
-# Expo
-.expo/
 
 # Turborepo
 .turbo/

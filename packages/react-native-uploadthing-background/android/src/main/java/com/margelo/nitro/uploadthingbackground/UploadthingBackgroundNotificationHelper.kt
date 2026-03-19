@@ -9,10 +9,14 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.work.ForegroundInfo
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 
 internal object UploadthingBackgroundNotificationHelper {
   private const val CHANNEL_ID = "uploadthing-background"
   private const val CHANNEL_NAME = "Background uploads"
+  private val nextNotificationId = AtomicInteger(1_000)
+  private val notificationIds = ConcurrentHashMap<String, Int>()
 
   fun createForegroundInfo(
     context: Context,
@@ -32,15 +36,18 @@ internal object UploadthingBackgroundNotificationHelper {
       .setProgress(100, progressPercent.coerceIn(0, 100), false)
       .setCategory(Notification.CATEGORY_PROGRESS)
       .build()
+    val notificationId = notificationIds.getOrPut(record.taskId) {
+      nextNotificationId.getAndIncrement()
+    }
 
     return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
       ForegroundInfo(
-        record.taskId.hashCode(),
+        notificationId,
         notification,
         ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
       )
     } else {
-      ForegroundInfo(record.taskId.hashCode(), notification)
+      ForegroundInfo(notificationId, notification)
     }
   }
 

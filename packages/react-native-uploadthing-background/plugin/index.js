@@ -1,8 +1,10 @@
 // @ts-nocheck
 
-const { AndroidConfig, createRunOncePlugin, withAndroidManifest } = require(
-  "expo/config-plugins",
-);
+const {
+  AndroidConfig,
+  createRunOncePlugin,
+  withAndroidManifest,
+} = require("expo/config-plugins");
 
 const pkg = require("../package.json");
 
@@ -24,7 +26,8 @@ function ensurePermission(manifest, permission) {
 }
 
 function ensureForegroundService(manifest) {
-  const application = AndroidConfig.Manifest.getMainApplicationOrThrow(manifest);
+  const application =
+    AndroidConfig.Manifest.getMainApplicationOrThrow(manifest);
   const existingServices = application.service ?? [];
   const serviceName = "androidx.work.impl.foreground.SystemForegroundService";
   const alreadyPresent = existingServices.some(
@@ -49,12 +52,6 @@ const withUploadthingBackground = (config, options = {}) => {
   return withAndroidManifest(config, (modConfig) => {
     const manifest = AndroidConfig.Manifest.ensureToolsAvailable(
       modConfig.modResults,
-    );
-
-    ensurePermission(manifest, "android.permission.FOREGROUND_SERVICE");
-    ensurePermission(
-      manifest,
-      "android.permission.FOREGROUND_SERVICE_DATA_SYNC",
     );
 
     if (options.addPostNotificationsPermission !== false) {

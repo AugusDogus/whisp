@@ -26,6 +26,13 @@ import {
 import { RootNavigator } from "./navigation/RootNavigator";
 import "./styles.css";
 
+async function removeBackgroundUploadTasks(taskIds: string[]) {
+  const uniqueTaskIds = [...new Set(taskIds)];
+  await Promise.allSettled(
+    uniqueTaskIds.map((taskId) => removeBackgroundUploadTask(taskId)),
+  );
+}
+
 Sentry.init({
   dsn: "https://5693f19ead65be751194632cbd5fa070@o4510218619322368.ingest.us.sentry.io/4510898735874048",
 
@@ -63,8 +70,8 @@ function AppContent() {
           return;
         }
 
-        await Promise.all(
-          terminalTasks.map((task) => removeBackgroundUploadTask(task.taskId)),
+        await removeBackgroundUploadTasks(
+          terminalTasks.map((task) => task.taskId),
         );
 
         void queryClient.invalidateQueries({

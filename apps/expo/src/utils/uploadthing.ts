@@ -12,10 +12,7 @@ import { compressImage, compressVideo } from "~/utils/media-compression";
 
 export type { BackgroundUploadTask } from "react-native-uploadthing-background";
 
-export function uploadthingFetch(
-  input: RequestInfo | URL,
-  init?: RequestInit,
-) {
+export function uploadthingFetch(input: RequestInfo | URL, init?: RequestInit) {
   const cookies = authClient.getCookie();
   const betterAuthHeaders = {
     Cookie: cookies,

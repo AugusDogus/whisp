@@ -26,21 +26,30 @@ class UploadthingBackgroundWorker(
 
     try {
       val sourceFile = resolveLocalFile(initialRecord.fileUri)
+      val isPutUpload = initialRecord.method.uppercase() == "PUT"
       val escapedFileName = initialRecord.fileName.replace("\"", "'")
       val boundary = "UploadthingBackground-${initialRecord.taskId}"
-      val headerBytes = buildString {
-        append("--")
-        append(boundary)
-        append("\r\n")
-        append("Content-Disposition: form-data; name=\"file\"; filename=\"")
-        append(escapedFileName)
-        append("\"\r\n")
-        append("Content-Type: ")
-        append(initialRecord.mimeType)
-        append("\r\n\r\n")
-      }.toByteArray(Charsets.UTF_8)
-      val footerBytes = "\r\n--$boundary--\r\n".toByteArray(Charsets.UTF_8)
-      val totalBytes = headerBytes.size + sourceFile.length() + footerBytes.size
+      val headerBytes = if (isPutUpload) {
+        ByteArray(0)
+      } else {
+        buildString {
+          append("--")
+          append(boundary)
+          append("\r\n")
+          append("Content-Disposition: form-data; name=\"file\"; filename=\"")
+          append(escapedFileName)
+          append("\"\r\n")
+          append("Content-Type: ")
+          append(initialRecord.mimeType)
+          append("\r\n\r\n")
+        }.toByteArray(Charsets.UTF_8)
+      }
+      val footerBytes = if (isPutUpload) {
+        ByteArray(0)
+      } else {
+        "\r\n--$boundary--\r\n".toByteArray(Charsets.UTF_8)
+      }
+      val totalBytes = headerBytes.size.toLong() + sourceFile.length() + footerBytes.size.toLong()
 
       val record = BackgroundUploadStore.update(applicationContext, taskId) { existing ->
         existing.copy(
@@ -70,12 +79,20 @@ class UploadthingBackgroundWorker(
         useCaches = false
         connectTimeout = 30_000
         readTimeout = 120_000
-        setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
-        setRequestProperty("Content-Length", totalBytes.toString())
         record.headers.forEach { header ->
           setRequestProperty(header.key, header.value)
         }
-        setFixedLengthStreamingMode(totalBytes.toInt())
+        if (getRequestProperty("Content-Type") == null) {
+          setRequestProperty(
+            "Content-Type",
+            if (isPutUpload) {
+              initialRecord.mimeType
+            } else {
+              "multipart/form-data; boundary=$boundary"
+            },
+          )
+        }
+        setFixedLengthStreamingMode(totalBytes)
       }
 
       val uploadResult = try {

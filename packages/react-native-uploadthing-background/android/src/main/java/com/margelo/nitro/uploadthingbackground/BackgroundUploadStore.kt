@@ -186,6 +186,7 @@ internal data class StoredBackgroundUploadTaskRecord(
     }
 
     fun fromJson(json: JSONObject): StoredBackgroundUploadTaskRecord {
+      val now = System.currentTimeMillis().toDouble()
       val headersJson = json.optJSONArray("headers") ?: JSONArray()
       val headers = buildList {
         for (index in 0 until headersJson.length()) {
@@ -206,13 +207,13 @@ internal data class StoredBackgroundUploadTaskRecord(
         fileUri = json.getString("fileUri"),
         fileName = json.getString("fileName"),
         mimeType = json.getString("mimeType"),
-        bytesSent = json.optDouble("bytesSent"),
-        totalBytes = json.optDouble("totalBytes"),
+        bytesSent = json.optDouble("bytesSent", 0.0),
+        totalBytes = json.optDouble("totalBytes", 0.0),
         responseCode = json.optDouble("responseCode").takeUnless { json.isNull("responseCode") },
         responseBody = json.optString("responseBody").takeUnless { json.isNull("responseBody") },
         errorMessage = json.optString("errorMessage").takeUnless { json.isNull("errorMessage") },
-        createdAt = json.optDouble("createdAt"),
-        updatedAt = json.optDouble("updatedAt"),
+        createdAt = json.optDouble("createdAt", now),
+        updatedAt = json.optDouble("updatedAt", now),
         method = json.optString("method", "PUT"),
         headers = headers,
         notificationTitle = json.optString("notificationTitle")

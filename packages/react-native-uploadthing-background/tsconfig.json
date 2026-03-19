@@ -6,10 +6,11 @@
     "noEmit": true,
     "types": ["react-native"]
   },
-  "include": [
-    "src",
-    "plugin",
-    "app.plugin.js"
-  ],
-  "exclude": ["node_modules", "android/build", "ios/build", "nitrogen/generated"]
+  "include": ["src", "plugin", "app.plugin.js"],
+  "exclude": [
+    "node_modules",
+    "android/build",
+    "ios/build",
+    "nitrogen/generated"
+  ]
 }
