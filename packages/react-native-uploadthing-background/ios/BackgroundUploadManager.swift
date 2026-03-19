@@ -143,11 +143,6 @@ final class BackgroundUploadManager: NSObject, URLSessionDataDelegate, URLSessio
           task.cancel()
         }
       }
-
-      _ = store.update(taskId: taskId) { record in
-        record.status = .cancelled
-        record.errorMessage = "The upload was cancelled."
-      }
     }
   }
 
@@ -230,7 +225,6 @@ final class BackgroundUploadManager: NSObject, URLSessionDataDelegate, URLSessio
       let responseBody = data.flatMap { String(data: $0, encoding: .utf8) }
 
       _ = self.store.update(taskId: record.taskId) { record in
-        record.bytesSent = max(record.bytesSent, record.totalBytes)
         record.responseCode = responseCode.map(Double.init)
         record.responseBody = responseBody
 
@@ -248,6 +242,7 @@ final class BackgroundUploadManager: NSObject, URLSessionDataDelegate, URLSessio
             HTTPURLResponse.localizedString(forStatusCode: responseCode)
         } else {
           record.status = .completed
+          record.bytesSent = max(record.bytesSent, record.totalBytes)
           record.errorMessage = nil
         }
       }

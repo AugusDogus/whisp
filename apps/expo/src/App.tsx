@@ -26,6 +26,8 @@ import {
 import { RootNavigator } from "./navigation/RootNavigator";
 import "./styles.css";
 
+const TERMINAL_TASK_RETENTION_MS = 5 * 60 * 1_000;
+
 async function removeBackgroundUploadTasks(taskIds: string[]) {
   const uniqueTaskIds = [...new Set(taskIds)];
   await Promise.allSettled(
@@ -70,9 +72,18 @@ function AppContent() {
           return;
         }
 
-        await removeBackgroundUploadTasks(
-          terminalTasks.map((task) => task.taskId),
+        // Keep terminal tasks around briefly so any in-flight JS waiters can
+        // still observe the non-null terminal snapshot before reconciliation
+        // deletes the record on app foreground.
+        const staleTerminalTasks = terminalTasks.filter(
+          (task) => Date.now() - task.updatedAt >= TERMINAL_TASK_RETENTION_MS,
         );
+
+        if (staleTerminalTasks.length > 0) {
+          await removeBackgroundUploadTasks(
+            staleTerminalTasks.map((task) => task.taskId),
+          );
+        }
 
         void queryClient.invalidateQueries({
           queryKey: [["friends", "list"]] as const,

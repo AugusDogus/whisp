@@ -18,16 +18,22 @@ class UploadthingBackgroundWorker(
   context: Context,
   params: WorkerParameters,
 ) : CoroutineWorker(context, params) {
+  private class StaleUploadAttemptException : Exception()
+
   override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
     val taskId = inputData.getString(KEY_TASK_ID)
       ?: return@withContext Result.failure()
     val initialRecord = BackgroundUploadStore.getRecord(applicationContext, taskId)
       ?: return@withContext Result.failure()
+    val attemptId = id.toString()
 
     try {
       val sourceFile = resolveLocalFile(initialRecord.fileUri)
       val isPutUpload = initialRecord.method.uppercase() == "PUT"
-      val escapedFileName = initialRecord.fileName.replace("\"", "'")
+      val sanitizedFileName = initialRecord.fileName
+        .replace("\r", "_")
+        .replace("\n", "_")
+        .replace("\"", "_")
       val boundary = "UploadthingBackground-${initialRecord.taskId}"
       val headerBytes = if (isPutUpload) {
         ByteArray(0)
@@ -37,7 +43,7 @@ class UploadthingBackgroundWorker(
           append(boundary)
           append("\r\n")
           append("Content-Disposition: form-data; name=\"file\"; filename=\"")
-          append(escapedFileName)
+          append(sanitizedFileName)
           append("\"\r\n")
           append("Content-Type: ")
           append(initialRecord.mimeType)
@@ -51,19 +57,12 @@ class UploadthingBackgroundWorker(
       }
       val totalBytes = headerBytes.size.toLong() + sourceFile.length() + footerBytes.size.toLong()
 
-      val record = BackgroundUploadStore.update(applicationContext, taskId) { existing ->
-        existing.copy(
-          status = BackgroundUploadTaskStatus.UPLOADING,
-          totalBytes = totalBytes.toDouble(),
-          bytesSent = 0.0,
-          errorMessage = null,
-        )
-      } ?: initialRecord.copy(
-        status = BackgroundUploadTaskStatus.UPLOADING,
-        totalBytes = totalBytes.toDouble(),
-        bytesSent = 0.0,
-        errorMessage = null,
-      )
+      val record = BackgroundUploadStore.claimForAttempt(
+        applicationContext,
+        taskId,
+        attemptId,
+        totalBytes.toDouble(),
+      ) ?: return@withContext Result.success()
 
       setForeground(
         UploadthingBackgroundNotificationHelper.createForegroundInfo(
@@ -115,7 +114,11 @@ class UploadthingBackgroundWorker(
         connection.disconnect()
       }
 
-      BackgroundUploadStore.update(applicationContext, taskId) { existing ->
+      val finalUpdate = BackgroundUploadStore.updateForAttempt(
+        applicationContext,
+        taskId,
+        attemptId,
+      ) { existing ->
         existing.copy(
           status = if (uploadResult.isSuccessful) {
             BackgroundUploadTaskStatus.COMPLETED
@@ -134,13 +137,23 @@ class UploadthingBackgroundWorker(
         )
       }
 
+      if (finalUpdate == null) {
+        return@withContext Result.success()
+      }
+
       if (uploadResult.isSuccessful) {
         Result.success()
       } else {
         Result.failure()
       }
+    } catch (_: StaleUploadAttemptException) {
+      Result.success()
     } catch (cancelled: CancellationException) {
-      BackgroundUploadStore.update(applicationContext, taskId) { existing ->
+      BackgroundUploadStore.updateForAttempt(
+        applicationContext,
+        taskId,
+        attemptId,
+      ) { existing ->
         existing.copy(
           status = BackgroundUploadTaskStatus.CANCELLED,
           errorMessage = "The upload was cancelled.",
@@ -149,7 +162,11 @@ class UploadthingBackgroundWorker(
       Result.failure()
     } catch (ioError: IOException) {
       val shouldRetry = runAttemptCount < 2
-      BackgroundUploadStore.update(applicationContext, taskId) { existing ->
+      BackgroundUploadStore.updateForAttempt(
+        applicationContext,
+        taskId,
+        attemptId,
+      ) { existing ->
         existing.copy(
           status = if (shouldRetry) {
             BackgroundUploadTaskStatus.QUEUED
@@ -161,7 +178,11 @@ class UploadthingBackgroundWorker(
       }
       if (shouldRetry) Result.retry() else Result.failure()
     } catch (error: Throwable) {
-      BackgroundUploadStore.update(applicationContext, taskId) { existing ->
+      BackgroundUploadStore.updateForAttempt(
+        applicationContext,
+        taskId,
+        attemptId,
+      ) { existing ->
         existing.copy(
           status = BackgroundUploadTaskStatus.FAILED,
           errorMessage = error.localizedMessage ?: "The upload failed.",
@@ -180,7 +201,8 @@ class UploadthingBackgroundWorker(
   ) {
     var bytesSent = initialBytesSent
     val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-    var lastReportedBytesSent = bytesSent
+    var lastPersistedBytesSent = initialBytesSent
+    var lastPersistTimeMs = System.currentTimeMillis()
 
     BufferedInputStream(sourceFile.inputStream()).use { input ->
       while (true) {
@@ -196,9 +218,14 @@ class UploadthingBackgroundWorker(
         output.write(buffer, 0, bytesRead)
         bytesSent += bytesRead
 
-        if (bytesSent - lastReportedBytesSent >= PROGRESS_UPDATE_CHUNK_BYTES) {
+        val now = System.currentTimeMillis()
+        if (
+          bytesSent - lastPersistedBytesSent >= PROGRESS_PERSIST_CHUNK_BYTES ||
+          now - lastPersistTimeMs >= PROGRESS_PERSIST_INTERVAL_MS
+        ) {
           updateProgress(record, bytesSent, totalBytes)
-          lastReportedBytesSent = bytesSent
+          lastPersistedBytesSent = bytesSent
+          lastPersistTimeMs = now
         }
       }
     }
@@ -213,19 +240,27 @@ class UploadthingBackgroundWorker(
   ) {
     val progressPercent =
       if (totalBytes <= 0L) 0 else ((bytesSent * 100) / totalBytes).toInt()
+    val attemptId = record.attemptId ?: throw StaleUploadAttemptException()
 
-    BackgroundUploadStore.update(applicationContext, record.taskId) { existing ->
+    val updatedRecord = BackgroundUploadStore.updateForAttempt(
+      applicationContext,
+      record.taskId,
+      attemptId,
+    ) { existing ->
       existing.copy(
         status = BackgroundUploadTaskStatus.UPLOADING,
         bytesSent = bytesSent.toDouble(),
         totalBytes = totalBytes.toDouble(),
       )
     }
+    if (updatedRecord == null) {
+      throw StaleUploadAttemptException()
+    }
 
     setForeground(
       UploadthingBackgroundNotificationHelper.createForegroundInfo(
         applicationContext,
-        record,
+        updatedRecord,
         progressPercent,
       ),
     )
@@ -271,6 +306,7 @@ class UploadthingBackgroundWorker(
     const val KEY_TASK_ID = "taskId"
     private const val KEY_BYTES_SENT = "bytesSent"
     private const val KEY_TOTAL_BYTES = "totalBytes"
-    private const val PROGRESS_UPDATE_CHUNK_BYTES = 64 * 1024L
+    private const val PROGRESS_PERSIST_CHUNK_BYTES = 1L * 1024L * 1024L
+    private const val PROGRESS_PERSIST_INTERVAL_MS = 2_000L
   }
 }
