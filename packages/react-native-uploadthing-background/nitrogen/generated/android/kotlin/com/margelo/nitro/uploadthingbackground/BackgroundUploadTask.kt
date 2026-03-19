@@ -55,7 +55,10 @@ data class BackgroundUploadTask(
   val createdAt: Double,
   @DoNotStrip
   @Keep
-  val updatedAt: Double
+  val updatedAt: Double,
+  @DoNotStrip
+  @Keep
+  val observedAt: Double?
 ) {
   /* primary constructor */
 
@@ -67,8 +70,8 @@ data class BackgroundUploadTask(
     @Keep
     @Suppress("unused")
     @JvmStatic
-    private fun fromCpp(taskId: String, status: BackgroundUploadTaskStatus, url: String, fileUri: String, fileName: String, mimeType: String, bytesSent: Double, totalBytes: Double, responseCode: Double?, responseBody: String?, errorMessage: String?, createdAt: Double, updatedAt: Double): BackgroundUploadTask {
-      return BackgroundUploadTask(taskId, status, url, fileUri, fileName, mimeType, bytesSent, totalBytes, responseCode, responseBody, errorMessage, createdAt, updatedAt)
+    private fun fromCpp(taskId: String, status: BackgroundUploadTaskStatus, url: String, fileUri: String, fileName: String, mimeType: String, bytesSent: Double, totalBytes: Double, responseCode: Double?, responseBody: String?, errorMessage: String?, createdAt: Double, updatedAt: Double, observedAt: Double?): BackgroundUploadTask {
+      return BackgroundUploadTask(taskId, status, url, fileUri, fileName, mimeType, bytesSent, totalBytes, responseCode, responseBody, errorMessage, createdAt, updatedAt, observedAt)
     }
   }
 }

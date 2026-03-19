@@ -60,6 +60,8 @@ namespace margelo::nitro::uploadthingbackground {
       double createdAt = this->getFieldValue(fieldCreatedAt);
       static const auto fieldUpdatedAt = clazz->getField<double>("updatedAt");
       double updatedAt = this->getFieldValue(fieldUpdatedAt);
+      static const auto fieldObservedAt = clazz->getField<jni::JDouble>("observedAt");
+      jni::local_ref<jni::JDouble> observedAt = this->getFieldValue(fieldObservedAt);
       return BackgroundUploadTask(
         taskId->toStdString(),
         status->toCpp(),
@@ -73,7 +75,8 @@ namespace margelo::nitro::uploadthingbackground {
         responseBody != nullptr ? std::make_optional(responseBody->toStdString()) : std::nullopt,
         errorMessage != nullptr ? std::make_optional(errorMessage->toStdString()) : std::nullopt,
         createdAt,
-        updatedAt
+        updatedAt,
+        observedAt != nullptr ? std::make_optional(observedAt->value()) : std::nullopt
       );
     }
 
@@ -83,7 +86,7 @@ namespace margelo::nitro::uploadthingbackground {
      */
     [[maybe_unused]]
     static jni::local_ref<JBackgroundUploadTask::javaobject> fromCpp(const BackgroundUploadTask& value) {
-      using JSignature = JBackgroundUploadTask(jni::alias_ref<jni::JString>, jni::alias_ref<JBackgroundUploadTaskStatus>, jni::alias_ref<jni::JString>, jni::alias_ref<jni::JString>, jni::alias_ref<jni::JString>, jni::alias_ref<jni::JString>, double, double, jni::alias_ref<jni::JDouble>, jni::alias_ref<jni::JString>, jni::alias_ref<jni::JString>, double, double);
+      using JSignature = JBackgroundUploadTask(jni::alias_ref<jni::JString>, jni::alias_ref<JBackgroundUploadTaskStatus>, jni::alias_ref<jni::JString>, jni::alias_ref<jni::JString>, jni::alias_ref<jni::JString>, jni::alias_ref<jni::JString>, double, double, jni::alias_ref<jni::JDouble>, jni::alias_ref<jni::JString>, jni::alias_ref<jni::JString>, double, double, jni::alias_ref<jni::JDouble>);
       static const auto clazz = javaClassStatic();
       static const auto create = clazz->getStaticMethod<JSignature>("fromCpp");
       return create(
@@ -100,7 +103,8 @@ namespace margelo::nitro::uploadthingbackground {
         value.responseBody.has_value() ? jni::make_jstring(value.responseBody.value()) : nullptr,
         value.errorMessage.has_value() ? jni::make_jstring(value.errorMessage.value()) : nullptr,
         value.createdAt,
-        value.updatedAt
+        value.updatedAt,
+        value.observedAt.has_value() ? jni::JDouble::valueOf(value.observedAt.value()) : nullptr
       );
     }
   };

@@ -18,7 +18,7 @@ public extension BackgroundUploadTask {
   /**
    * Create a new instance of `BackgroundUploadTask`.
    */
-  init(taskId: String, status: BackgroundUploadTaskStatus, url: String, fileUri: String, fileName: String, mimeType: String, bytesSent: Double, totalBytes: Double, responseCode: Double?, responseBody: String?, errorMessage: String?, createdAt: Double, updatedAt: Double) {
+  init(taskId: String, status: BackgroundUploadTaskStatus, url: String, fileUri: String, fileName: String, mimeType: String, bytesSent: Double, totalBytes: Double, responseCode: Double?, responseBody: String?, errorMessage: String?, createdAt: Double, updatedAt: Double, observedAt: Double?) {
     self.init(std.string(taskId), status, std.string(url), std.string(fileUri), std.string(fileName), std.string(mimeType), bytesSent, totalBytes, { () -> bridge.std__optional_double_ in
       if let __unwrappedValue = responseCode {
         return bridge.create_std__optional_double_(__unwrappedValue)
@@ -37,7 +37,13 @@ public extension BackgroundUploadTask {
       } else {
         return .init()
       }
-    }(), createdAt, updatedAt)
+    }(), createdAt, updatedAt, { () -> bridge.std__optional_double_ in
+      if let __unwrappedValue = observedAt {
+        return bridge.create_std__optional_double_(__unwrappedValue)
+      } else {
+        return .init()
+      }
+    }())
   }
 
   @inline(__always)
@@ -124,5 +130,17 @@ public extension BackgroundUploadTask {
   @inline(__always)
   var updatedAt: Double {
     return self.__updatedAt
+  }
+  
+  @inline(__always)
+  var observedAt: Double? {
+    return { () -> Double? in
+      if bridge.has_value_std__optional_double_(self.__observedAt) {
+        let __unwrapped = bridge.get_std__optional_double_(self.__observedAt)
+        return __unwrapped
+      } else {
+        return nil
+      }
+    }()
   }
 }

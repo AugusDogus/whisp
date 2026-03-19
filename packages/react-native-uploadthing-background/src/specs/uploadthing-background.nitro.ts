@@ -38,6 +38,7 @@ export interface BackgroundUploadTask {
   errorMessage?: string;
   createdAt: number;
   updatedAt: number;
+  observedAt?: number;
 }
 
 export interface UploadthingBackground extends HybridObject<{
@@ -51,6 +52,7 @@ export interface UploadthingBackground extends HybridObject<{
   ): Promise<BackgroundUploadTask>;
   getTask(taskId: string): Promise<BackgroundUploadTask | null>;
   listTasks(): Promise<BackgroundUploadTask[]>;
+  markTaskObserved(taskId: string): Promise<BackgroundUploadTask | null>;
   cancelUpload(taskId: string): Promise<void>;
   removeTask(taskId: string): Promise<void>;
 }

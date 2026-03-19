@@ -108,6 +108,14 @@ namespace margelo::nitro::uploadthingbackground {
       auto __value = std::move(__result.value());
       return __value;
     }
+    inline std::shared_ptr<Promise<std::variant<nitro::NullType, BackgroundUploadTask>>> markTaskObserved(const std::string& taskId) override {
+      auto __result = _swiftPart.markTaskObserved(taskId);
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+      auto __value = std::move(__result.value());
+      return __value;
+    }
     inline std::shared_ptr<Promise<void>> cancelUpload(const std::string& taskId) override {
       auto __result = _swiftPart.cancelUpload(taskId);
       if (__result.hasError()) [[unlikely]] {

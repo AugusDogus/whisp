@@ -48,6 +48,12 @@ export async function listBackgroundUploadTasks(): Promise<
   return getUploadthingBackground().listTasks();
 }
 
+export async function markBackgroundUploadTaskObserved(
+  taskId: string,
+): Promise<BackgroundUploadTask | null> {
+  return getUploadthingBackground().markTaskObserved(taskId);
+}
+
 export async function cancelBackgroundUpload(taskId: string): Promise<void> {
   return getUploadthingBackground().cancelUpload(taskId);
 }

@@ -56,6 +56,17 @@ class HybridUploadthingBackground : HybridUploadthingBackgroundSpec() {
     BackgroundUploadStore.listTasks(requireContext())
   }
 
+  override fun markTaskObserved(
+    taskId: String,
+  ): Promise<Variant_NullType_BackgroundUploadTask> = Promise.parallel {
+    val task = BackgroundUploadStore.markObserved(requireContext(), taskId)
+    if (task != null) {
+      Variant_NullType_BackgroundUploadTask.create(task)
+    } else {
+      Variant_NullType_BackgroundUploadTask.create(NullType.NULL)
+    }
+  }
+
   override fun cancelUpload(taskId: String): Promise<Unit> = Promise.parallel {
     val context = requireContext()
     WorkManager.getInstance(context).cancelUniqueWork(uniqueWorkName(taskId))

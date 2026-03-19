@@ -55,10 +55,11 @@ namespace margelo::nitro::uploadthingbackground {
     std::optional<std::string> errorMessage     SWIFT_PRIVATE;
     double createdAt     SWIFT_PRIVATE;
     double updatedAt     SWIFT_PRIVATE;
+    std::optional<double> observedAt     SWIFT_PRIVATE;
 
   public:
     BackgroundUploadTask() = default;
-    explicit BackgroundUploadTask(std::string taskId, BackgroundUploadTaskStatus status, std::string url, std::string fileUri, std::string fileName, std::string mimeType, double bytesSent, double totalBytes, std::optional<double> responseCode, std::optional<std::string> responseBody, std::optional<std::string> errorMessage, double createdAt, double updatedAt): taskId(taskId), status(status), url(url), fileUri(fileUri), fileName(fileName), mimeType(mimeType), bytesSent(bytesSent), totalBytes(totalBytes), responseCode(responseCode), responseBody(responseBody), errorMessage(errorMessage), createdAt(createdAt), updatedAt(updatedAt) {}
+    explicit BackgroundUploadTask(std::string taskId, BackgroundUploadTaskStatus status, std::string url, std::string fileUri, std::string fileName, std::string mimeType, double bytesSent, double totalBytes, std::optional<double> responseCode, std::optional<std::string> responseBody, std::optional<std::string> errorMessage, double createdAt, double updatedAt, std::optional<double> observedAt): taskId(taskId), status(status), url(url), fileUri(fileUri), fileName(fileName), mimeType(mimeType), bytesSent(bytesSent), totalBytes(totalBytes), responseCode(responseCode), responseBody(responseBody), errorMessage(errorMessage), createdAt(createdAt), updatedAt(updatedAt), observedAt(observedAt) {}
 
   public:
     friend bool operator==(const BackgroundUploadTask& lhs, const BackgroundUploadTask& rhs) = default;
@@ -86,7 +87,8 @@ namespace margelo::nitro {
         JSIConverter<std::optional<std::string>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "responseBody"))),
         JSIConverter<std::optional<std::string>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "errorMessage"))),
         JSIConverter<double>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "createdAt"))),
-        JSIConverter<double>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "updatedAt")))
+        JSIConverter<double>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "updatedAt"))),
+        JSIConverter<std::optional<double>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "observedAt")))
       );
     }
     static inline jsi::Value toJSI(jsi::Runtime& runtime, const margelo::nitro::uploadthingbackground::BackgroundUploadTask& arg) {
@@ -104,6 +106,7 @@ namespace margelo::nitro {
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "errorMessage"), JSIConverter<std::optional<std::string>>::toJSI(runtime, arg.errorMessage));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "createdAt"), JSIConverter<double>::toJSI(runtime, arg.createdAt));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "updatedAt"), JSIConverter<double>::toJSI(runtime, arg.updatedAt));
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "observedAt"), JSIConverter<std::optional<double>>::toJSI(runtime, arg.observedAt));
       return obj;
     }
     static inline bool canConvert(jsi::Runtime& runtime, const jsi::Value& value) {
@@ -127,6 +130,7 @@ namespace margelo::nitro {
       if (!JSIConverter<std::optional<std::string>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "errorMessage")))) return false;
       if (!JSIConverter<double>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "createdAt")))) return false;
       if (!JSIConverter<double>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "updatedAt")))) return false;
+      if (!JSIConverter<std::optional<double>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "observedAt")))) return false;
       return true;
     }
   };
