@@ -57,7 +57,17 @@ export default function BackgroundUploadTestScreen() {
   });
 
   const deleteUpload = trpc.backgroundUploadTest.delete.useMutation({
-    onSuccess: async (_, variables) => {
+    onSuccess: async (result, variables) => {
+      if (!result.ok) {
+        appendLog(
+          result.reason === "not_found"
+            ? `Uploaded file ${variables.id} was already removed.`
+            : `Delete skipped for uploaded file ${variables.id}.`,
+        );
+        await uploadsQuery.refetch();
+        return;
+      }
+
       appendLog(`Deleted uploaded file ${variables.id}.`);
       await uploadsQuery.refetch();
     },
