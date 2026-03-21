@@ -196,6 +196,35 @@ export const MessageDelivery = sqliteTable(
   ],
 );
 
+export const BackgroundUploadTestFile = sqliteTable(
+  "background_upload_test_file",
+  (t) => ({
+    id: t
+      .text()
+      .notNull()
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    userId: t
+      .text()
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    fileKey: t.text().notNull().unique(),
+    fileUrl: t.text().notNull(),
+    originalFileName: t.text().notNull(),
+    mimeType: t.text(),
+    createdAt: t
+      .integer({ mode: "timestamp" })
+      .$defaultFn(() => new Date())
+      .notNull(),
+  }),
+  (table) => [
+    index("background_upload_test_file_userId_createdAt_idx").on(
+      table.userId,
+      table.createdAt,
+    ),
+  ],
+);
+
 export const CreateFriendRequestSchema = createInsertSchema(FriendRequest, {
   status: z
     .enum(["pending", "accepted", "declined", "cancelled"])

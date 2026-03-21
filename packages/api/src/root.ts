@@ -1,4 +1,5 @@
 import { authRouter } from "./router/auth";
+import { backgroundUploadTestRouter } from "./router/background-upload-test";
 import { friendsRouter } from "./router/friends";
 import { groupsRouter } from "./router/groups";
 import { messagesRouter } from "./router/messages";
@@ -8,6 +9,7 @@ import { createTRPCRouter } from "./trpc";
 
 export const appRouter = createTRPCRouter({
   auth: authRouter,
+  backgroundUploadTest: backgroundUploadTestRouter,
   friends: friendsRouter,
   groups: groupsRouter,
   messages: messagesRouter,

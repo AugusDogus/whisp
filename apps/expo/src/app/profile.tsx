@@ -1,3 +1,5 @@
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+
 import { useRef, useState } from "react";
 import {
   Linking,
@@ -11,22 +13,28 @@ import Constants from "expo-constants";
 import { Image } from "expo-image";
 
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
+import { useNavigation } from "@react-navigation/native";
 import { Button } from "heroui-native/button";
 import { Dialog } from "heroui-native/dialog";
 import { Switch } from "heroui-native/switch";
 
 import { SafeAreaView } from "~/components/styled";
 import { Text } from "~/components/ui/text";
+import type { RootStackParamList } from "~/navigation/types";
 import { trpc } from "~/utils/api";
 import { authClient } from "~/utils/auth";
 import { getBaseUrl } from "~/utils/base-url";
 
 export default function ProfileScreen() {
+  const navigation =
+    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const { data: session } = authClient.useSession();
   const colorScheme = useColorScheme();
   const iconColor = colorScheme === "dark" ? "#aaa" : "#666";
   const utils = trpc.useUtils();
+  const isBackgroundUploadTestEnabled =
+    process.env.EXPO_PUBLIC_ENABLE_BACKGROUND_UPLOAD_TEST_PAGE === "true";
   const { data: preferences } = trpc.notifications.getPreferences.useQuery(
     undefined,
     {
@@ -205,6 +213,32 @@ export default function ProfileScreen() {
                 </Pressable>
               </View>
             </View>
+
+            {isBackgroundUploadTestEnabled ? (
+              <Pressable
+                onPress={() => navigation.navigate("BackgroundUploadTest")}
+                className="bg-surface rounded-xl p-4 active:opacity-70"
+              >
+                <View className="flex-row items-center gap-3">
+                  <View className="bg-default size-10 items-center justify-center rounded-full">
+                    <Ionicons name="flask" size={20} color={iconColor} />
+                  </View>
+                  <View className="flex-1">
+                    <Text className="text-base font-semibold">
+                      Background Upload Test
+                    </Text>
+                    <Text className="text-xs text-muted">
+                      Upload files without sending whisps
+                    </Text>
+                  </View>
+                  <Ionicons
+                    name="chevron-forward"
+                    size={16}
+                    color={iconColor}
+                  />
+                </View>
+              </Pressable>
+            ) : null}
           </View>
         </ScrollView>
 
@@ -293,6 +327,8 @@ function BuildInfo() {
       EXPO_PUBLIC_POSTHOG_API_KEY: "PostHog API Key",
       EXPO_PUBLIC_POSTHOG_HOST: "PostHog Host",
       EXPO_PUBLIC_ALLOW_SELF_MESSAGES: "Allow Self Messages",
+      EXPO_PUBLIC_ENABLE_BACKGROUND_UPLOAD_TEST_PAGE:
+        "Background Upload Test Page",
     };
 
     const envVars = Object.entries(process.env)
