@@ -12,6 +12,7 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { usePostHog } from "posthog-react-native";
 import { Toaster } from "sonner-native";
 
+import BackgroundUploadTestScreen from "~/app/background-upload-test";
 import CameraScreen from "~/app/camera";
 import CreateGroupScreen from "~/app/create-group";
 import FriendsScreen from "~/app/friends";
@@ -103,6 +104,10 @@ export function RootNavigator() {
           <Stack.Screen
             name="GroupAddMembers"
             component={GroupAddMembersScreen}
+          />
+          <Stack.Screen
+            name="BackgroundUploadTest"
+            component={BackgroundUploadTestScreen}
           />
           <Stack.Screen name="CreateGroup" component={CreateGroupScreen} />
         </Stack.Navigator>

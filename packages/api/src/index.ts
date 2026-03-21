@@ -24,6 +24,7 @@ type RouterOutputs = inferRouterOutputs<AppRouter>;
 export { appRouter, createTRPCContext };
 export type { AppRouter, RouterInputs, RouterOutputs };
 export interface UploadRouter {
+  backgroundUploadTestUploader: AnyFileRoute;
   imageUploader: AnyFileRoute;
   [key: string]: AnyFileRoute;
 }

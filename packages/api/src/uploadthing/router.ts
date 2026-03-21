@@ -5,7 +5,12 @@ import { z } from "zod/v4";
 
 import { and, eq } from "@acme/db";
 import { db } from "@acme/db/client";
-import { GroupMember, Message, MessageDelivery } from "@acme/db/schema";
+import {
+  BackgroundUploadTestFile,
+  GroupMember,
+  Message,
+  MessageDelivery,
+} from "@acme/db/schema";
 
 import { notifyNewMessage } from "../utils/send-notification";
 import { updateStreak } from "../utils/update-streak";
@@ -169,6 +174,41 @@ export function createUploadRouter({ getSession }: CreateDeps) {
             );
           }
         }
+
+        return { uploadedBy: metadata.userId };
+      }),
+    backgroundUploadTestUploader: f({
+      image: {
+        maxFileSize: "8MB",
+        maxFileCount: 10,
+      },
+      video: {
+        maxFileSize: "1GB",
+        maxFileCount: 10,
+      },
+    })
+      .input(z.object({}))
+      .middleware(async () => {
+        const session = await getSession();
+        // eslint-disable-next-line @typescript-eslint/only-throw-error -- UploadThingError maps to proper HTTP status in UploadThing
+        if (!session) throw new UploadThingError("Unauthorized");
+        if (process.env.ENABLE_BACKGROUND_UPLOAD_TEST_PAGE !== "true") {
+          // eslint-disable-next-line @typescript-eslint/only-throw-error -- UploadThingError maps to proper HTTP status in UploadThing
+          throw new UploadThingError("Background upload test page is disabled");
+        }
+
+        return {
+          userId: session.user.id,
+        };
+      })
+      .onUploadComplete(async ({ metadata, file }) => {
+        await db.insert(BackgroundUploadTestFile).values({
+          userId: metadata.userId,
+          fileKey: (file as unknown as { ufsKey?: string }).ufsKey ?? file.key,
+          fileUrl: file.ufsUrl,
+          originalFileName: file.name,
+          mimeType: file.type,
+        });
 
         return { uploadedBy: metadata.userId };
       }),
