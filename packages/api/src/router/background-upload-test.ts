@@ -1,5 +1,4 @@
-import type { TRPCRouterRecord } from "@trpc/server";
-
+import { TRPCError, type TRPCRouterRecord } from "@trpc/server";
 import { and, desc, eq } from "drizzle-orm";
 import { UTApi } from "uploadthing/server";
 import { z } from "zod/v4";
@@ -10,7 +9,10 @@ import { protectedProcedure } from "../trpc";
 
 function assertBackgroundUploadTestEnabled() {
   if (process.env.ENABLE_BACKGROUND_UPLOAD_TEST_PAGE !== "true") {
-    throw new Error("Background upload test page is disabled.");
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Background upload test page is disabled.",
+    });
   }
 }
 
