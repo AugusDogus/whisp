@@ -50,7 +50,7 @@ export const backgroundUploadTestRouter = {
       }
 
       const utapi = new UTApi();
-      await utapi.deleteFiles(file.fileKey).catch(() => undefined);
+      await utapi.deleteFiles(file.fileKey);
 
       await ctx.db
         .delete(BackgroundUploadTestFile)
