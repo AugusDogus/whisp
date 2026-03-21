@@ -152,7 +152,17 @@ async function requestUploadTargets<TInput>(
   });
 
   const text = await response.text();
-  const payload = text.length > 0 ? (JSON.parse(text) as unknown) : null;
+  let payload: unknown = null;
+  if (text.length > 0) {
+    try {
+      payload = JSON.parse(text) as unknown;
+    } catch {
+      if (response.ok) {
+        throw new Error("UploadThing returned invalid JSON.");
+      }
+      payload = { message: text };
+    }
+  }
 
   if (!response.ok) {
     const message =
