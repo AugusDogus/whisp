@@ -193,11 +193,15 @@ export default function BackgroundUploadTestScreen() {
       }
 
       appendLog(`Preparing ${result.assets.length} file(s) for upload…`);
-      const files = await Promise.all(
-        result.assets.map((asset) =>
-          createFile(asset.uri, asset.type === "video" ? "video" : "photo"),
-        ),
-      );
+      const files: Awaited<ReturnType<typeof createFile>>[] = [];
+      for (const asset of result.assets) {
+        files.push(
+          await createFile(
+            asset.uri,
+            asset.type === "video" ? "video" : "photo",
+          ),
+        );
+      }
 
       const batch = await uploadFilesWithInputInBackground(
         "backgroundUploadTestUploader",
