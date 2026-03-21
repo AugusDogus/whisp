@@ -1,6 +1,6 @@
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Linking,
   Pressable,
@@ -81,6 +81,38 @@ export default function BackgroundUploadTestScreen() {
     setLogs((current) => [makeLogEntry(message), ...current].slice(0, 100));
   }
 
+  const refreshNativeTasks = useCallback(async () => {
+    try {
+      const tasks = await listBackgroundUploadTasks();
+      setNativeTasks(tasks);
+      const nextStates = new Map<string, string>();
+      for (const task of tasks) {
+        nextStates.set(
+          task.taskId,
+          `${task.status}:${task.bytesSent}:${task.totalBytes}`,
+        );
+        const previousState = previousTaskStates.current.get(task.taskId);
+        const currentState = `${task.status}:${task.bytesSent}:${task.totalBytes}`;
+        if (previousState !== currentState) {
+          const progress =
+            task.totalBytes > 0
+              ? ` (${Math.round((task.bytesSent / task.totalBytes) * 100)}%)`
+              : "";
+          appendLog(
+            `Task ${task.taskId.slice(0, 8)} → ${task.status}${progress}`,
+          );
+        }
+      }
+      previousTaskStates.current = nextStates;
+    } catch (error) {
+      appendLog(
+        `Failed to read native background tasks: ${
+          error instanceof Error ? error.message : "unknown error"
+        }`,
+      );
+    }
+  }, []);
+
   useEffect(() => {
     if (!isBackgroundUploadTestEnabled) {
       return;
@@ -88,7 +120,7 @@ export default function BackgroundUploadTestScreen() {
 
     let isMounted = true;
 
-    async function refreshNativeTasks() {
+    async function refreshNativeTasksWithMountGuard() {
       try {
         const tasks = await listBackgroundUploadTasks();
         if (!isMounted) return;
@@ -123,9 +155,9 @@ export default function BackgroundUploadTestScreen() {
       }
     }
 
-    void refreshNativeTasks();
+    void refreshNativeTasksWithMountGuard();
     const interval = setInterval(() => {
-      void refreshNativeTasks();
+      void refreshNativeTasksWithMountGuard();
     }, 1_500);
 
     return () => {
@@ -137,7 +169,7 @@ export default function BackgroundUploadTestScreen() {
   async function handleRefresh() {
     setIsRefreshing(true);
     try {
-      await Promise.all([uploadsQuery.refetch(), listBackgroundUploadTasks()]);
+      await Promise.all([uploadsQuery.refetch(), refreshNativeTasks()]);
     } finally {
       setIsRefreshing(false);
     }
