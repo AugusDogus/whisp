@@ -218,10 +218,11 @@ export async function uploadMedia(params: UploadMediaParams): Promise<void> {
       });
   } catch (err) {
     console.error("[Upload] Failed to prepare file for upload:", err);
+    const errorMessage = err instanceof Error ? err.message : "Unknown error";
     applyFailedUploadSideEffects({
       recipients,
       isGroupSend,
-      message: "Failed to prepare media",
+      message: `Failed to prepare media: ${errorMessage}`,
     });
   }
 }

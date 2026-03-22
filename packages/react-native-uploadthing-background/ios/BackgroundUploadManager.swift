@@ -313,6 +313,17 @@ final class BackgroundUploadManager: NSObject, URLSessionDataDelegate, URLSessio
     guard let url = URL(string: value) else {
       throw BackgroundUploadManagerError.invalidUploadURL(value)
     }
+
+    // Validate URL is absolute with a scheme and host
+    guard url.scheme != nil, url.host != nil else {
+      throw BackgroundUploadManagerError.invalidUploadURL(value)
+    }
+
+    // Only allow http or https schemes
+    guard let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else {
+      throw BackgroundUploadManagerError.invalidUploadURL(value)
+    }
+
     return url
   }
 
@@ -414,7 +425,25 @@ final class BackgroundUploadManager: NSObject, URLSessionDataDelegate, URLSessio
       attributes: nil
     )
 
-    return directory.appendingPathComponent("\(taskId).multipart")
+    // Sanitize taskId to prevent path traversal and illegal characters
+    let allowedCharacters = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
+    let safeName: String
+
+    // Remove any path separators and dangerous characters
+    let cleaned = taskId.unicodeScalars.filter { allowedCharacters.contains($0) }.map { String($0) }.joined()
+
+    if cleaned.isEmpty || cleaned != taskId {
+      // If taskId contains disallowed characters or is empty after cleaning, use a hash
+      if let data = taskId.data(using: .utf8) {
+        safeName = data.map { String(format: "%02x", $0) }.joined()
+      } else {
+        safeName = "fallback-\(abs(taskId.hashValue))"
+      }
+    } else {
+      safeName = cleaned
+    }
+
+    return directory.appendingPathComponent("\(safeName).multipart")
   }
 
   private func write(data: Data, to outputStream: OutputStream) throws {
@@ -424,6 +453,9 @@ final class BackgroundUploadManager: NSObject, URLSessionDataDelegate, URLSessio
       }
 
       var totalBytesWritten = 0
+      var zeroWriteAttempts = 0
+      let maxZeroWriteAttempts = 3
+
       while totalBytesWritten < data.count {
         let bytesWritten = outputStream.write(
           baseAddress.advanced(by: totalBytesWritten),
@@ -434,7 +466,23 @@ final class BackgroundUploadManager: NSObject, URLSessionDataDelegate, URLSessio
           throw error
         }
 
-        totalBytesWritten += bytesWritten
+        if bytesWritten == 0 {
+          zeroWriteAttempts += 1
+          if zeroWriteAttempts >= maxZeroWriteAttempts {
+            if let error = outputStream.streamError {
+              throw error
+            } else {
+              throw NSError(
+                domain: "BackgroundUploadManager",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: "Output stream stalled: no progress after \(maxZeroWriteAttempts) attempts"]
+              )
+            }
+          }
+        } else {
+          zeroWriteAttempts = 0
+          totalBytesWritten += bytesWritten
+        }
       }
     }
   }
