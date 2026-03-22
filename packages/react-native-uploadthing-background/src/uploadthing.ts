@@ -14,6 +14,22 @@ const DEFAULT_MAX_WAIT_MS = 10 * 60 * 1_000;
 const PACKAGE_NAME = "react-native-uploadthing-background";
 const TERMINAL_STATUSES = new Set(["completed", "failed", "cancelled"]);
 
+export class BackgroundUploadTaskRemovedError extends Error {
+  constructor(taskId: string) {
+    super(
+      `Background upload task "${taskId}" was removed before it reached a terminal state.`,
+    );
+    this.name = "BackgroundUploadTaskRemovedError";
+  }
+}
+
+export class BackgroundUploadTimeoutError extends Error {
+  constructor(taskId: string) {
+    super(`Timed out while waiting for background upload task "${taskId}".`);
+    this.name = "BackgroundUploadTimeoutError";
+  }
+}
+
 type CompatibleUploadFile = File & { uri?: string };
 
 interface UploadthingPresignedUpload {
@@ -194,9 +210,7 @@ export async function waitForBackgroundUploadTask(
   while (true) {
     const task = await getUploadthingBackground().getTask(taskId);
     if (task == null) {
-      throw new Error(
-        `Background upload task "${taskId}" was removed before it reached a terminal state.`,
-      );
+      throw new BackgroundUploadTaskRemovedError(taskId);
     }
     if (isTerminalTask(task)) {
       const observedTask = await getUploadthingBackground()
@@ -205,9 +219,7 @@ export async function waitForBackgroundUploadTask(
       return observedTask ?? task;
     }
     if (Date.now() - startedAt >= maxWaitMs) {
-      throw new Error(
-        `Timed out while waiting for background upload task "${taskId}".`,
-      );
+      throw new BackgroundUploadTimeoutError(taskId);
     }
     await sleep(pollIntervalMs);
   }
