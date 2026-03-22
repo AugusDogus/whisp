@@ -5,6 +5,7 @@ enum BackgroundUploadManagerError: LocalizedError {
   case invalidFileURI(String)
   case invalidUploadURL(String)
   case missingMultipartStream
+  case duplicateActiveTaskId(String)
 
   var errorDescription: String? {
     switch self {
@@ -14,6 +15,8 @@ enum BackgroundUploadManagerError: LocalizedError {
       return "The upload URL \"\(value)\" is invalid."
     case .missingMultipartStream:
       return "Failed to create a writable multipart body stream."
+    case .duplicateActiveTaskId(let taskId):
+      return "A background upload task with id \"\(taskId)\" is already active."
     }
   }
 }
@@ -56,6 +59,12 @@ final class BackgroundUploadManager: NSObject, URLSessionDataDelegate, URLSessio
 
   func enqueueUpload(request: BackgroundUploadRequest) -> Promise<BackgroundUploadTask> {
     Promise.parallel { [self] in
+      if let existingTask = store.task(taskId: request.taskId),
+        existingTask.status == .queued || existingTask.status == .uploading
+      {
+        throw BackgroundUploadManagerError.duplicateActiveTaskId(request.taskId)
+      }
+
       let uploadURL = try makeUploadURL(from: request.url)
       let sourceFileURL = try makeLocalFileURL(from: request.fileUri)
       let method = (request.method ?? "PUT").uppercased()
@@ -247,15 +256,17 @@ final class BackgroundUploadManager: NSObject, URLSessionDataDelegate, URLSessio
     task: URLSessionTask,
     didCompleteWithError error: (any Error)?
   ) {
+    let responseBody = queue.sync {
+      let data = self.responseData.removeValue(forKey: task.taskIdentifier)
+      return data.flatMap { String(data: $0, encoding: .utf8) }
+    }
+
     guard let record = store.record(forSessionTaskIdentifier: task.taskIdentifier) else {
       return
     }
 
     let responseCode = (task.response as? HTTPURLResponse)?.statusCode
     queue.async {
-      let data = self.responseData.removeValue(forKey: task.taskIdentifier)
-      let responseBody = data.flatMap { String(data: $0, encoding: .utf8) }
-
       _ = self.store.update(taskId: record.taskId) { record in
         record.responseCode = responseCode.map(Double.init)
         record.responseBody = responseBody
