@@ -12,6 +12,8 @@ import {
   markWhispUploading,
 } from "~/utils/outbox-status";
 import {
+  BackgroundUploadTaskRemovedError,
+  BackgroundUploadTimeoutError,
   createFile,
   removeBackgroundUploadTask,
   type BackgroundUploadTask,
@@ -184,6 +186,7 @@ export async function uploadMedia(params: UploadMediaParams): Promise<void> {
     );
 
     let tasksForCleanup: BackgroundUploadTask[] = backgroundBatch.tasks;
+    let shouldCleanupTasks = true;
 
     void backgroundBatch.completion
       .then((tasks) => {
@@ -208,6 +211,14 @@ export async function uploadMedia(params: UploadMediaParams): Promise<void> {
         });
       })
       .catch((err: unknown) => {
+        if (
+          err instanceof BackgroundUploadTimeoutError ||
+          err instanceof BackgroundUploadTaskRemovedError
+        ) {
+          // Let foreground reconciliation observe terminal state and remove safely.
+          shouldCleanupTasks = false;
+          return;
+        }
         applyFailedUploadSideEffects({
           recipients,
           isGroupSend,
@@ -215,7 +226,9 @@ export async function uploadMedia(params: UploadMediaParams): Promise<void> {
         });
       })
       .finally(() => {
-        void cleanupBackgroundTasks(tasksForCleanup);
+        if (shouldCleanupTasks) {
+          void cleanupBackgroundTasks(tasksForCleanup);
+        }
       });
   } catch (err) {
     console.error("[Upload] Failed to prepare file for upload:", err);

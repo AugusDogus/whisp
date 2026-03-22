@@ -1,4 +1,6 @@
 import {
+  BackgroundUploadTaskRemovedError,
+  BackgroundUploadTimeoutError,
   createUploadthingBackgroundClient,
   listBackgroundUploadTasks,
   markBackgroundUploadTaskObserved,
@@ -37,6 +39,8 @@ export const { uploadFilesWithInputInBackground } =
   });
 
 export {
+  BackgroundUploadTaskRemovedError,
+  BackgroundUploadTimeoutError,
   listBackgroundUploadTasks,
   markBackgroundUploadTaskObserved,
   removeBackgroundUploadTask,

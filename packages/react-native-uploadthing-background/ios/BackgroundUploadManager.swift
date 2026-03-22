@@ -397,8 +397,9 @@ final class BackgroundUploadManager: NSObject, URLSessionDataDelegate, URLSessio
     var buffer = [UInt8](repeating: 0, count: bufferSize)
     while inputStream.hasBytesAvailable {
       let bytesRead = inputStream.read(&buffer, maxLength: bufferSize)
-      if bytesRead < 0, let error = inputStream.streamError {
-        throw error
+      if bytesRead < 0 {
+        throw inputStream.streamError
+          ?? BackgroundUploadManagerError.invalidFileURI(sourceFileURL.path)
       }
       if bytesRead == 0 {
         break
@@ -470,8 +471,9 @@ final class BackgroundUploadManager: NSObject, URLSessionDataDelegate, URLSessio
           maxLength: data.count - totalBytesWritten
         )
 
-        if bytesWritten < 0, let error = outputStream.streamError {
-          throw error
+        if bytesWritten < 0 {
+          throw outputStream.streamError
+            ?? BackgroundUploadManagerError.missingMultipartStream
         }
 
         if bytesWritten == 0 {
