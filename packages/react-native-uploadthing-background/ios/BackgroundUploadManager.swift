@@ -269,9 +269,14 @@ final class BackgroundUploadManager: NSObject, URLSessionDataDelegate, URLSessio
           record.errorMessage = nsError.localizedDescription
         } else if let responseCode, !(200..<300).contains(responseCode) {
           record.status = .failed
-          record.errorMessage =
-            responseBody ??
-            HTTPURLResponse.localizedString(forStatusCode: responseCode)
+          let normalizedResponseBody =
+            responseBody?.trimmingCharacters(in: .whitespacesAndNewlines)
+          if let normalizedResponseBody, !normalizedResponseBody.isEmpty {
+            record.errorMessage = normalizedResponseBody
+          } else {
+            record.errorMessage =
+              HTTPURLResponse.localizedString(forStatusCode: responseCode)
+          }
         } else {
           record.status = .completed
           record.bytesSent = max(record.bytesSent, record.totalBytes)
@@ -358,18 +363,20 @@ final class BackgroundUploadManager: NSObject, URLSessionDataDelegate, URLSessio
 
     try write(data: Data(header.utf8), to: outputStream)
 
-    let inputStream = InputStream(url: sourceFileURL)
-    inputStream?.open()
-    if let inputStream, inputStream.streamStatus == .error {
+    guard let inputStream = InputStream(url: sourceFileURL) else {
+      throw BackgroundUploadManagerError.invalidFileURI(sourceFileURL.path)
+    }
+    inputStream.open()
+    if inputStream.streamStatus == .error {
       throw inputStream.streamError ?? BackgroundUploadManagerError.invalidFileURI(sourceFileURL.path)
     }
     defer {
-      inputStream?.close()
+      inputStream.close()
     }
 
     let bufferSize = 64 * 1024
     var buffer = [UInt8](repeating: 0, count: bufferSize)
-    while let inputStream, inputStream.hasBytesAvailable {
+    while inputStream.hasBytesAvailable {
       let bytesRead = inputStream.read(&buffer, maxLength: bufferSize)
       if bytesRead < 0, let error = inputStream.streamError {
         throw error

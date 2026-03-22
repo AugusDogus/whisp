@@ -54,6 +54,12 @@ const withUploadthingBackground = (config, options = {}) => {
       modConfig.modResults,
     );
 
+    ensurePermission(manifest, "android.permission.FOREGROUND_SERVICE");
+    ensurePermission(
+      manifest,
+      "android.permission.FOREGROUND_SERVICE_DATA_SYNC",
+    );
+
     if (options.addPostNotificationsPermission !== false) {
       ensurePermission(manifest, "android.permission.POST_NOTIFICATIONS");
     }

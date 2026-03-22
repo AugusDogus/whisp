@@ -71,16 +71,37 @@ class HybridUploadthingBackground : HybridUploadthingBackgroundSpec() {
     val context = requireContext()
     WorkManager.getInstance(context).cancelUniqueWork(uniqueWorkName(taskId))
     BackgroundUploadStore.update(context, taskId) { existing ->
-      existing.copy(
-        status = BackgroundUploadTaskStatus.CANCELLED,
-        errorMessage = "The upload was cancelled.",
-      )
+      if (
+        existing.status == BackgroundUploadTaskStatus.COMPLETED ||
+        existing.status == BackgroundUploadTaskStatus.FAILED ||
+        existing.status == BackgroundUploadTaskStatus.CANCELLED
+      ) {
+        existing
+      } else {
+        existing.copy(
+          status = BackgroundUploadTaskStatus.CANCELLED,
+          errorMessage = "The upload was cancelled.",
+        )
+      }
     }
     Unit
   }
 
   override fun removeTask(taskId: String): Promise<Unit> = Promise.parallel {
-    BackgroundUploadStore.remove(requireContext(), taskId)
+    val context = requireContext()
+    val record = BackgroundUploadStore.getRecord(context, taskId)
+    if (record == null) return@Promise.parallel Unit
+
+    if (
+      record.status == BackgroundUploadTaskStatus.COMPLETED ||
+      record.status == BackgroundUploadTaskStatus.FAILED ||
+      record.status == BackgroundUploadTaskStatus.CANCELLED
+    ) {
+      BackgroundUploadStore.remove(context, taskId)
+    } else {
+      BackgroundUploadStore.markPendingRemoval(context, taskId)
+      WorkManager.getInstance(context).cancelUniqueWork(uniqueWorkName(taskId))
+    }
     Unit
   }
 

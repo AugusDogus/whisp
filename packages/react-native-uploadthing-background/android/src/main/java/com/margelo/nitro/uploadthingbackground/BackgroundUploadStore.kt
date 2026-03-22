@@ -7,6 +7,8 @@ import org.json.JSONObject
 internal object BackgroundUploadStore {
   private const val PREFS_NAME = "uploadthing_background_uploads"
   private const val TASKS_KEY = "tasks"
+  private const val MAX_PERSISTED_TASKS = 100
+  private const val COMPLETED_TASK_RETENTION_MS = 24 * 60 * 60 * 1000.0
   private val lock = Any()
 
   fun activeTaskCount(context: Context): Int = synchronized(lock) {
@@ -123,6 +125,18 @@ internal object BackgroundUploadStore {
       removed
     }
 
+  fun markPendingRemoval(
+    context: Context,
+    taskId: String,
+  ): StoredBackgroundUploadTaskRecord? = synchronized(lock) {
+    val records = readAll(context).toMutableMap()
+    val existing = records[taskId] ?: return null
+    val updated = existing.copy(pendingRemoval = true, updatedAt = nowMs())
+    records[taskId] = updated
+    persist(context, records)
+    updated
+  }
+
   private fun readAll(context: Context): Map<String, StoredBackgroundUploadTaskRecord> {
     val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     val raw = prefs.getString(TASKS_KEY, null) ?: return emptyMap()
@@ -132,7 +146,7 @@ internal object BackgroundUploadStore {
     json.keys().forEach { key ->
       records[key] = StoredBackgroundUploadTaskRecord.fromJson(json.getJSONObject(key))
     }
-    return records
+    return pruneTasks(records)
   }
 
   private fun persist(
@@ -140,7 +154,8 @@ internal object BackgroundUploadStore {
     records: Map<String, StoredBackgroundUploadTaskRecord>,
   ) {
     val json = JSONObject()
-    for ((taskId, record) in records) {
+    val prunedRecords = pruneTasks(records)
+    for ((taskId, record) in prunedRecords) {
       json.put(taskId, record.toJson())
     }
 
@@ -152,6 +167,28 @@ internal object BackgroundUploadStore {
   }
 
   private fun nowMs(): Double = System.currentTimeMillis().toDouble()
+
+  private fun pruneTasks(
+    records: Map<String, StoredBackgroundUploadTaskRecord>,
+  ): Map<String, StoredBackgroundUploadTaskRecord> {
+    if (records.isEmpty()) return records
+
+    val now = nowMs()
+    val terminalStatuses = setOf(
+      BackgroundUploadTaskStatus.COMPLETED,
+      BackgroundUploadTaskStatus.FAILED,
+      BackgroundUploadTaskStatus.CANCELLED,
+    )
+
+    return records.values
+      .filterNot { record ->
+        record.status in terminalStatuses &&
+          now - record.updatedAt > COMPLETED_TASK_RETENTION_MS
+      }
+      .sortedByDescending { it.updatedAt }
+      .take(MAX_PERSISTED_TASKS)
+      .associateBy { it.taskId }
+  }
 }
 
 internal data class StoredBackgroundUploadTaskRecord(
@@ -170,6 +207,7 @@ internal data class StoredBackgroundUploadTaskRecord(
   val updatedAt: Double,
   val observedAt: Double?,
   val attemptId: String?,
+  val pendingRemoval: Boolean,
   val method: String,
   val headers: List<BackgroundUploadHeader>,
   val notificationTitle: String?,
@@ -210,6 +248,7 @@ internal data class StoredBackgroundUploadTaskRecord(
     json.put("updatedAt", updatedAt)
     json.put("observedAt", observedAt)
     json.put("attemptId", attemptId)
+    json.put("pendingRemoval", pendingRemoval)
     json.put("method", method)
     json.put(
       "headers",
@@ -248,6 +287,7 @@ internal data class StoredBackgroundUploadTaskRecord(
         updatedAt = now,
         observedAt = null,
         attemptId = null,
+        pendingRemoval = false,
         method = request.method ?: "PUT",
         headers = request.headers?.toList() ?: emptyList(),
         notificationTitle = request.notificationTitle,
@@ -290,6 +330,7 @@ internal data class StoredBackgroundUploadTaskRecord(
           null
         },
         attemptId = json.optString("attemptId").takeUnless { json.isNull("attemptId") },
+        pendingRemoval = json.optBoolean("pendingRemoval", false),
         method = json.optString("method", "PUT"),
         headers = headers,
         notificationTitle = json.optString("notificationTitle")
