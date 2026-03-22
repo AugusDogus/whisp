@@ -61,11 +61,6 @@
     "react-native": ">=0.81.0",
     "react-native-nitro-modules": ">=0.35.2"
   },
-  "peerDependenciesMeta": {
-    "expo": {
-      "optional": true
-    }
-  },
   "dependencies": {
     "uploadthing": "catalog:"
   },

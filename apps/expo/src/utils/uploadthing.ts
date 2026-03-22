@@ -15,17 +15,16 @@ export type { BackgroundUploadTask } from "react-native-uploadthing-background";
 
 export function uploadthingFetch(input: RequestInfo | URL, init?: RequestInit) {
   const cookies = authClient.getCookie();
-  const betterAuthHeaders = {
-    Cookie: cookies,
-  };
+  const headers = new Headers(init?.headers);
+  if (typeof cookies === "string" && cookies.length > 0) {
+    headers.set("Cookie", cookies);
+  }
+  const resolvedInput = input instanceof URL ? input.toString() : input;
 
-  return fetch(input, {
+  return fetch(resolvedInput, {
     ...(init as RequestInit),
     credentials: "include",
-    headers: {
-      ...init?.headers,
-      ...betterAuthHeaders,
-    },
+    headers,
   });
 }
 

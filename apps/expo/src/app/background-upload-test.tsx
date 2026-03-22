@@ -81,29 +81,33 @@ export default function BackgroundUploadTestScreen() {
     setLogs((current) => [makeLogEntry(message), ...current].slice(0, 100));
   }
 
+  function applyNativeTasksSnapshot(tasks: BackgroundUploadTask[]) {
+    setNativeTasks(tasks);
+    const nextStates = new Map<string, string>();
+    for (const task of tasks) {
+      nextStates.set(
+        task.taskId,
+        `${task.status}:${task.bytesSent}:${task.totalBytes}`,
+      );
+      const previousState = previousTaskStates.current.get(task.taskId);
+      const currentState = `${task.status}:${task.bytesSent}:${task.totalBytes}`;
+      if (previousState !== currentState) {
+        const progress =
+          task.totalBytes > 0
+            ? ` (${Math.round((task.bytesSent / task.totalBytes) * 100)}%)`
+            : "";
+        appendLog(
+          `Task ${task.taskId.slice(0, 8)} → ${task.status}${progress}`,
+        );
+      }
+    }
+    previousTaskStates.current = nextStates;
+  }
+
   const refreshNativeTasks = useCallback(async () => {
     try {
       const tasks = await listBackgroundUploadTasks();
-      setNativeTasks(tasks);
-      const nextStates = new Map<string, string>();
-      for (const task of tasks) {
-        nextStates.set(
-          task.taskId,
-          `${task.status}:${task.bytesSent}:${task.totalBytes}`,
-        );
-        const previousState = previousTaskStates.current.get(task.taskId);
-        const currentState = `${task.status}:${task.bytesSent}:${task.totalBytes}`;
-        if (previousState !== currentState) {
-          const progress =
-            task.totalBytes > 0
-              ? ` (${Math.round((task.bytesSent / task.totalBytes) * 100)}%)`
-              : "";
-          appendLog(
-            `Task ${task.taskId.slice(0, 8)} → ${task.status}${progress}`,
-          );
-        }
-      }
-      previousTaskStates.current = nextStates;
+      applyNativeTasksSnapshot(tasks);
     } catch (error) {
       appendLog(
         `Failed to read native background tasks: ${
@@ -124,27 +128,7 @@ export default function BackgroundUploadTestScreen() {
       try {
         const tasks = await listBackgroundUploadTasks();
         if (!isMounted) return;
-
-        setNativeTasks(tasks);
-        const nextStates = new Map<string, string>();
-        for (const task of tasks) {
-          nextStates.set(
-            task.taskId,
-            `${task.status}:${task.bytesSent}:${task.totalBytes}`,
-          );
-          const previousState = previousTaskStates.current.get(task.taskId);
-          const currentState = `${task.status}:${task.bytesSent}:${task.totalBytes}`;
-          if (previousState !== currentState) {
-            const progress =
-              task.totalBytes > 0
-                ? ` (${Math.round((task.bytesSent / task.totalBytes) * 100)}%)`
-                : "";
-            appendLog(
-              `Task ${task.taskId.slice(0, 8)} → ${task.status}${progress}`,
-            );
-          }
-        }
-        previousTaskStates.current = nextStates;
+        applyNativeTasksSnapshot(tasks);
       } catch (error) {
         if (!isMounted) return;
         appendLog(
@@ -195,6 +179,9 @@ export default function BackgroundUploadTestScreen() {
       appendLog(`Preparing ${result.assets.length} file(s) for upload…`);
       const files: Awaited<ReturnType<typeof createFile>>[] = [];
       for (const asset of result.assets) {
+        appendLog(
+          `Preparing ${asset.fileName ?? asset.uri.split("/").pop() ?? "file"}…`,
+        );
         files.push(
           await createFile(
             asset.uri,

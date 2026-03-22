@@ -144,6 +144,10 @@ class UploadthingBackgroundWorker(
         return@withContext Result.success()
       }
 
+      if (finalUpdate.pendingRemoval) {
+        BackgroundUploadStore.remove(applicationContext, taskId)
+      }
+
       if (uploadResult.isSuccessful) {
         Result.success()
       } else {
@@ -162,10 +166,15 @@ class UploadthingBackgroundWorker(
           errorMessage = "The upload was cancelled.",
         )
       }
+      BackgroundUploadStore.getRecord(applicationContext, taskId)?.let { record ->
+        if (record.pendingRemoval) {
+          BackgroundUploadStore.remove(applicationContext, taskId)
+        }
+      }
       Result.failure()
     } catch (ioError: IOException) {
       val shouldRetry = runAttemptCount < 2
-      BackgroundUploadStore.updateForAttempt(
+      val updatedRecord = BackgroundUploadStore.updateForAttempt(
         applicationContext,
         taskId,
         attemptId,
@@ -179,9 +188,12 @@ class UploadthingBackgroundWorker(
           errorMessage = ioError.localizedMessage ?: "The upload failed.",
         )
       }
+      if (updatedRecord?.pendingRemoval == true && !shouldRetry) {
+        BackgroundUploadStore.remove(applicationContext, taskId)
+      }
       if (shouldRetry) Result.retry() else Result.failure()
     } catch (error: Throwable) {
-      BackgroundUploadStore.updateForAttempt(
+      val updatedRecord = BackgroundUploadStore.updateForAttempt(
         applicationContext,
         taskId,
         attemptId,
@@ -190,6 +202,9 @@ class UploadthingBackgroundWorker(
           status = BackgroundUploadTaskStatus.FAILED,
           errorMessage = error.localizedMessage ?: "The upload failed.",
         )
+      }
+      if (updatedRecord?.pendingRemoval == true) {
+        BackgroundUploadStore.remove(applicationContext, taskId)
       }
       Result.failure()
     }

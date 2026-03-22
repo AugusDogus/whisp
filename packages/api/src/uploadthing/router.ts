@@ -19,6 +19,10 @@ interface CreateDeps {
   getSession: () => Promise<{ user: { id: string } } | null>;
 }
 
+function getFileKey(file: { key: string; ufsUrl: string }): string {
+  return (file as unknown as { ufsKey?: string }).ufsKey ?? file.key;
+}
+
 export function createUploadRouter({ getSession }: CreateDeps) {
   const f = createUploadthing();
 
@@ -92,7 +96,7 @@ export function createUploadRouter({ getSession }: CreateDeps) {
           senderId: metadata.userId,
           groupId: metadata.groupId ?? undefined,
           fileUrl: file.ufsUrl,
-          fileKey: (file as unknown as { ufsKey?: string }).ufsKey ?? undefined,
+          fileKey: getFileKey(file),
           mimeType: metadata.mimeType,
           thumbhash: metadata.thumbhash,
         });
@@ -202,13 +206,16 @@ export function createUploadRouter({ getSession }: CreateDeps) {
         };
       })
       .onUploadComplete(async ({ metadata, file }) => {
-        await db.insert(BackgroundUploadTestFile).values({
-          userId: metadata.userId,
-          fileKey: (file as unknown as { ufsKey?: string }).ufsKey ?? file.key,
-          fileUrl: file.ufsUrl,
-          originalFileName: file.name,
-          mimeType: file.type,
-        });
+        await db
+          .insert(BackgroundUploadTestFile)
+          .values({
+            userId: metadata.userId,
+            fileKey: getFileKey(file),
+            fileUrl: file.ufsUrl,
+            originalFileName: file.name,
+            mimeType: file.type,
+          })
+          .onConflictDoNothing({ target: BackgroundUploadTestFile.fileKey });
 
         return { uploadedBy: metadata.userId };
       }),
