@@ -267,7 +267,12 @@ export default function BackgroundUploadTestScreen() {
   return (
     <SafeAreaView className="flex-1 bg-background">
       <View className="flex-row items-center justify-between px-4 py-3">
-        <Pressable onPress={() => navigation.goBack()} className="p-2">
+        <Pressable
+          onPress={() => navigation.goBack()}
+          className="p-2"
+          accessibilityLabel="Back"
+          accessibilityRole="button"
+        >
           <Ionicons name="chevron-back" size={24} color="white" />
         </Pressable>
         <Text className="text-lg font-semibold">Background Upload Test</Text>
