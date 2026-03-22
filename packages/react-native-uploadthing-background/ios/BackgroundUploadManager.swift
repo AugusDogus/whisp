@@ -354,10 +354,14 @@ final class BackgroundUploadManager: NSObject, URLSessionDataDelegate, URLSessio
       .replacingOccurrences(of: "\r", with: "_")
       .replacingOccurrences(of: "\n", with: "_")
       .replacingOccurrences(of: "\"", with: "_")
+    let escapedMimeType = request.mimeType
+      .replacingOccurrences(of: "\r", with: "_")
+      .replacingOccurrences(of: "\n", with: "_")
+      .replacingOccurrences(of: "\"", with: "_")
     let header = """
       --\(boundary)\r
       Content-Disposition: form-data; name=\"file\"; filename=\"\(escapedFileName)\"\r
-      Content-Type: \(request.mimeType)\r
+      Content-Type: \(escapedMimeType)\r
       \r
       """
       .replacingOccurrences(of: "\n", with: "\r\n")
