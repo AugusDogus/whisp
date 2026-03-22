@@ -201,14 +201,11 @@
         "typescript": "catalog:",
       },
       "peerDependencies": {
-        "expo": "*",
-        "react": "*",
-        "react-native": "*",
-        "react-native-nitro-modules": "*",
+        "expo": ">=54.0.0",
+        "react": ">=19.0.0",
+        "react-native": ">=0.81.0",
+        "react-native-nitro-modules": ">=0.35.2",
       },
-      "optionalPeers": [
-        "expo",
-      ],
     },
     "packages/ui": {
       "name": "@acme/ui",
