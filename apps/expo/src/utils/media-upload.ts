@@ -151,7 +151,8 @@ async function generateThumbhash(
  */
 export async function uploadMedia(params: UploadMediaParams): Promise<void> {
   const { uri, type, recipients, groupId } = params;
-  const isGroupSend = Boolean(groupId);
+  const normalizedGroupId = groupId?.trim();
+  const isGroupSend = Boolean(normalizedGroupId);
 
   const mediaKind: MediaKind = type === "video" ? "video" : "photo";
 
@@ -166,12 +167,12 @@ export async function uploadMedia(params: UploadMediaParams): Promise<void> {
     const mimeType =
       file.type || (type === "photo" ? "image/jpeg" : "video/mp4");
 
-    if (isGroupSend && (!groupId || groupId.trim().length === 0)) {
+    if (isGroupSend && !normalizedGroupId) {
       throw new Error("A group upload requires a valid groupId.");
     }
 
     const uploadInput = isGroupSend
-      ? { groupId, mimeType, thumbhash }
+      ? { groupId: normalizedGroupId, mimeType, thumbhash }
       : { recipients, mimeType, thumbhash };
 
     const backgroundBatch = await uploadFilesWithInputInBackground(

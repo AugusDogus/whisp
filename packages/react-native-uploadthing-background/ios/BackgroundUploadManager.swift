@@ -359,13 +359,17 @@ final class BackgroundUploadManager: NSObject, URLSessionDataDelegate, URLSessio
       .replacingOccurrences(of: "\n", with: "_")
       .replacingOccurrences(of: "\"", with: "_")
     let header = """
-      --\(boundary)\r
-      Content-Disposition: form-data; name=\"file\"; filename=\"\(escapedFileName)\"\r
-      Content-Type: \(escapedMimeType)\r
-      \r
+      --\(boundary)
+      Content-Disposition: form-data; name=\"file\"; filename=\"\(escapedFileName)\"
+      Content-Type: \(escapedMimeType)
+
       """
       .replacingOccurrences(of: "\n", with: "\r\n")
-    let footer = "\r\n--\(boundary)--\r\n"
+    let footer = """
+
+      --\(boundary)--
+      """
+      .replacingOccurrences(of: "\n", with: "\r\n")
 
     guard let outputStream = OutputStream(url: bodyURL, append: false) else {
       throw BackgroundUploadManagerError.missingMultipartStream
