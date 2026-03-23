@@ -6,7 +6,7 @@ extension Notification.Name {
   )
 }
 
-private enum StoredBackgroundUploadTaskStatus: String, Codable {
+enum StoredBackgroundUploadTaskStatus: String, Codable {
   case queued
   case uploading
   case completed
@@ -29,7 +29,7 @@ private enum StoredBackgroundUploadTaskStatus: String, Codable {
   }
 }
 
-private struct StoredBackgroundUploadHeader: Codable {
+struct StoredBackgroundUploadHeader: Codable {
   let key: String
   let value: String
 }

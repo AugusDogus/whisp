@@ -423,7 +423,7 @@ final class BackgroundUploadManager: NSObject, URLSessionDataDelegate, URLSessio
 
     let totalBytes =
       Double(Data(header.utf8).count) +
-      sourceFileSize(for: sourceFileURL) +
+      (try sourceFileSize(for: sourceFileURL)) +
       Double(Data(footer.utf8).count)
 
     return (bodyURL, contentType, totalBytes)

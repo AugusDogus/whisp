@@ -93,3 +93,43 @@ export const createFile = async (
   const rnFormDataCompatibleFile = Object.assign(file, { uri: processedUri });
   return rnFormDataCompatibleFile;
 };
+
+type CreateUriBackedFileParams = {
+  uri: string;
+  fileName: string;
+  mimeType?: string;
+  size?: number;
+  lastModified?: number;
+};
+
+/**
+ * Creates a React Native FormData-compatible File object without loading bytes
+ * into JS memory. Useful for large local files selected via DocumentPicker.
+ */
+export const createUriBackedFile = ({
+  uri,
+  fileName,
+  mimeType,
+  size,
+  lastModified,
+}: CreateUriBackedFileParams): File => {
+  const file = new File([], fileName, {
+    type: mimeType ?? "application/octet-stream",
+    lastModified: lastModified ?? Date.now(),
+  });
+
+  const rnFormDataCompatibleFile = Object.assign(file, { uri });
+
+  if (typeof size === "number" && Number.isFinite(size) && size >= 0) {
+    try {
+      Object.defineProperty(rnFormDataCompatibleFile, "size", {
+        value: size,
+        configurable: true,
+      });
+    } catch {
+      // Keep default size if runtime disallows overriding File.size.
+    }
+  }
+
+  return rnFormDataCompatibleFile;
+};
