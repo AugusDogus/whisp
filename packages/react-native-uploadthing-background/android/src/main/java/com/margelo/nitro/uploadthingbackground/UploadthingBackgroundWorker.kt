@@ -8,6 +8,7 @@ import java.io.BufferedInputStream
 import java.io.DataOutputStream
 import java.io.File
 import java.io.IOException
+import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlin.coroutines.cancellation.CancellationException
@@ -28,33 +29,25 @@ class UploadthingBackgroundWorker(
     val attemptId = id.toString()
 
     try {
-      val sourceFile = resolveLocalFile(initialRecord.fileUri)
-      val isPutUpload = initialRecord.method.uppercase() == "PUT"
+      val sourceFileRef = resolveLocalFile(initialRecord.fileUri)
+      val sourceFile = sourceFileRef.file
       val sanitizedFileName = initialRecord.fileName
         .replace("\r", "_")
         .replace("\n", "_")
         .replace("\"", "_")
       val boundary = "UploadthingBackground-${initialRecord.taskId}"
-      val headerBytes = if (isPutUpload) {
-        ByteArray(0)
-      } else {
-        buildString {
-          append("--")
-          append(boundary)
-          append("\r\n")
-          append("Content-Disposition: form-data; name=\"file\"; filename=\"")
-          append(sanitizedFileName)
-          append("\"\r\n")
-          append("Content-Type: ")
-          append(initialRecord.mimeType)
-          append("\r\n\r\n")
-        }.toByteArray(Charsets.UTF_8)
-      }
-      val footerBytes = if (isPutUpload) {
-        ByteArray(0)
-      } else {
-        "\r\n--$boundary--\r\n".toByteArray(Charsets.UTF_8)
-      }
+      val headerBytes = buildString {
+        append("--")
+        append(boundary)
+        append("\r\n")
+        append("Content-Disposition: form-data; name=\"file\"; filename=\"")
+        append(sanitizedFileName)
+        append("\"\r\n")
+        append("Content-Type: ")
+        append(initialRecord.mimeType)
+        append("\r\n\r\n")
+      }.toByteArray(Charsets.UTF_8)
+      val footerBytes = "\r\n--$boundary--\r\n".toByteArray(Charsets.UTF_8)
       val totalBytes = headerBytes.size.toLong() + sourceFile.length() + footerBytes.size.toLong()
 
       val record = BackgroundUploadStore.claimForAttempt(
@@ -64,13 +57,7 @@ class UploadthingBackgroundWorker(
         totalBytes.toDouble(),
       ) ?: return@withContext Result.success()
 
-      setForeground(
-        UploadthingBackgroundNotificationHelper.createForegroundInfo(
-          applicationContext,
-          record,
-          0,
-        ),
-      )
+      safeSetForeground(record, 0)
 
       val connection = (URL(record.url).openConnection() as HttpURLConnection).apply {
         requestMethod = record.method
@@ -84,11 +71,7 @@ class UploadthingBackgroundWorker(
         if (getRequestProperty("Content-Type") == null) {
           setRequestProperty(
             "Content-Type",
-            if (isPutUpload) {
-              initialRecord.mimeType
-            } else {
-              "multipart/form-data; boundary=$boundary"
-            },
+            "multipart/form-data; boundary=$boundary",
           )
         }
         setFixedLengthStreamingMode(totalBytes)
@@ -115,6 +98,7 @@ class UploadthingBackgroundWorker(
         )
       } finally {
         connection.disconnect()
+        sourceFileRef.cleanup()
       }
 
       val finalUpdate = BackgroundUploadStore.updateForAttempt(
@@ -274,13 +258,7 @@ class UploadthingBackgroundWorker(
       throw StaleUploadAttemptException()
     }
 
-    setForeground(
-      UploadthingBackgroundNotificationHelper.createForegroundInfo(
-        applicationContext,
-        updatedRecord,
-        progressPercent,
-      ),
-    )
+    safeSetForeground(updatedRecord, progressPercent)
     setProgress(
       androidx.work.Data.Builder()
         .putLong(KEY_BYTES_SENT, bytesSent)
@@ -289,18 +267,67 @@ class UploadthingBackgroundWorker(
     )
   }
 
-  private fun resolveLocalFile(fileUri: String): File {
+  private fun resolveLocalFile(fileUri: String): ResolvedUploadSource {
     val uri = Uri.parse(fileUri)
-    if (!uri.scheme.isNullOrEmpty() && uri.scheme != "file") {
-      throw IOException("Only file:// URIs are supported for background uploads.")
+    if (uri.scheme.isNullOrEmpty() || uri.scheme == "file") {
+      val path = if (uri.scheme == "file") uri.path else fileUri
+      val file = File(path ?: throw IOException("Invalid local file path."))
+      if (!file.exists()) {
+        throw IOException("The upload file could not be found.")
+      }
+      return ResolvedUploadSource(file = file, cleanup = false)
     }
 
-    val path = if (uri.scheme == "file") uri.path else fileUri
-    val file = File(path ?: throw IOException("Invalid local file path."))
-    if (!file.exists()) {
-      throw IOException("The upload file could not be found.")
+    if (uri.scheme == "content") {
+      val inputStream = applicationContext.contentResolver.openInputStream(uri)
+        ?: throw IOException("Unable to read selected file URI.")
+      val tempFile = createTempUploadFile()
+      try {
+        inputStream.use { input ->
+          tempFile.outputStream().use { output ->
+            input.copyTo(output)
+          }
+        }
+      } catch (error: Throwable) {
+        tempFile.delete()
+        throw error
+      }
+
+      if (!tempFile.exists() || tempFile.length() <= 0L) {
+        tempFile.delete()
+        throw IOException("The upload file is empty or unavailable.")
+      }
+
+      return ResolvedUploadSource(file = tempFile, cleanup = true)
     }
-    return file
+
+    throw IOException("Unsupported file URI scheme: ${uri.scheme}")
+  }
+
+  private fun createTempUploadFile(): File {
+    val dir = File(applicationContext.cacheDir, "uploadthing-background")
+    if (!dir.exists()) {
+      dir.mkdirs()
+    }
+    return File.createTempFile("upload-", ".tmp", dir)
+  }
+
+  private suspend fun safeSetForeground(
+    record: StoredBackgroundUploadTaskRecord,
+    progressPercent: Int,
+  ) {
+    try {
+      setForeground(
+        UploadthingBackgroundNotificationHelper.createForegroundInfo(
+          applicationContext,
+          record,
+          progressPercent,
+        ),
+      )
+    } catch (_: Throwable) {
+      // Some Android versions/devices can deny foreground-service starts while
+      // background-restricted. Keep the transfer running instead of failing.
+    }
   }
 
   private fun readResponseBody(connection: HttpURLConnection): String {
@@ -318,6 +345,17 @@ class UploadthingBackgroundWorker(
     val responseBody: String,
     val isSuccessful: Boolean,
   )
+
+  private data class ResolvedUploadSource(
+    val file: File,
+    val cleanup: Boolean,
+  ) {
+    fun cleanup() {
+      if (cleanup) {
+        file.delete()
+      }
+    }
+  }
 
   companion object {
     const val KEY_TASK_ID = "taskId"

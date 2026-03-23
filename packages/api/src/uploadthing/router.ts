@@ -190,6 +190,14 @@ export function createUploadRouter({ getSession }: CreateDeps) {
         maxFileSize: "1GB",
         maxFileCount: 10,
       },
+      blob: {
+        maxFileSize: "1GB",
+        maxFileCount: 10,
+      },
+      "application/octet-stream": {
+        maxFileSize: "1GB",
+        maxFileCount: 10,
+      },
     })
       .input(z.object({}))
       .middleware(async () => {

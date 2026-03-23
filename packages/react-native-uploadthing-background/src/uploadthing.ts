@@ -276,7 +276,9 @@ export function createUploadthingBackgroundClient<TRouter extends FileRouter>(
           fileUri: ensureFileUri(file),
           fileName: file.name,
           mimeType: file.type || "application/octet-stream",
-          headers: normalizeHeaders(undefined),
+          headers: normalizeHeaders([
+            ["x-uploadthing-version", uploadthingVersion],
+          ]),
           notificationTitle:
             params.notificationTitle ?? options.notificationTitle,
           notificationBody: params.notificationBody ?? options.notificationBody,

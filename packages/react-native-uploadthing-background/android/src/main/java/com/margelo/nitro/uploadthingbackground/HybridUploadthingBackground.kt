@@ -90,17 +90,17 @@ class HybridUploadthingBackground : HybridUploadthingBackgroundSpec() {
   override fun removeTask(taskId: String): Promise<Unit> = Promise.parallel {
     val context = requireContext()
     val record = BackgroundUploadStore.getRecord(context, taskId)
-    if (record == null) return@Promise.parallel Unit
-
-    if (
-      record.status == BackgroundUploadTaskStatus.COMPLETED ||
-      record.status == BackgroundUploadTaskStatus.FAILED ||
-      record.status == BackgroundUploadTaskStatus.CANCELLED
-    ) {
-      BackgroundUploadStore.remove(context, taskId)
-    } else {
-      BackgroundUploadStore.markPendingRemoval(context, taskId)
-      WorkManager.getInstance(context).cancelUniqueWork(uniqueWorkName(taskId))
+    if (record != null) {
+      if (
+        record.status == BackgroundUploadTaskStatus.COMPLETED ||
+        record.status == BackgroundUploadTaskStatus.FAILED ||
+        record.status == BackgroundUploadTaskStatus.CANCELLED
+      ) {
+        BackgroundUploadStore.remove(context, taskId)
+      } else {
+        BackgroundUploadStore.markPendingRemoval(context, taskId)
+        WorkManager.getInstance(context).cancelUniqueWork(uniqueWorkName(taskId))
+      }
     }
     Unit
   }
