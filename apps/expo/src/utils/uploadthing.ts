@@ -19,7 +19,7 @@ export type { BackgroundUploadTask } from "react-native-uploadthing-background";
 export function uploadthingFetch(input: RequestInfo | URL, init?: RequestInit) {
   const cookies = authClient.getCookie();
   const headers = new Headers(init?.headers);
-  if (typeof cookies === "string" && cookies.length > 0) {
+  if (cookies) {
     headers.set("Cookie", cookies);
   }
   const resolvedInput = input instanceof URL ? input.toString() : input;

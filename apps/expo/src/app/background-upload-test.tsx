@@ -1,6 +1,6 @@
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Linking,
   Pressable,
@@ -23,12 +23,21 @@ import { trpc } from "~/utils/api";
 import {
   createFile,
   listBackgroundUploadTasks,
+  markBackgroundUploadTaskObserved,
+  removeBackgroundUploadTask,
   type BackgroundUploadTask,
   uploadFilesWithInputInBackground,
 } from "~/utils/uploadthing";
 
 const isBackgroundUploadTestEnabled =
   process.env.EXPO_PUBLIC_ENABLE_BACKGROUND_UPLOAD_TEST_PAGE === "true";
+const SECTION_TITLE_CLASS_NAME =
+  "pb-2 text-sm font-semibold uppercase tracking-wide text-muted";
+const TERMINAL_UPLOAD_STATUSES = new Set<BackgroundUploadTask["status"]>([
+  "completed",
+  "failed",
+  "cancelled",
+]);
 
 type LogEntry = {
   id: string;
@@ -40,6 +49,16 @@ function makeLogEntry(message: string): LogEntry {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     message: `${new Date().toLocaleTimeString()} • ${message}`,
   };
+}
+
+function getTaskStateSnapshot(task: BackgroundUploadTask): string {
+  return JSON.stringify({
+    status: task.status,
+    bytesSent: task.bytesSent,
+    totalBytes: task.totalBytes,
+    errorMessage: task.errorMessage ?? null,
+    responseCode: task.responseCode ?? null,
+  });
 }
 
 export default function BackgroundUploadTestScreen() {
@@ -85,12 +104,9 @@ export default function BackgroundUploadTestScreen() {
     setNativeTasks(tasks);
     const nextStates = new Map<string, string>();
     for (const task of tasks) {
-      nextStates.set(
-        task.taskId,
-        `${task.status}:${task.bytesSent}:${task.totalBytes}`,
-      );
+      const currentState = getTaskStateSnapshot(task);
+      nextStates.set(task.taskId, currentState);
       const previousState = previousTaskStates.current.get(task.taskId);
-      const currentState = `${task.status}:${task.bytesSent}:${task.totalBytes}`;
       if (previousState !== currentState) {
         const progress =
           task.totalBytes > 0
@@ -115,6 +131,34 @@ export default function BackgroundUploadTestScreen() {
         }`,
       );
     }
+  }, []);
+
+  const cleanupStaleBackgroundUploads = useCallback(async () => {
+    const tasks = await listBackgroundUploadTasks();
+    const terminalTasks = tasks.filter((task) =>
+      TERMINAL_UPLOAD_STATUSES.has(task.status),
+    );
+
+    await Promise.allSettled(
+      terminalTasks
+        .filter((task) => task.observedAt == null)
+        .map((task) => markBackgroundUploadTaskObserved(task.taskId)),
+    );
+
+    const refreshedTasks = await listBackgroundUploadTasks();
+    const observedTerminalTasks = refreshedTasks.filter(
+      (task) =>
+        TERMINAL_UPLOAD_STATUSES.has(task.status) && task.observedAt != null,
+    );
+
+    await Promise.allSettled(
+      observedTerminalTasks.map((task) =>
+        removeBackgroundUploadTask(task.taskId),
+      ),
+    );
+
+    const remainingTasks = await listBackgroundUploadTasks();
+    applyNativeTasksSnapshot(remainingTasks);
   }, []);
 
   useEffect(() => {
@@ -226,6 +270,16 @@ export default function BackgroundUploadTestScreen() {
               error instanceof Error ? error.message : "unknown error"
             }`,
           );
+          void uploadsQuery.refetch();
+          void cleanupStaleBackgroundUploads().catch((cleanupError) => {
+            appendLog(
+              `Failed to reconcile native background tasks: ${
+                cleanupError instanceof Error
+                  ? cleanupError.message
+                  : "unknown error"
+              }`,
+            );
+          });
         });
     } catch (error) {
       appendLog(
@@ -241,11 +295,6 @@ export default function BackgroundUploadTestScreen() {
   const uploadedFiles = uploadsQuery.data ?? [];
   const hasUploadedFiles = uploadedFiles.length > 0;
   const hasNativeTasks = nativeTasks.length > 0;
-
-  const sectionTitleClassName = useMemo(
-    () => "pb-2 text-sm font-semibold uppercase tracking-wide text-muted",
-    [],
-  );
 
   if (!isBackgroundUploadTestEnabled) {
     return (
@@ -291,9 +340,9 @@ export default function BackgroundUploadTestScreen() {
               Test background uploads without sending whisps
             </Text>
             <Text className="mt-2 text-sm text-muted">
-              Pick media, queue it through the background-upload module,
-              inspect native task logs, and delete uploaded test files when you
-              are done.
+              Pick media, queue it through the background-upload module, inspect
+              native task logs, and delete uploaded test files when you are
+              done.
             </Text>
             <View className="mt-4 gap-3">
               <Button
@@ -313,7 +362,7 @@ export default function BackgroundUploadTestScreen() {
           </View>
 
           <View>
-            <Text className={sectionTitleClassName}>
+            <Text className={SECTION_TITLE_CLASS_NAME}>
               Native background tasks
             </Text>
             <View className="gap-3">
@@ -366,7 +415,9 @@ export default function BackgroundUploadTestScreen() {
           </View>
 
           <View>
-            <Text className={sectionTitleClassName}>Uploaded test files</Text>
+            <Text className={SECTION_TITLE_CLASS_NAME}>
+              Uploaded test files
+            </Text>
             <View className="gap-3">
               {hasUploadedFiles ? (
                 uploadedFiles.map((file) => {
@@ -438,7 +489,7 @@ export default function BackgroundUploadTestScreen() {
           </View>
 
           <View>
-            <Text className={sectionTitleClassName}>Logs</Text>
+            <Text className={SECTION_TITLE_CLASS_NAME}>Logs</Text>
             <View className="bg-surface rounded-xl p-4">
               {logs.length > 0 ? (
                 logs.map((log) => (
