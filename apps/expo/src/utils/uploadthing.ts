@@ -145,6 +145,7 @@ export const createUriBackedFile = ({
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(
       `[Upload] Failed to set size for uri-backed file "${fileName}": ${message}`,
+      { cause: error },
     );
   }
 
