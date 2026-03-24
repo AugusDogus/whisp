@@ -1,4 +1,3 @@
-import { lookup } from "@uploadthing/mime-types";
 import type {
   BackgroundUploadHeader,
   BackgroundUploadTask,
@@ -8,6 +7,7 @@ import type { FileRouter } from "uploadthing/types";
 
 import { NitroModules } from "react-native-nitro-modules";
 
+import { lookup } from "@uploadthing/mime-types";
 import { version as uploadthingVersion } from "uploadthing/client";
 
 const DEFAULT_POLL_INTERVAL_MS = 1_000;
@@ -65,6 +65,7 @@ interface UploadFilesWithInputResult {
 type HeaderInput = Record<string, string> | Array<[string, string]> | undefined;
 
 let uploadthingBackground: UploadthingBackground | null = null;
+let fallbackTaskCounter = 0;
 
 function getUploadthingBackground(): UploadthingBackground {
   if (uploadthingBackground != null) {
@@ -84,7 +85,17 @@ function createTaskId(): string {
     return globalThis.crypto.randomUUID();
   }
 
-  return `utbg-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  if (typeof globalThis.crypto?.getRandomValues === "function") {
+    const bytes = new Uint8Array(8);
+    globalThis.crypto.getRandomValues(bytes);
+    const suffix = Array.from(bytes, (byte) =>
+      byte.toString(16).padStart(2, "0"),
+    ).join("");
+    return `utbg-${Date.now()}-${suffix}`;
+  }
+
+  fallbackTaskCounter += 1;
+  return `utbg-${Date.now()}-${fallbackTaskCounter.toString(36)}`;
 }
 
 function sleep(ms: number) {
@@ -96,12 +107,7 @@ function sleep(ms: number) {
 function isTerminalTask(
   task: BackgroundUploadTask | null,
 ): task is BackgroundUploadTask {
-  return (
-    task != null &&
-    TERMINAL_STATUSES.has(
-      task.status as typeof TERMINAL_STATUSES extends Set<infer T> ? T : never,
-    )
-  );
+  return task != null && TERMINAL_STATUSES.has(task.status);
 }
 
 function ensureFileUri(file: CompatibleUploadFile): string {
@@ -146,7 +152,7 @@ export function getMimeTypeForUpload(
     raw === "application/octet-stream" ||
     raw === "binary/octet-stream";
   if (!unreliable) {
-    return file.type as string;
+    return raw;
   }
   const fromName = lookup(file.name);
   if (fromName !== false) {
