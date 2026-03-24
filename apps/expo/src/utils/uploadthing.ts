@@ -130,9 +130,16 @@ export const createUriBackedFile = ({
 
   const rnFormDataCompatibleFile = Object.assign(file, { uri });
 
-  if (!(typeof size === "number" && Number.isFinite(size) && size >= 0)) {
+  if (
+    !(
+      typeof size === "number" &&
+      Number.isFinite(size) &&
+      Number.isInteger(size) &&
+      size >= 0
+    )
+  ) {
     throw new Error(
-      `[Upload] createUriBackedFile requires a finite non-negative size for "${fileName}". Received ${String(size)}.`,
+      `[Upload] createUriBackedFile requires a finite non-negative integer size for "${fileName}". Received ${String(size)}.`,
     );
   }
 

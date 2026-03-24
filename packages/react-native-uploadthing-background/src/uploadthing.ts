@@ -158,7 +158,7 @@ export function getMimeTypeForUpload(
   if (fromName !== false) {
     return fromName;
   }
-  return fallbackMimeType ?? raw ?? "application/octet-stream";
+  return fallbackMimeType ?? "application/octet-stream";
 }
 
 function resolveFetch(

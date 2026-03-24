@@ -21,7 +21,7 @@ import { Text } from "~/components/ui/text";
 import type { RootStackParamList } from "~/navigation/types";
 import { trpc } from "~/utils/api";
 import {
-  createFile,
+  createUriBackedFile,
   listBackgroundUploadTasks,
   markBackgroundUploadTaskObserved,
   removeBackgroundUploadTask,
@@ -133,33 +133,43 @@ export default function BackgroundUploadTestScreen() {
     }
   }, []);
 
-  const cleanupStaleBackgroundUploads = useCallback(async () => {
-    const tasks = await listBackgroundUploadTasks();
-    const terminalTasks = tasks.filter((task) =>
-      TERMINAL_UPLOAD_STATUSES.has(task.status),
-    );
+  const cleanupStaleBackgroundUploads = useCallback(
+    async (taskIds: string[]) => {
+      const taskIdSet = new Set(taskIds);
+      const tasks = (await listBackgroundUploadTasks()).filter((task) =>
+        taskIdSet.has(task.taskId),
+      );
+      const terminalTasks = tasks.filter((task) =>
+        TERMINAL_UPLOAD_STATUSES.has(task.status),
+      );
 
-    await Promise.allSettled(
-      terminalTasks
-        .filter((task) => task.observedAt == null)
-        .map((task) => markBackgroundUploadTaskObserved(task.taskId)),
-    );
+      await Promise.allSettled(
+        terminalTasks
+          .filter((task) => task.observedAt == null)
+          .map((task) => markBackgroundUploadTaskObserved(task.taskId)),
+      );
 
-    const refreshedTasks = await listBackgroundUploadTasks();
-    const observedTerminalTasks = refreshedTasks.filter(
-      (task) =>
-        TERMINAL_UPLOAD_STATUSES.has(task.status) && task.observedAt != null,
-    );
+      const refreshedTasks = (await listBackgroundUploadTasks()).filter(
+        (task) => taskIdSet.has(task.taskId),
+      );
+      const observedTerminalTasks = refreshedTasks.filter(
+        (task) =>
+          TERMINAL_UPLOAD_STATUSES.has(task.status) && task.observedAt != null,
+      );
 
-    await Promise.allSettled(
-      observedTerminalTasks.map((task) =>
-        removeBackgroundUploadTask(task.taskId),
-      ),
-    );
+      await Promise.allSettled(
+        observedTerminalTasks.map((task) =>
+          removeBackgroundUploadTask(task.taskId),
+        ),
+      );
 
-    const remainingTasks = await listBackgroundUploadTasks();
-    applyNativeTasksSnapshot(remainingTasks);
-  }, []);
+      const remainingTasks = (await listBackgroundUploadTasks()).filter(
+        (task) => taskIdSet.has(task.taskId),
+      );
+      applyNativeTasksSnapshot(remainingTasks);
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!isBackgroundUploadTestEnabled) {
@@ -221,16 +231,30 @@ export default function BackgroundUploadTestScreen() {
       }
 
       appendLog(`Preparing ${result.assets.length} file(s) for upload…`);
-      const files: Awaited<ReturnType<typeof createFile>>[] = [];
+      const files: File[] = [];
       for (const asset of result.assets) {
-        appendLog(
-          `Preparing ${asset.fileName ?? asset.uri.split("/").pop() ?? "file"}…`,
-        );
+        const fileName = asset.fileName ?? asset.uri.split("/").pop() ?? "file";
+        const size = asset.fileSize;
+        appendLog(`Preparing ${fileName}…`);
+        if (
+          typeof size !== "number" ||
+          !Number.isFinite(size) ||
+          !Number.isInteger(size) ||
+          size < 0
+        ) {
+          throw new Error(
+            `Image picker did not provide a valid file size for "${fileName}".`,
+          );
+        }
         files.push(
-          await createFile(
-            asset.uri,
-            asset.type === "video" ? "video" : "photo",
-          ),
+          createUriBackedFile({
+            uri: asset.uri,
+            fileName,
+            mimeType:
+              asset.mimeType ??
+              (asset.type === "video" ? "video/mp4" : "image/jpeg"),
+            size,
+          }),
         );
       }
 
@@ -249,6 +273,7 @@ export default function BackgroundUploadTestScreen() {
           .map((task) => task.taskId.slice(0, 8))
           .join(", ")}`,
       );
+      const batchTaskIds = batch.tasks.map((task) => task.taskId);
 
       void batch.completion
         .then(async (tasks) => {
@@ -271,15 +296,17 @@ export default function BackgroundUploadTestScreen() {
             }`,
           );
           void uploadsQuery.refetch();
-          void cleanupStaleBackgroundUploads().catch((cleanupError) => {
-            appendLog(
-              `Failed to reconcile native background tasks: ${
-                cleanupError instanceof Error
-                  ? cleanupError.message
-                  : "unknown error"
-              }`,
-            );
-          });
+          void cleanupStaleBackgroundUploads(batchTaskIds).catch(
+            (cleanupError) => {
+              appendLog(
+                `Failed to reconcile native background tasks: ${
+                  cleanupError instanceof Error
+                    ? cleanupError.message
+                    : "unknown error"
+                }`,
+              );
+            },
+          );
         });
     } catch (error) {
       appendLog(
