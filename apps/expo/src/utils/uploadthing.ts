@@ -1,3 +1,4 @@
+import { lookup } from "@uploadthing/mime-types";
 import {
   BackgroundUploadTaskRemovedError,
   BackgroundUploadTimeoutError,
@@ -85,8 +86,26 @@ export const createFile = async (
       ? nameFromPath
       : `whisp-${Date.now()}.${ext}`;
 
+  // RN often yields blob.type === "" or "application/octet-stream" for real media. UploadThing
+  // signs using `type || lookup(name)`; background uploads must send the same MIME on PUT.
+  const rawBlobType = blob.type?.trim() ?? "";
+  const unreliableMime =
+    rawBlobType.length === 0 ||
+    rawBlobType.toLowerCase() === "application/octet-stream" ||
+    rawBlobType.toLowerCase() === "binary/octet-stream";
+  const inferredFromName = lookup(fileName);
+  const resolvedMimeType = !unreliableMime
+    ? blob.type
+    : inferredFromName !== false
+      ? inferredFromName
+      : type === "video"
+        ? "video/mp4"
+        : type === "photo"
+          ? "image/jpeg"
+          : "application/octet-stream";
+
   const file = new File([blob], fileName, {
-    type: blob.type,
+    type: resolvedMimeType,
     lastModified: Date.now(),
   });
 
