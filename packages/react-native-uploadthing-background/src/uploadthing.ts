@@ -1,3 +1,4 @@
+import { lookup } from "@uploadthing/mime-types";
 import type {
   BackgroundUploadHeader,
   BackgroundUploadTask,
@@ -128,6 +129,28 @@ function normalizeHeaders(headers: HeaderInput): BackgroundUploadHeader[] {
   }));
 }
 
+/**
+ * RN often reports `File.type` as "" or `application/octet-stream` for real media.
+ * UploadThing signs uploads using `file.type || lookup(file.name)` on the server.
+ * We must send the same MIME in the presign POST and on the native PUT, or S3 returns 415.
+ */
+function getMimeTypeForUpload(file: CompatibleUploadFile): string {
+  const raw =
+    typeof file.type === "string" ? file.type.trim().toLowerCase() : "";
+  const unreliable =
+    raw === "" ||
+    raw === "application/octet-stream" ||
+    raw === "binary/octet-stream";
+  if (!unreliable) {
+    return file.type as string;
+  }
+  const fromName = lookup(file.name);
+  if (fromName !== false) {
+    return fromName;
+  }
+  return raw || "application/octet-stream";
+}
+
 function resolveFetch(
   fetchImpl: typeof globalThis.fetch | undefined,
 ): typeof globalThis.fetch {
@@ -160,7 +183,7 @@ async function requestUploadTargets<TInput>(
       files: files.map((file) => ({
         name: file.name,
         size: file.size,
-        type: file.type,
+        type: getMimeTypeForUpload(file),
         lastModified: file.lastModified,
       })),
       input: input ?? null,
@@ -275,7 +298,7 @@ export function createUploadthingBackgroundClient<TRouter extends FileRouter>(
           method: "PUT",
           fileUri: ensureFileUri(file),
           fileName: file.name,
-          mimeType: file.type || "application/octet-stream",
+          mimeType: getMimeTypeForUpload(file),
           headers: normalizeHeaders([
             ["x-uploadthing-version", uploadthingVersion],
           ]),

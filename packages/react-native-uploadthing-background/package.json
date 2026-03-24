@@ -62,6 +62,7 @@
     "react-native-nitro-modules": ">=0.35.2"
   },
   "dependencies": {
+    "@uploadthing/mime-types": "0.3.6",
     "uploadthing": "catalog:"
   },
   "devDependencies": {

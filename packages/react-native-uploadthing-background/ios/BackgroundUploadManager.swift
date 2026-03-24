@@ -68,28 +68,20 @@ final class BackgroundUploadManager: NSObject, URLSessionDataDelegate, URLSessio
       let uploadURL = try makeUploadURL(from: request.url)
       let sourceFileURL = try makeLocalFileURL(from: request.fileUri)
       let method = (request.method ?? "PUT").uppercased()
-      let fileSize = try sourceFileSize(for: sourceFileURL)
-      let uploadPayload: (fileURL: URL, contentType: String, totalBytes: Double, multipartFilePath: String?)
 
-      if method == "PUT" {
-        uploadPayload = (
-          fileURL: sourceFileURL,
-          contentType: request.mimeType,
-          totalBytes: fileSize,
-          multipartFilePath: nil
-        )
-      } else {
-        let multipartBody = try createMultipartBody(
-          request: request,
-          sourceFileURL: sourceFileURL
-        )
-        uploadPayload = (
-          fileURL: multipartBody.fileURL,
-          contentType: multipartBody.contentType,
-          totalBytes: multipartBody.totalBytes,
-          multipartFilePath: multipartBody.fileURL.path
-        )
-      }
+      // Match `uploadthing/client` (XHR): PUT with `multipart/form-data` and a `file` field,
+      // not raw bytes with `Content-Type: video/mp4`. The latter makes S3/ingest return 415.
+      // Android (`UploadthingBackgroundWorker`) already uses multipart; iOS previously did not.
+      let multipartBody = try createMultipartBody(
+        request: request,
+        sourceFileURL: sourceFileURL
+      )
+      let uploadPayload = (
+        fileURL: multipartBody.fileURL,
+        contentType: multipartBody.contentType,
+        totalBytes: multipartBody.totalBytes,
+        multipartFilePath: multipartBody.fileURL.path
+      )
 
       var urlRequest = URLRequest(url: uploadURL)
       urlRequest.httpMethod = method
@@ -369,18 +361,12 @@ final class BackgroundUploadManager: NSObject, URLSessionDataDelegate, URLSessio
       .replacingOccurrences(of: "\r", with: "_")
       .replacingOccurrences(of: "\n", with: "_")
       .replacingOccurrences(of: "\"", with: "_")
-    let header = """
-      --\(boundary)
-      Content-Disposition: form-data; name=\"file\"; filename=\"\(escapedFileName)\"
-      Content-Type: \(escapedMimeType)
-
-      """
-      .replacingOccurrences(of: "\n", with: "\r\n")
-    let footer = """
-
-      --\(boundary)--
-      """
-      .replacingOccurrences(of: "\n", with: "\r\n")
+    // Match Android UploadthingBackgroundWorker: exact multipart wire format (CRLF, no extra blank lines).
+    let header =
+      "--\(boundary)\r\n"
+      + "Content-Disposition: form-data; name=\"file\"; filename=\"\(escapedFileName)\"\r\n"
+      + "Content-Type: \(escapedMimeType)\r\n\r\n"
+    let footer = "\r\n--\(boundary)--\r\n"
 
     guard let outputStream = OutputStream(url: bodyURL, append: false) else {
       throw BackgroundUploadManagerError.missingMultipartStream
