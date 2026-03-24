@@ -32,6 +32,7 @@ export class BackgroundUploadTimeoutError extends Error {
 }
 
 type CompatibleUploadFile = File & { uri?: string };
+type MimeTypeUploadSource = Pick<CompatibleUploadFile, "name" | "type">;
 
 interface UploadthingPresignedUpload {
   url: string;
@@ -134,7 +135,10 @@ function normalizeHeaders(headers: HeaderInput): BackgroundUploadHeader[] {
  * UploadThing signs uploads using `file.type || lookup(file.name)` on the server.
  * We must send the same MIME in the presign POST and on the native PUT, or S3 returns 415.
  */
-function getMimeTypeForUpload(file: CompatibleUploadFile): string {
+export function getMimeTypeForUpload(
+  file: MimeTypeUploadSource,
+  fallbackMimeType?: string,
+): string {
   const raw =
     typeof file.type === "string" ? file.type.trim().toLowerCase() : "";
   const unreliable =
@@ -148,7 +152,7 @@ function getMimeTypeForUpload(file: CompatibleUploadFile): string {
   if (fromName !== false) {
     return fromName;
   }
-  return raw || "application/octet-stream";
+  return fallbackMimeType ?? raw ?? "application/octet-stream";
 }
 
 function resolveFetch(
@@ -269,6 +273,10 @@ export function createUploadthingBackgroundClient<TRouter extends FileRouter>(
     route: TEndpoint,
     params: UploadFilesWithInputParams<TInput>,
   ): Promise<UploadFilesWithInputResult> {
+    for (const file of params.files) {
+      ensureFileUri(file);
+    }
+
     const uploadTargets = await requestUploadTargets(
       options.url,
       route,
@@ -311,8 +319,17 @@ export function createUploadthingBackgroundClient<TRouter extends FileRouter>(
     } catch (error) {
       await Promise.allSettled(
         tasks.map(async (task) => {
-          await getUploadthingBackground().cancelUpload(task.taskId);
-          await getUploadthingBackground().removeTask(task.taskId);
+          try {
+            await getUploadthingBackground().cancelUpload(task.taskId);
+          } catch {
+            // Best-effort cleanup: still try to remove persisted task state.
+          }
+
+          try {
+            await getUploadthingBackground().removeTask(task.taskId);
+          } catch {
+            // Ignore cleanup failures and rethrow the original enqueue error below.
+          }
         }),
       );
       throw error instanceof Error

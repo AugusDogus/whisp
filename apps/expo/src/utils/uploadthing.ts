@@ -1,8 +1,8 @@
-import { lookup } from "@uploadthing/mime-types";
 import {
   BackgroundUploadTaskRemovedError,
   BackgroundUploadTimeoutError,
   createUploadthingBackgroundClient,
+  getMimeTypeForUpload,
   listBackgroundUploadTasks,
   markBackgroundUploadTaskObserved,
   removeBackgroundUploadTask,
@@ -86,23 +86,14 @@ export const createFile = async (
       ? nameFromPath
       : `whisp-${Date.now()}.${ext}`;
 
-  // RN often yields blob.type === "" or "application/octet-stream" for real media. UploadThing
-  // signs using `type || lookup(name)`; background uploads must send the same MIME on PUT.
-  const rawBlobType = blob.type?.trim() ?? "";
-  const unreliableMime =
-    rawBlobType.length === 0 ||
-    rawBlobType.toLowerCase() === "application/octet-stream" ||
-    rawBlobType.toLowerCase() === "binary/octet-stream";
-  const inferredFromName = lookup(fileName);
-  const resolvedMimeType = !unreliableMime
-    ? blob.type
-    : inferredFromName !== false
-      ? inferredFromName
-      : type === "video"
-        ? "video/mp4"
-        : type === "photo"
-          ? "image/jpeg"
-          : "application/octet-stream";
+  const resolvedMimeType = getMimeTypeForUpload(
+    { name: fileName, type: blob.type },
+    type === "video"
+      ? "video/mp4"
+      : type === "photo"
+        ? "image/jpeg"
+        : "application/octet-stream",
+  );
 
   const file = new File([blob], fileName, {
     type: resolvedMimeType,
@@ -117,7 +108,7 @@ type CreateUriBackedFileParams = {
   uri: string;
   fileName: string;
   mimeType?: string;
-  size?: number;
+  size: number;
   lastModified?: number;
 };
 
@@ -139,15 +130,22 @@ export const createUriBackedFile = ({
 
   const rnFormDataCompatibleFile = Object.assign(file, { uri });
 
-  if (typeof size === "number" && Number.isFinite(size) && size >= 0) {
-    try {
-      Object.defineProperty(rnFormDataCompatibleFile, "size", {
-        value: size,
-        configurable: true,
-      });
-    } catch {
-      // Keep default size if runtime disallows overriding File.size.
-    }
+  if (!(typeof size === "number" && Number.isFinite(size) && size >= 0)) {
+    throw new Error(
+      `[Upload] createUriBackedFile requires a finite non-negative size for "${fileName}". Received ${String(size)}.`,
+    );
+  }
+
+  try {
+    Object.defineProperty(rnFormDataCompatibleFile, "size", {
+      value: size,
+      configurable: true,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `[Upload] Failed to set size for uri-backed file "${fileName}": ${message}`,
+    );
   }
 
   return rnFormDataCompatibleFile;

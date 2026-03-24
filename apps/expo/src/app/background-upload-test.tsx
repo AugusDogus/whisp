@@ -10,8 +10,6 @@ import {
 } from "react-native";
 
 import { Image } from "expo-image";
-import * as DocumentPicker from "expo-document-picker";
-import * as FileSystem from "expo-file-system";
 import * as ImagePicker from "expo-image-picker";
 
 import { Ionicons } from "@expo/vector-icons";
@@ -24,7 +22,6 @@ import type { RootStackParamList } from "~/navigation/types";
 import { trpc } from "~/utils/api";
 import {
   createFile,
-  createUriBackedFile,
   listBackgroundUploadTasks,
   type BackgroundUploadTask,
   uploadFilesWithInputInBackground,
@@ -52,8 +49,6 @@ export default function BackgroundUploadTestScreen() {
   const [nativeTasks, setNativeTasks] = useState<BackgroundUploadTask[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [forceVideoMimeForDocuments, setForceVideoMimeForDocuments] =
-    useState(false);
   const previousTaskStates = useRef<Map<string, string>>(new Map());
 
   const uploadsQuery = trpc.backgroundUploadTest.list.useQuery(undefined, {
@@ -243,113 +238,6 @@ export default function BackgroundUploadTestScreen() {
     }
   }
 
-  async function handlePickDocuments() {
-    try {
-      setIsUploading(true);
-      appendLog("Opening document picker…");
-
-      const result = await DocumentPicker.getDocumentAsync({
-        type: "*/*",
-        multiple: true,
-        copyToCacheDirectory: false,
-      });
-
-      if (result.canceled) {
-        appendLog("Document picker cancelled.");
-        return;
-      }
-
-      appendLog(`Preparing ${result.assets.length} file(s) for upload…`);
-      const files: File[] = [];
-      for (const asset of result.assets) {
-        const fallbackName = asset.uri.split("/").pop() ?? "file.bin";
-        const fileName =
-          typeof asset.name === "string" && asset.name.length > 0
-            ? asset.name
-            : fallbackName;
-        const detectedMimeType =
-          typeof asset.mimeType === "string" && asset.mimeType.length > 0
-            ? asset.mimeType
-            : "application/octet-stream";
-        const mimeType = forceVideoMimeForDocuments
-          ? "video/mp4"
-          : detectedMimeType;
-        let resolvedSize =
-          typeof asset.size === "number" && asset.size > 0 ? asset.size : null;
-        if (resolvedSize == null) {
-          const info = await FileSystem.getInfoAsync(asset.uri);
-          if (info.exists && !info.isDirectory && typeof info.size === "number") {
-            resolvedSize = info.size;
-          }
-        }
-        if (resolvedSize == null || resolvedSize <= 0) {
-          appendLog(`Could not determine byte size for ${fileName}.`);
-          throw new Error(
-            `Unable to determine file size for ${fileName}; cannot request UploadThing target.`,
-          );
-        }
-
-        appendLog(
-          `Preparing ${fileName} (${mimeType}${forceVideoMimeForDocuments ? ", override enabled" : ""})…`,
-        );
-        files.push(
-          createUriBackedFile({
-            uri: asset.uri,
-            fileName,
-            mimeType,
-            size: resolvedSize,
-          }),
-        );
-      }
-
-      const batch = await uploadFilesWithInputInBackground(
-        "backgroundUploadTestUploader",
-        {
-          files,
-          input: {},
-          notificationTitle: "Testing background uploads",
-          notificationBody: `Uploading ${files.length} file(s) in the background`,
-        },
-      );
-
-      appendLog(
-        `Queued ${batch.tasks.length} background upload task(s): ${batch.tasks
-          .map((task) => task.taskId.slice(0, 8))
-          .join(", ")}`,
-      );
-
-      void batch.completion
-        .then(async (tasks) => {
-          const failedTask = tasks.find((task) => task.status !== "completed");
-          if (failedTask) {
-            appendLog(
-              `Background upload failed: ${failedTask.errorMessage ?? failedTask.status}`,
-            );
-          } else {
-            appendLog(
-              `Background upload batch completed (${tasks.length} file(s)).`,
-            );
-          }
-          await uploadsQuery.refetch();
-        })
-        .catch((error) => {
-          appendLog(
-            `Background completion watcher failed: ${
-              error instanceof Error ? error.message : "unknown error"
-            }`,
-          );
-        });
-    } catch (error) {
-      appendLog(
-        `Failed to start test upload: ${
-          error instanceof Error ? error.message : "unknown error"
-        }`,
-      );
-    } finally {
-      setIsUploading(false);
-    }
-  }
-
   const uploadedFiles = uploadsQuery.data ?? [];
   const hasUploadedFiles = uploadedFiles.length > 0;
   const hasNativeTasks = nativeTasks.length > 0;
@@ -403,36 +291,16 @@ export default function BackgroundUploadTestScreen() {
               Test background uploads without sending whisps
             </Text>
             <Text className="mt-2 text-sm text-muted">
-              Pick media or arbitrary files, queue them through the
-              background-upload module, inspect native task logs, and delete
-              uploaded test files when you are done.
+              Pick media, queue it through the background-upload module,
+              inspect native task logs, and delete uploaded test files when you
+              are done.
             </Text>
             <View className="mt-4 gap-3">
-              <Button
-                variant="secondary"
-                onPress={() =>
-                  setForceVideoMimeForDocuments((enabled) => !enabled)
-                }
-                isDisabled={isUploading}
-              >
-                {forceVideoMimeForDocuments
-                  ? "MIME Override: video/mp4 (ON)"
-                  : "MIME Override: video/mp4 (OFF)"}
-              </Button>
               <Button
                 onPress={() => void handlePickMedia()}
                 isDisabled={isUploading}
               >
                 {isUploading ? "Preparing Upload…" : "Pick Media to Upload"}
-              </Button>
-              <Button
-                variant="secondary"
-                onPress={() => void handlePickDocuments()}
-                isDisabled={isUploading}
-              >
-                {isUploading
-                  ? "Preparing Upload…"
-                  : "Pick Any File to Upload (.bin)"}
               </Button>
               <Button
                 variant="secondary"
