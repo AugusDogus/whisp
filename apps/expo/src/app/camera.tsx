@@ -218,6 +218,9 @@ export default function CameraPage(): React.ReactElement {
     navigation.setParams({ defaultRecipientId: undefined });
     navigation.navigate("Main", { screen: "Friends" });
   }, [navigation]);
+  const clearSelectedRecipientInPlace = useCallback(() => {
+    navigation.setParams({ defaultRecipientId: undefined });
+  }, [navigation]);
 
   // On focus, revalidate the session in case cookie exists but session expired
   useFocusEffect(
@@ -386,7 +389,7 @@ export default function CameraPage(): React.ReactElement {
               Sending to {selectedFriend.name}
             </Text>
             <Pressable
-              onPress={clearSelectedRecipient}
+              onPress={clearSelectedRecipientInPlace}
               style={styles.clearButton}
             >
               <Ionicons name="close-outline" size={24} color="white" />
