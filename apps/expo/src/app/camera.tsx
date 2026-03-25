@@ -4,6 +4,7 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  BackHandler,
   InteractionManager,
   Pressable,
   StyleSheet,
@@ -213,6 +214,11 @@ export default function CameraPage(): React.ReactElement {
     onFlipCameraPressed();
   }, [onFlipCameraPressed]);
 
+  const clearSelectedRecipient = useCallback(() => {
+    navigation.setParams({ defaultRecipientId: undefined });
+    navigation.navigate("Main", { screen: "Friends" });
+  }, [navigation]);
+
   // On focus, revalidate the session in case cookie exists but session expired
   useFocusEffect(
     useCallback(() => {
@@ -260,6 +266,20 @@ export default function CameraPage(): React.ReactElement {
     if (!isCameraInitialized || !isActive) return;
     void requestPermissions();
   }, [isCameraInitialized, isActive, requestPermissions]);
+
+  useEffect(() => {
+    if (!defaultRecipientId) return;
+
+    const backHandler = BackHandler.addEventListener(
+      "hardwareBackPress",
+      () => {
+        clearSelectedRecipient();
+        return true;
+      },
+    );
+
+    return () => backHandler.remove();
+  }, [clearSelectedRecipient, defaultRecipientId]);
 
   const videoHdr = format?.supportsVideoHdr && enableHdr;
   const photoHdr = format?.supportsPhotoHdr && enableHdr && !videoHdr;
@@ -364,10 +384,7 @@ export default function CameraPage(): React.ReactElement {
               Sending to {selectedFriend.name}
             </Text>
             <Pressable
-              onPress={() => {
-                // Clear the pre-selection by resetting navigation params
-                navigation.setParams({ defaultRecipientId: undefined });
-              }}
+              onPress={clearSelectedRecipient}
               style={styles.clearButton}
             >
               <Ionicons name="close-outline" size={24} color="white" />
