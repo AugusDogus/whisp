@@ -267,19 +267,21 @@ export default function CameraPage(): React.ReactElement {
     void requestPermissions();
   }, [isCameraInitialized, isActive, requestPermissions]);
 
-  useEffect(() => {
-    if (!defaultRecipientId) return;
+  useFocusEffect(
+    useCallback(() => {
+      if (!defaultRecipientId) return;
 
-    const backHandler = BackHandler.addEventListener(
-      "hardwareBackPress",
-      () => {
-        clearSelectedRecipient();
-        return true;
-      },
-    );
+      const backHandler = BackHandler.addEventListener(
+        "hardwareBackPress",
+        () => {
+          clearSelectedRecipient();
+          return true;
+        },
+      );
 
-    return () => backHandler.remove();
-  }, [clearSelectedRecipient, defaultRecipientId]);
+      return () => backHandler.remove();
+    }, [clearSelectedRecipient, defaultRecipientId]),
+  );
 
   const videoHdr = format?.supportsVideoHdr && enableHdr;
   const photoHdr = format?.supportsPhotoHdr && enableHdr && !videoHdr;
