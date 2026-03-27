@@ -32,6 +32,7 @@ export function useFriendRows({
     const senderToLatestMime = new Map<string, string | undefined>();
     for (const m of inbox) {
       if (!m) continue;
+      if (m.groupId) continue;
       const count = senderToMessages.get(m.senderId) ?? 0;
       senderToMessages.set(m.senderId, count + 1);
 

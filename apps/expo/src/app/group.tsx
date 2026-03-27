@@ -1,7 +1,7 @@
 import type { RouteProp } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   FlatList,
   Pressable,
@@ -32,7 +32,7 @@ export default function GroupScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute<RouteProp<RootStackParamList, "Group">>();
-  const { groupId } = route.params;
+  const { groupId, autoOpenUnread = false } = route.params;
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
   const iconColor = colorScheme === "dark" ? "#fff" : "#000";
@@ -58,8 +58,19 @@ export default function GroupScreen() {
 
   const { viewer, openViewer, closeViewer, onViewerTap } =
     useGroupMessageViewer(groupId);
+  const hasAutoOpenedRef = useRef(false);
 
   const isLoading = groupLoading || inboxLoading;
+
+  useEffect(() => {
+    if (!autoOpenUnread) return;
+    if (hasAutoOpenedRef.current) return;
+    if (isLoading) return;
+    if (inboxRaw.length === 0) return;
+
+    hasAutoOpenedRef.current = true;
+    openViewer(inboxRaw, 0);
+  }, [autoOpenUnread, inboxRaw, isLoading, openViewer]);
 
   const onSendWhisp = useCallback(() => {
     navigation.navigate("Main", {

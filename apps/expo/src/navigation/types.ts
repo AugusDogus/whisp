@@ -19,7 +19,7 @@ export interface RootStackParamList extends ParamListBase {
       color: string;
     }[];
   };
-  Group: { groupId: string };
+  Group: { groupId: string; autoOpenUnread?: boolean };
   GroupSettings: { groupId: string };
   GroupAddMembers: { groupId: string };
   CreateGroup: undefined;

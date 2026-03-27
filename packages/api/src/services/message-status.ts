@@ -24,6 +24,7 @@ export async function getPendingSentDeliveries(
     .where(
       and(
         inArray(MessageDelivery.recipientId, friendIds),
+        isNull(MessageDelivery.groupId),
         isNull(MessageDelivery.readAt),
       ),
     );
@@ -73,6 +74,7 @@ export async function getLastSentMimeTypes(
     .where(
       and(
         inArray(MessageDelivery.recipientId, friendIds),
+        isNull(MessageDelivery.groupId),
         eq(Message.senderId, me),
       ),
     )
@@ -126,6 +128,7 @@ export async function getLastReceivedMimeTypes(
     .where(
       and(
         eq(MessageDelivery.recipientId, me),
+        isNull(MessageDelivery.groupId),
         inArray(Message.senderId, friendIds),
       ),
     )
