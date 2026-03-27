@@ -339,7 +339,10 @@ export default function FriendsScreen() {
               whispLogo={whispLogo}
               colorScheme={colorScheme}
               onPressGroupRow={(group) => {
-                navigation.navigate("Group", { groupId: group.id });
+                navigation.navigate("Group", {
+                  groupId: group.id,
+                  autoOpenUnread: group.unreadCount > 0,
+                });
               }}
               onLongPressGroupRow={(group) => {
                 void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
