@@ -21,6 +21,10 @@ export function initAuth(options: {
     }),
     baseURL: options.baseUrl,
     secret: options.secret,
+    session: {
+      expiresIn: 60 * 60 * 24 * 400, // 400 days (max cookie lifetime browsers allow)
+      updateAge: 60 * 60 * 24 * 30, // roll the window forward on use, at most monthly
+    },
     plugins: [
       oAuthProxy({
         /**
