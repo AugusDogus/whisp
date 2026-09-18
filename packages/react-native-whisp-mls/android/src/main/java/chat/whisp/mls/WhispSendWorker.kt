@@ -10,10 +10,6 @@ import androidx.work.*
 import chat.whisp.mls.core.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
-import org.json.JSONArray
-import org.json.JSONObject
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
@@ -21,44 +17,56 @@ import java.util.concurrent.TimeUnit
 
 internal class WhispSendWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
   override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
-    // Also serializes compressor's process-wide MediaCodec state.
-    owner.withLock {
+    try {
+      val config = SendVault.get(applicationContext) ?: return@withContext Result.success()
+      val id = inputData.getString("jobId") ?: return@withContext Result.failure()
+      val job = sendJobStatuses(config).find { it.id == id } ?: return@withContext Result.success()
+      if (job.status == SendStatus.SENT || job.status == SendStatus.FAILED) return@withContext Result.success()
+      val settings = sendWorkerConfig(config)
+      // Replaced WorkManager work can still be returning from a blocking native
+      // call. Serialize only this job, including its compression and transfer.
+      val lease = acquireDeviceLease("${settings.root}/sends/$id.worker")
       try {
-        val config = SendVault.get(applicationContext) ?: return@withLock Result.success()
+        if (runAttemptCount == 0 && inputData.getBoolean("retryBlocked", false)) retrySendJob(config, id)
         setForeground(foreground())
-        val jobs = JSONArray(listSendJobs(config))
-        var retry = false
-        for (index in 0 until jobs.length()) {
-          val job = jobs.getJSONObject(index)
-          if (job.getString("id") != inputData.getString("jobId")) continue
-          if (job.getString("status") != "uploading") continue
-          try {
-            var done = false
-            while (!done) {
-              if (isStopped || SendVault.get(applicationContext) != config) return@withLock Result.retry()
-              val step = JSONObject(advanceSendJob(config, job.getString("id")))
-              when (step.getString("stage")) {
-                "compress" -> SendCompression.compress(applicationContext, step.getString("kind"), step.getString("source"), step.getString("output"))
-                "upload" -> {
-                  val successful = upload(step, JSONObject(config).getString("uploadthingVersion"))
-                  completeSendUpload(config, job.getString("id"), successful)
-                  if (!successful) { retry = true; done = true }
-                }
-                "confirm" -> { retry = true; done = true }
-                "sent", "failed" -> done = true
-                "continue" -> Unit
-                else -> error("Unknown native send checkpoint")
-              }
+        runJob(config, id, settings.uploadthingVersion)
+      } finally { lease.release() }
+    } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+    catch (_: Exception) { Result.retry() }
+  }
+  private suspend fun runJob(config: String, id: String, version: String): Result {
+    try {
+      while (true) {
+        if (isStopped || SendVault.get(applicationContext) != config) return Result.retry()
+        when (val step = advanceSendJob(config, id)) {
+          is SendStep.Compress -> {
+            try { SendCompression.compress(applicationContext, step.kind, step.source, step.output) }
+            catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (_: Exception) {
+              pauseSendJob(config, id, SendInterruption.COMPRESSION)
+              return Result.success() // Wait for explicit resume or expiry.
             }
-          } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
-          catch (_: Exception) {
-            runCatching { pauseSendJob(config, job.getString("id")) }
-            retry = true
           }
+          is SendStep.Upload -> {
+            val successful = try { upload(step.transfer, version) }
+            catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (_: java.io.IOException) { false }
+            completeSendUpload(config, id, successful)
+            if (!successful) {
+              pauseSendJob(config, id, SendInterruption.TRANSFER)
+              return Result.retry()
+            }
+          }
+          SendStep.Confirm -> return Result.retry()
+          SendStep.Sent, is SendStep.Failed -> return Result.success()
+          is SendStep.Paused -> return if (step.failure.disposition == SendDisposition.RETRY) Result.retry() else Result.success()
+          SendStep.Continue -> Unit
         }
-        if (retry) Result.retry() else Result.success()
-      } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
-      catch (_: Exception) { Result.retry() }
+      }
+    } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+    catch (_: Exception) {
+      pauseSendJob(config, id, SendInterruption.STORAGE)
+      return Result.success()
     }
   }
   private fun foreground(): ForegroundInfo {
@@ -68,12 +76,12 @@ internal class WhispSendWorker(context: Context, params: WorkerParameters) : Cor
       .setSmallIcon(android.R.drawable.stat_sys_upload).setContentTitle("Sending encrypted whisps").setOngoing(true).build()
     return if (Build.VERSION.SDK_INT >= 29) ForegroundInfo(9420, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC) else ForegroundInfo(9420, notification)
   }
-  private fun upload(step: JSONObject, version: String): Boolean {
-    val file = File(step.getString("file"))
-    val boundary = "whisp-${step.getString("id")}"
-    val head = "--$boundary\r\nContent-Disposition: form-data; name=\"file\"; filename=\"${step.getString("id")}.age\"\r\nContent-Type: application/octet-stream\r\n\r\n".toByteArray()
+  private fun upload(step: SendUpload, version: String): Boolean {
+    val file = File(step.file)
+    val boundary = "whisp-${step.id}"
+    val head = "--$boundary\r\nContent-Disposition: form-data; name=\"file\"; filename=\"${step.id}.age\"\r\nContent-Type: application/octet-stream\r\n\r\n".toByteArray()
     val tail = "\r\n--$boundary--\r\n".toByteArray()
-    val connection = URL(step.getString("url")).openConnection() as HttpURLConnection
+    val connection = URL(step.url).openConnection() as HttpURLConnection
     try {
       connection.requestMethod = "PUT"
       connection.instanceFollowRedirects = false
@@ -100,10 +108,9 @@ internal class WhispSendWorker(context: Context, params: WorkerParameters) : Cor
     } finally { connection.disconnect() }
   }
   companion object {
-    private val owner = Mutex()
     fun schedule(context: Context, id: String, restart: Boolean = false) {
       val request = OneTimeWorkRequestBuilder<WhispSendWorker>()
-        .setInputData(workDataOf("jobId" to id))
+        .setInputData(workDataOf("jobId" to id, "retryBlocked" to restart))
         .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
         .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 10, TimeUnit.SECONDS).build()
       WorkManager.getInstance(context).enqueueUniqueWork("whisp-send-$id",
@@ -111,10 +118,8 @@ internal class WhispSendWorker(context: Context, params: WorkerParameters) : Cor
     }
     fun resume(context: Context, restart: Boolean = false) {
       val config = SendVault.get(context) ?: return
-      val jobs = JSONArray(listSendJobs(config))
-      for (index in 0 until jobs.length()) {
-        val job = jobs.getJSONObject(index)
-        if (job.getString("status") == "uploading") schedule(context, job.getString("id"), restart)
+      for (job in sendJobStatuses(config)) {
+        if (job.status == SendStatus.UPLOADING || job.status == SendStatus.BLOCKED) schedule(context, job.id, restart)
       }
     }
   }

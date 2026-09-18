@@ -6,6 +6,8 @@ pub use device_lock::*;
 mod conversation;
 pub use conversation::{forget_native_descriptor, sync_native_conversation};
 mod send_api;
+mod send_types;
+pub use send_types::*;
 mod send_job;
 pub use send_job::*;
 mod error;

@@ -2,7 +2,7 @@ use crate::MlsError;
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
-use std::time::Duration;
+use std::{io::Read, time::Duration};
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -72,16 +72,8 @@ impl<'a> Api<'a> {
             .header("Cookie", &self.config.cookie)
             .header("x-trpc-source", "native-send")
             .send()
-            .map_err(|_| MlsError::protocol("send server request (retry when connected)"))?;
-        if !response.status().is_success() {
-            return Err(MlsError::Protocol {
-                operation: format!(
-                    "send server request {name} ({})",
-                    response.status().as_u16()
-                ),
-                recovery: "The queued whisp is preserved. Open Whisp to sign in or retry.".into(),
-            });
-        }
+            .map_err(|_| MlsError::Transport)?;
+        let response = successful_response(response, name)?;
         let body: Value = response
             .json()
             .map_err(|_| MlsError::protocol("send server response decoding"))?;
@@ -97,7 +89,8 @@ impl<'a> Api<'a> {
             .header("Cookie", &self.config.cookie).header("x-uploadthing-package", "react-native-uploadthing-background")
             .header("x-uploadthing-version", &self.config.uploadthing_version)
             .json(&json!({"files":[{"name":format!("{draft}.age"),"size":size,"type":"application/octet-stream","lastModified":0}],"input":{"draftId":draft}}))
-            .send().and_then(|r| r.error_for_status()).map_err(|_| MlsError::protocol("encrypted upload authorization"))?;
+            .send().map_err(|_| MlsError::Transport)?;
+        let response = successful_response(response, "authorize")?;
         let targets: Vec<Target> = response
             .json()
             .map_err(|_| MlsError::protocol("encrypted upload target decoding"))?;
@@ -111,4 +104,51 @@ impl<'a> Api<'a> {
         }
         Ok(target.url.clone())
     }
+}
+
+fn successful_response(
+    response: reqwest::blocking::Response,
+    operation: &str,
+) -> Result<reqwest::blocking::Response, MlsError> {
+    let status = response.status().as_u16();
+    if response.status().is_success() {
+        return Ok(response);
+    }
+    let fallback = match status {
+        401 => "Sign in again, then reopen Whisp to resume this send.",
+        403 => {
+            "This account cannot complete this send. Check your device and conversation membership before retrying."
+        }
+        404 | 410 => {
+            "This send's server record expired or is no longer available. Send the whisp again."
+        }
+        409 => "The conversation changed during this send. Whisp will sync and retry.",
+        412 => {
+            "This send needs updated encryption keys or membership. Open Whisp on the recipient devices, then retry."
+        }
+        400 | 413 | 422 => "The server rejected this upload. Capture and send the whisp again.",
+        _ => {
+            "The send service is temporarily unavailable. Whisp will retry; the queued whisp is preserved."
+        }
+    };
+    // Only public, actionable 4xx messages are shown. Never persist raw HTTP
+    // bodies, internal server errors, validation dumps, or signed upload URLs.
+    let message = if matches!(status, 401 | 403 | 412) {
+        let body: Value = serde_json::from_reader(response.take(4096)).unwrap_or(Value::Null);
+        body.pointer("/error/json/message")
+            .or_else(|| body.get("message"))
+            .and_then(Value::as_str)
+            .filter(|text| {
+                !text.is_empty() && text.len() <= 512 && !text.chars().any(char::is_control)
+            })
+            .unwrap_or(fallback)
+            .to_owned()
+    } else {
+        fallback.into()
+    };
+    Err(MlsError::Request {
+        operation: operation.into(),
+        status,
+        recovery: message,
+    })
 }

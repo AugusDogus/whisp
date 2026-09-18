@@ -110,7 +110,7 @@ export async function reconcileNativeSends(queryClient: QueryClient) {
   const jobs = await listNativeSends();
   if (cookie !== authClient.getCookie()) return;
   for (const job of jobs) {
-    const status = job.error ?? job.status;
+    const status = `${job.status}:${job.error ?? ""}`;
     if (observed.get(job.id) !== status) {
       observed.set(job.id, status);
       const isGroupSend = Boolean(job.groupId);
@@ -126,6 +126,7 @@ export async function reconcileNativeSends(queryClient: QueryClient) {
         applyFailedUploadSideEffects({
           recipients: job.recipients,
           isGroupSend,
+          message: job.error ?? undefined,
         });
       else if (job.error)
         applyFailedUploadSideEffects({
@@ -134,11 +135,13 @@ export async function reconcileNativeSends(queryClient: QueryClient) {
           message: job.error,
         });
     }
-    if (job.status !== "uploading") await acknowledgeNativeSend(job.id);
+    if (job.status === "sent" || job.status === "failed")
+      await acknowledgeNativeSend(job.id);
   }
   // A completed older send must not hide another queued send to the same person.
   for (const job of jobs) {
-    if (job.status !== "uploading" || job.groupId) continue;
+    if ((job.status !== "uploading" && job.status !== "blocked") || job.groupId)
+      continue;
     if (job.error) markWhispFailed(job.recipients);
     else markWhispUploading(job.recipients, job.kind);
   }

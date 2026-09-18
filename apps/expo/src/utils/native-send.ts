@@ -11,7 +11,7 @@ const jobSchema = z.object({
   kind: z.enum(["photo", "video"]),
   recipients: z.array(z.string()),
   groupId: z.string().nullable(),
-  status: z.enum(["uploading", "sent", "failed"]),
+  status: z.enum(["uploading", "blocked", "sent", "failed"]),
   error: z.string().nullable(),
   createdAt: z.number(),
 });
@@ -24,6 +24,11 @@ export async function configureNativeSends() {
     throw new Error(
       "The account changed. Retry sending on the original account.",
     );
+  if (cookie && session.error) {
+    throw new Error(
+      "Your sign-in could not be checked. Queued sends are preserved. Retry when connected.",
+    );
+  }
   if (!cookie || !session.data?.user.id) {
     await nativeSend.configure(null);
     return;

@@ -13,6 +13,12 @@ pub struct DeviceLease {
 impl DeviceLease {
     pub(crate) fn acquire(root: &str) -> Result<Self, MlsError> {
         // Outside the device directory: resetting the device must not replace the lock inode.
+        Self::open(root, false)?.ok_or_else(|| MlsError::protocol("device lock acquisition"))
+    }
+    pub(crate) fn try_acquire(root: &str) -> Result<Option<Self>, MlsError> {
+        Self::open(root, true)
+    }
+    fn open(root: &str, nonblocking: bool) -> Result<Option<Self>, MlsError> {
         let file = OpenOptions::new()
             .read(true)
             .write(true)
@@ -20,11 +26,21 @@ impl DeviceLease {
             .truncate(false)
             .open(format!("{}.lock", root.trim_end_matches('/')))
             .map_err(|_| MlsError::protocol("device lock creation"))?;
-        file.lock_exclusive()
-            .map_err(|_| MlsError::protocol("device lock acquisition"))?;
-        Ok(Self {
+        let result = if nonblocking {
+            file.try_lock_exclusive()
+        } else {
+            file.lock_exclusive()
+        };
+        match result {
+            Err(error) if nonblocking && error.kind() == std::io::ErrorKind::WouldBlock => {
+                return Ok(None);
+            }
+            Err(_) => return Err(MlsError::protocol("device lock acquisition")),
+            Ok(()) => (),
+        }
+        Ok(Some(Self {
             file: Mutex::new(Some(file)),
-        })
+        }))
     }
 }
 #[uniffi::export]
