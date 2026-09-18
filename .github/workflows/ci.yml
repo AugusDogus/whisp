@@ -74,6 +74,14 @@ jobs:
             exit 1
           fi
 
+      - name: Profile hook tests
+        working-directory: apps/expo
+        run: bun test src/hooks/useDiscordProfile.test.tsx src/hooks/useCosmeticMotion.test.tsx
+
+      - name: Nameplate playback tests
+        working-directory: apps/expo
+        run: bun test src/components/discord-nameplate.test.tsx
+
       - name: Nameplate conversion tests
         working-directory: apps/nextjs
         run: bun test src/lib/discord-nameplate.test.ts src/app/api/discord-profile

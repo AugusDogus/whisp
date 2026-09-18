@@ -10,7 +10,6 @@ import {
 } from "react-native";
 
 import Constants from "expo-constants";
-import { Image } from "expo-image";
 
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
@@ -18,6 +17,7 @@ import { Button } from "heroui-native/button";
 import { Dialog } from "heroui-native/dialog";
 import { Switch } from "heroui-native/switch";
 
+import { DiscordProfileCard } from "~/components/discord-profile-card";
 import { SafeAreaView } from "~/components/styled";
 import { Text } from "~/components/ui/text";
 import type { RootStackParamList } from "~/navigation/types";
@@ -29,6 +29,8 @@ export default function ProfileScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [profileVisible, setProfileVisible] = useState(true);
+  const profileHeight = useRef(0);
   const { data: session } = authClient.useSession();
   const colorScheme = useColorScheme();
   const iconColor = colorScheme === "dark" ? "#aaa" : "#666";
@@ -92,28 +94,36 @@ export default function ProfileScreen() {
           <Text className="text-lg font-semibold">Profile</Text>
         </View>
 
-        <ScrollView className="flex-1 px-4">
+        <ScrollView
+          className="flex-1 px-4"
+          scrollEventThrottle={100}
+          onScroll={({ nativeEvent }) => {
+            setProfileVisible(
+              nativeEvent.contentOffset.y < profileHeight.current,
+            );
+          }}
+        >
           {/* Avatar and info */}
-          <View className="items-center gap-4 pt-6">
-            <View className="bg-default size-24 items-center justify-center overflow-hidden rounded-full">
-              {session?.user.image ? (
-                <Image
-                  source={{ uri: session.user.image }}
-                  style={{ width: 96, height: 96 }}
-                  contentFit="cover"
-                />
-              ) : (
-                <Ionicons name="person" size={48} color={iconColor} />
-              )}
-            </View>
-            <View className="items-center gap-1">
-              <Text className="text-2xl font-bold">
-                {session?.user.name ?? "User"}
+          <View
+            className="gap-3 pt-2"
+            onLayout={({ nativeEvent }) => {
+              profileHeight.current = nativeEvent.layout.height;
+            }}
+          >
+            {session?.user && (
+              <DiscordProfileCard
+                key={session.user.id}
+                userId={session.user.id}
+                name={session.user.name}
+                image={session.user.image ?? null}
+                active={profileVisible}
+              />
+            )}
+            {session?.user.email && (
+              <Text className="text-center text-sm text-muted">
+                {session.user.email}
               </Text>
-              {session?.user.email && (
-                <Text className="text-sm text-muted">{session.user.email}</Text>
-              )}
-            </View>
+            )}
           </View>
 
           {/* Cards */}
