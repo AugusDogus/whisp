@@ -1,10 +1,9 @@
 import type { BetterAuthOptions } from "better-auth";
 
 import { betterAuth } from "better-auth";
-import { APIError } from "better-auth/api";
 import { oAuthProxy } from "better-auth/plugins";
 
-import { DiscordProfile } from "./discord-profile";
+import { DiscordProfileAuth } from "./discord-profile-auth";
 import { expoWithOAuthProxy } from "./expo-oauth-proxy";
 
 export function initAuth(options: {
@@ -21,6 +20,7 @@ export function initAuth(options: {
     database: options.database,
     baseURL: options.baseUrl,
     secret: options.secret,
+    databaseHooks: DiscordProfileAuth.databaseHooks,
     user: {
       additionalFields: {
         discordUsername: { type: "string", required: false, input: false },
@@ -97,16 +97,7 @@ export function initAuth(options: {
         clientId: options.discordClientId,
         clientSecret: options.discordClientSecret,
         redirectURI: `${options.productionUrl}/api/auth/callback/discord`,
-        mapProfileToUser: (profile: unknown) => {
-          const parsed = DiscordProfile.parse(profile);
-          if (!parsed.success) {
-            throw new APIError("BAD_GATEWAY", {
-              message:
-                "Discord returned unexpected profile data. Your saved profile is unchanged. Please try signing in again later.",
-            });
-          }
-          return DiscordProfile.toUserFields(parsed.data);
-        },
+        mapProfileToUser: DiscordProfileAuth.mapProfileToUser,
         overrideUserInfoOnSignIn: true,
       },
     },

@@ -169,6 +169,7 @@
       "name": "@acme/auth",
       "dependencies": {
         "@acme/db": "workspace:*",
+        "@better-auth/core": "1.6.33",
         "@better-auth/expo": "1.6.33",
         "@discordjs/rest": "^2.6.0",
         "@t3-oss/env-nextjs": "^0.13.8",

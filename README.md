@@ -328,8 +328,12 @@ in the background, without profile sync controls or error messages. Saved
 profile details remain visible when syncing fails. Avatar image recovery uses
 a forced refresh.
 
-Discord sign-in and refresh share the same validated profile mapping. Refresh
-saves the avatar URL, Discord username, and cosmetics in one database update.
+Discord sign-in and refresh share the same validated profile mapping. Sign-in
+persists server-managed fields through database hooks; clients cannot edit them.
+For preview sign-in, the OAuth proxy forwards only standard identity fields, so
+the preview fetches the full Discord profile with the verified OAuth token before
+creating the session. This writes only to the preview database. Refresh saves
+the avatar URL, Discord username, and cosmetics in one database update.
 A revision check prevents a delayed refresh from overwriting a profile saved
 by another refresh or sign-in. Failed Discord requests preserve the saved data;
 automatic refresh can retry when the profile is revisited. Existing users need
