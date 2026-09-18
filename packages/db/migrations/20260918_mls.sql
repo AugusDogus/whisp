@@ -1,0 +1,11 @@
+-- Additive migration. Apply once before deploying the MLS API.
+CREATE TABLE mls_device (id TEXT PRIMARY KEY NOT NULL, userId TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE, signatureKey TEXT NOT NULL, createdAt INTEGER NOT NULL, revokedAt INTEGER);
+CREATE TABLE mls_conversation (id TEXT PRIMARY KEY NOT NULL, scope TEXT NOT NULL UNIQUE, groupId TEXT, users TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 0, members TEXT NOT NULL);
+CREATE TABLE mls_operation (id TEXT PRIMARY KEY NOT NULL, conversationId TEXT NOT NULL REFERENCES mls_conversation(id) ON DELETE CASCADE, deviceId TEXT NOT NULL REFERENCES mls_device(id) ON DELETE CASCADE, baseRevision INTEGER NOT NULL, revision INTEGER, members TEXT NOT NULL, expiresAt INTEGER NOT NULL);
+CREATE TABLE mls_key_package (id TEXT PRIMARY KEY NOT NULL, deviceId TEXT NOT NULL REFERENCES mls_device(id) ON DELETE CASCADE, data TEXT NOT NULL, expiresAt INTEGER NOT NULL, operationId TEXT REFERENCES mls_operation(id) ON DELETE CASCADE);
+CREATE INDEX mls_key_package_device_idx ON mls_key_package(deviceId, operationId);
+CREATE TABLE mls_event (id TEXT PRIMARY KEY NOT NULL, conversationId TEXT NOT NULL REFERENCES mls_conversation(id) ON DELETE CASCADE, sequence INTEGER NOT NULL, entry TEXT NOT NULL);
+CREATE UNIQUE INDEX mls_event_sequence_idx ON mls_event(conversationId, sequence);
+CREATE TABLE mls_welcome (keyPackageId TEXT PRIMARY KEY NOT NULL REFERENCES mls_key_package(id) ON DELETE CASCADE, conversationId TEXT NOT NULL REFERENCES mls_conversation(id) ON DELETE CASCADE, deviceId TEXT NOT NULL REFERENCES mls_device(id) ON DELETE CASCADE, sequence INTEGER NOT NULL, data TEXT NOT NULL, members TEXT NOT NULL, acknowledgedAt INTEGER);
+CREATE TABLE mls_draft (id TEXT PRIMARY KEY NOT NULL, senderId TEXT NOT NULL, senderDeviceId TEXT NOT NULL REFERENCES mls_device(id) ON DELETE CASCADE, groupId TEXT, recipients TEXT NOT NULL, conversationIds TEXT NOT NULL, expiresAt INTEGER NOT NULL, completedAt INTEGER, failure TEXT);
+CREATE TABLE mls_draft_conversation (id TEXT PRIMARY KEY NOT NULL, draftId TEXT NOT NULL REFERENCES mls_draft(id) ON DELETE CASCADE, conversationId TEXT NOT NULL REFERENCES mls_conversation(id) ON DELETE CASCADE, members TEXT NOT NULL);
