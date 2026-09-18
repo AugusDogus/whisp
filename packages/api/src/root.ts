@@ -3,6 +3,7 @@ import { backgroundUploadTestRouter } from "./router/background-upload-test";
 import { friendsRouter } from "./router/friends";
 import { groupsRouter } from "./router/groups";
 import { messagesRouter } from "./router/messages";
+import { mlsRouter } from "./router/mls";
 import { notificationsRouter } from "./router/notifications";
 import { waitlistRouter } from "./router/waitlist";
 import { createTRPCRouter } from "./trpc";
@@ -13,6 +14,7 @@ export const appRouter = createTRPCRouter({
   friends: friendsRouter,
   groups: groupsRouter,
   messages: messagesRouter,
+  mls: mlsRouter,
   notifications: notificationsRouter,
   waitlist: waitlistRouter,
 });
