@@ -3,23 +3,14 @@ import UIKit
 import AVFoundation
 import ImageIO
 
-struct SendStep: Decodable {
-  let stage: String
-  let kind: String?
-  let source: String?
-  let output: String?
-  let url: String?
-  let file: String?
-  let id: String?
-}
 enum SendCompression {
-  static func compress(_ step: SendStep, cancellation: SendCancellation) throws {
-    guard let source = step.source, let output = step.output else { throw SendError.invalidCheckpoint }
+  static func compress(kind: MediaKind, source: String, output: String, cancellation: SendCancellation) throws {
     let destination = URL(fileURLWithPath: output + ".partial")
     let files = FileManager.default
     if files.fileExists(atPath: destination.path) { try files.removeItem(at: destination) }
     defer { if files.fileExists(atPath: destination.path) { try? files.removeItem(at: destination) } }
-    if step.kind == "photo" {
+    switch kind {
+    case .photo:
       // ImageIO downsamples before decoding, applies orientation, and strips EXIF.
       guard let imageSource = CGImageSourceCreateWithURL(URL(fileURLWithPath: source) as CFURL, nil),
         let image = CGImageSourceCreateThumbnailAtIndex(imageSource, 0, [
@@ -30,7 +21,7 @@ enum SendCompression {
         let jpeg = UIImage(cgImage: image).jpegData(compressionQuality: 0.82)
       else { throw SendError.compression }
       try jpeg.write(to: destination, options: .completeFileProtection)
-    } else {
+    case .video:
       let asset = AVURLAsset(url: URL(fileURLWithPath: source))
       guard let export = AVAssetExportSession(asset: asset, presetName: AVAssetExportPreset1280x720),
         export.supportedFileTypes.contains(.mp4) else { throw SendError.compression }

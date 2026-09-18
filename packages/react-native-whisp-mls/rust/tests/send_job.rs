@@ -48,7 +48,7 @@ impl Fixture {
         enqueue_send_job(self.config.clone(), json!({"id":self.id,"deviceId":self.device,"source":self.root.join("capture"),"kind":"photo","recipients":["bob"],"groupId":null}).to_string()).unwrap();
     }
     fn advance(&self) -> Value {
-        serde_json::from_str(&advance_send_job(self.config.clone(), self.id.clone()).unwrap())
+        serde_json::to_value(advance_send_job(self.config.clone(), self.id.clone()).unwrap())
             .unwrap()
     }
     fn dir(&self) -> std::path::PathBuf {
@@ -83,12 +83,20 @@ fn interrupted_preparation_retains_one_ciphertext_and_removes_plaintext() {
     assert!(!f.dir().join("compressed").exists());
     let ciphertext = fs::read(f.dir().join("ciphertext.age")).unwrap();
     assert_ne!(ciphertext, b"normalized jpeg");
-    assert!(advance_send_job(f.config.clone(), f.id.clone()).is_err());
+    assert!(matches!(
+        advance_send_job(f.config.clone(), f.id.clone()).unwrap(),
+        SendStep::Paused {
+            failure: SendFailure {
+                disposition: SendDisposition::Retry,
+                ..
+            }
+        }
+    ));
     assert_eq!(
         fs::read(f.dir().join("ciphertext.age")).unwrap(),
         ciphertext
     );
-    pause_send_job(f.config.clone(), f.id.clone()).unwrap();
+    pause_send_job(f.config.clone(), f.id.clone(), SendInterruption::Transfer).unwrap();
     let jobs: Value = serde_json::from_str(&list_send_jobs(f.config.clone()).unwrap()).unwrap();
     assert_eq!(jobs[0]["status"], "uploading");
     assert!(jobs[0]["error"].is_string());
@@ -235,7 +243,15 @@ fn recovered_send(self_send: bool) {
     fs::write(f.dir().join("compressed"), b"private media").unwrap();
     f.advance();
     f.advance();
-    assert!(advance_send_job(f.config.clone(), f.id.clone()).is_err());
+    assert!(matches!(
+        advance_send_job(f.config.clone(), f.id.clone()).unwrap(),
+        SendStep::Paused {
+            failure: SendFailure {
+                disposition: SendDisposition::Retry,
+                ..
+            }
+        }
+    ));
     assert_eq!(f.advance()["stage"], "continue");
     if self_send {
         let runtime = tokio::runtime::Runtime::new().unwrap();
@@ -423,4 +439,229 @@ async fn native_receive_resumes_welcome_retirement_without_replaying_welcome() {
     stop.store(true, Ordering::SeqCst);
     server.join().unwrap();
     assert_eq!(*cursors.lock().unwrap(), [0, 1]);
+}
+
+#[test]
+fn recovery_removes_plaintext_from_an_interrupted_enqueue() {
+    let f = Fixture::new("http://127.0.0.1:1");
+    fs::create_dir_all(f.dir()).unwrap();
+    fs::write(f.dir().join("source"), b"abandoned plaintext").unwrap();
+    assert_eq!(list_send_jobs(f.config.clone()).unwrap(), "[]");
+    assert!(!f.dir().exists());
+}
+
+fn replace_phase(f: &Fixture, phase: Value, created_at: u64) {
+    let config: Value = serde_json::from_str(&f.config).unwrap();
+    let key = config["storageKey"].as_str().unwrap().to_owned();
+    let path = f.dir().join("job.age");
+    let mut job: Value = serde_json::from_str(
+        &open_local(
+            decode_base64(fs::read_to_string(&path).unwrap()).unwrap(),
+            key.clone(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    job["phase"] = phase;
+    job["createdAt"] = json!(created_at);
+    fs::write(
+        path,
+        encode_base64(seal_local(job.to_string(), key).unwrap()),
+    )
+    .unwrap();
+}
+
+#[test]
+fn expired_uploads_reconcile_missing_server_drafts_and_cleanup() {
+    for phase in [
+        json!({"stage":"upload","url":"https://upload.example.test"}),
+        json!({"stage":"confirm"}),
+    ] {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let f = Fixture::new(&format!("http://{}", listener.local_addr().unwrap()));
+        f.enqueue();
+        replace_phase(&f, phase, 0);
+        fs::write(f.dir().join("ciphertext.age"), b"ciphertext").unwrap();
+        let server = thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            let mut reader = BufReader::new(socket.try_clone().unwrap());
+            let mut line = String::new();
+            reader.read_line(&mut line).unwrap();
+            assert!(line.contains("mls.uploadStatus"));
+            loop {
+                line.clear();
+                reader.read_line(&mut line).unwrap();
+                if line == "\r\n" {
+                    break;
+                }
+            }
+            write!(
+                socket,
+                "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            )
+            .unwrap();
+        });
+        assert_eq!(f.advance()["stage"], "failed");
+        server.join().unwrap();
+        assert!(!f.dir().join("ciphertext.age").exists());
+        let jobs: Value = serde_json::from_str(&list_send_jobs(f.config.clone()).unwrap()).unwrap();
+        assert_eq!(jobs[0]["status"], "failed");
+        assert!(jobs[0]["error"].as_str().unwrap().contains("expired"));
+    }
+}
+
+#[tokio::test]
+async fn recovery_does_not_remove_an_enqueue_that_owns_its_job_lock() {
+    let f = Fixture::new("http://127.0.0.1:1");
+    fs::create_dir_all(f.root.join("sends")).unwrap();
+    let lease = acquire_device_lease(f.dir().to_string_lossy().into_owned())
+        .await
+        .unwrap();
+    fs::create_dir_all(f.dir()).unwrap();
+    fs::write(f.dir().join("source"), b"copy in progress").unwrap();
+    assert_eq!(list_send_jobs(f.config.clone()).unwrap(), "[]");
+    assert!(f.dir().join("source").exists());
+    lease.release().unwrap();
+    list_send_jobs(f.config.clone()).unwrap();
+    assert!(!f.dir().exists());
+}
+
+fn respond_once(listener: TcpListener, status: u16, value: Value) -> thread::JoinHandle<()> {
+    thread::spawn(move || {
+        let (mut socket, _) = listener.accept().unwrap();
+        let mut reader = BufReader::new(socket.try_clone().unwrap());
+        loop {
+            let mut line = String::new();
+            reader.read_line(&mut line).unwrap();
+            if line == "\r\n" {
+                break;
+            }
+        }
+        let body = value.to_string();
+        write!(socket, "HTTP/1.1 {status} Result\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
+    })
+}
+
+#[test]
+fn blocked_send_preserves_recovery_reason_and_waits_for_explicit_retry() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let f = Fixture::new(&format!("http://{}", listener.local_addr().unwrap()));
+    f.enqueue();
+    let current = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+    replace_phase(&f, json!({"stage":"confirm"}), current);
+    let reason =
+        "A member device has no unused encryption keys. Ask them to open Whisp, then retry.";
+    let server = respond_once(
+        listener,
+        412,
+        json!({"error":{"json":{"message":reason,"data":{"code":"PRECONDITION_FAILED"}}}}),
+    );
+    assert_eq!(f.advance()["failure"]["disposition"], "blocked");
+    server.join().unwrap();
+    // The server is gone. Automatic advances must not call it again.
+    assert_eq!(f.advance()["failure"]["message"], reason);
+    let jobs: Value = serde_json::from_str(&list_send_jobs(f.config.clone()).unwrap()).unwrap();
+    assert_eq!(jobs[0]["status"], "blocked");
+    assert_eq!(jobs[0]["error"], reason);
+    acknowledge_send_job(f.config.clone(), f.id.clone()).unwrap();
+    assert!(f.dir().join("job.age").exists());
+    retry_send_job(f.config.clone(), f.id.clone()).unwrap();
+    assert_eq!(f.advance()["failure"]["disposition"], "retry");
+}
+
+#[test]
+fn old_upload_reconciles_success_before_expiring_locally() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let f = Fixture::new(&format!("http://{}", listener.local_addr().unwrap()));
+    f.enqueue();
+    replace_phase(&f, json!({"stage":"confirm"}), 0);
+    let server = respond_once(
+        listener,
+        200,
+        json!({"result":{"data":{"json":{"status":"sent"}}}}),
+    );
+    assert_eq!(f.advance()["stage"], "continue");
+    assert_eq!(f.advance()["stage"], "sent");
+    server.join().unwrap();
+}
+
+#[test]
+fn compression_failure_preserves_source_until_retry_or_expiry() {
+    let f = Fixture::new("http://127.0.0.1:1");
+    f.enqueue();
+    pause_send_job(
+        f.config.clone(),
+        f.id.clone(),
+        SendInterruption::Compression,
+    )
+    .unwrap();
+    assert_eq!(f.advance()["stage"], "paused");
+    assert!(f.dir().join("source").exists());
+    retry_send_job(f.config.clone(), f.id.clone()).unwrap();
+    assert_eq!(f.advance()["stage"], "compress");
+    replace_phase(&f, json!({"stage":"compress"}), 0);
+    assert_eq!(f.advance()["stage"], "failed");
+    assert!(!f.dir().join("source").exists());
+}
+
+#[test]
+fn failed_enqueue_erases_the_unjournaled_source_copy() {
+    let f = Fixture::new("http://127.0.0.1:1");
+    let mut config: Value = serde_json::from_str(&f.config).unwrap();
+    config["storageKey"] = json!("invalid key");
+    let result = enqueue_send_job(
+        config.to_string(),
+        json!({
+            "id": f.id, "deviceId": f.device, "source": f.root.join("capture"),
+            "kind": "photo", "recipients": ["bob"], "groupId": null,
+        })
+        .to_string(),
+    );
+    assert!(result.is_err());
+    assert!(!f.dir().exists());
+    assert!(f.root.join("capture").exists());
+}
+
+#[test]
+fn transient_server_failures_retry_without_exposing_internal_error_bodies() {
+    for status in [409, 503] {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let f = Fixture::new(&format!("http://{}", listener.local_addr().unwrap()));
+        f.enqueue();
+        replace_phase(&f, json!({"stage":"confirm"}), 0);
+        let server = respond_once(
+            listener,
+            status,
+            json!({"error":{"json":{"message":"INTERNAL_PRIVATE_DATA"}}}),
+        );
+        assert_eq!(f.advance()["failure"]["disposition"], "retry");
+        server.join().unwrap();
+        assert!(
+            !list_send_jobs(f.config.clone())
+                .unwrap()
+                .contains("INTERNAL_PRIVATE_DATA")
+        );
+    }
+}
+
+#[test]
+fn server_delivery_failure_reason_reaches_the_outbox() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let f = Fixture::new(&format!("http://{}", listener.local_addr().unwrap()));
+    f.enqueue();
+    replace_phase(&f, json!({"stage":"confirm"}), 0);
+    let reason = "Recipient devices changed while uploading. Send the whisp again.";
+    let server = respond_once(
+        listener,
+        200,
+        json!({"result":{"data":{"json":{"status":"failed","message":reason}}}}),
+    );
+    assert_eq!(f.advance()["stage"], "continue");
+    assert_eq!(f.advance()["message"], reason);
+    server.join().unwrap();
+    let jobs: Value = serde_json::from_str(&list_send_jobs(f.config.clone()).unwrap()).unwrap();
+    assert_eq!(jobs[0]["error"], reason);
 }
