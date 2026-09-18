@@ -36,7 +36,33 @@ function location(response: Response) {
   return new URL(value);
 }
 
-function mockDiscord() {
+const hash = "8342729096ea3675442027381ff50dfe";
+const discordProfile = {
+  id: "123456789",
+  username: "preview-tester",
+  discriminator: "0",
+  global_name: "Preview Tester",
+  email: "preview@example.com",
+  verified: true,
+  avatar: null,
+  banner: hash,
+  accent_color: 0,
+  public_flags: 1 << 6,
+};
+
+function expectCosmetics(user: Record<string, unknown> | undefined) {
+  expect(user).toMatchObject({
+    discordUsername: "preview-tester",
+    discordBannerUrl: `https://cdn.discordapp.com/banners/123456789/${hash}.webp?size=1024`,
+    discordAccentColor: 0,
+    discordPublicFlags: 1 << 6,
+  });
+  expect(user?.discordProfileSyncedAt).toBeInstanceOf(Date);
+  expect(user?.discordProfileRevision).toEqual(expect.any(String));
+}
+
+function mockDiscord(proxyResponse = () => Response.json(discordProfile)) {
+  let profileRequests = 0;
   const mock = spyOn(globalThis, "fetch").mockImplementation(
     Object.assign(
       async (input: Parameters<typeof fetch>[0]) => {
@@ -57,14 +83,10 @@ function mockDiscord() {
           });
         }
         if (decodeURIComponent(url.pathname) === "/api/users/@me") {
-          return Response.json({
-            id: "123456789",
-            username: "preview-tester",
-            global_name: "Preview Tester",
-            email: "preview@example.com",
-            verified: true,
-            avatar: null,
-          });
+          profileRequests += 1;
+          return profileRequests === 1
+            ? Response.json(discordProfile)
+            : proxyResponse();
         }
         throw new Error(`Unexpected Discord test path: ${url.pathname}`);
       },
@@ -74,12 +96,31 @@ function mockDiscord() {
   mocks.push(mock);
 }
 
-test.each(["legacy", "current"])(
-  "%s native preview login stays in the preview database",
-  async (client) => {
+const previewCases = ["legacy", "current"].flatMap((client) => [
+  { client, outcome: "success", response: () => Response.json(discordProfile) },
+  {
+    client,
+    outcome: "malformed profile",
+    response: () => Response.json({ ...discordProfile, banner: "invalid" }),
+  },
+  {
+    client,
+    outcome: "different identity",
+    response: () => Response.json({ ...discordProfile, id: "987654321" }),
+  },
+  {
+    client,
+    outcome: "Discord unavailable",
+    response: () => new Response(null, { status: 503 }),
+  },
+]);
+
+test.each(previewCases)(
+  "$client native preview login: $outcome",
+  async ({ client, outcome, response }) => {
     const production = await fixture(productionURL);
     const preview = await fixture(previewURL);
-    mockDiscord();
+    mockDiscord(response);
 
     const signIn = await preview.auth.handler(
       new Request(`${previewURL}/api/auth/sign-in/social`, {
@@ -129,6 +170,13 @@ test.each(["legacy", "current"])(
     expect(production.store.account).toHaveLength(0);
 
     const complete = await preview.auth.handler(new Request(relay.toString()));
+    if (outcome !== "success") {
+      expect(complete.status).toBe(502);
+      expect(preview.store.session).toHaveLength(0);
+      expect(preview.store.user[0]?.discordProfileRevision).toBeUndefined();
+      expect(production.store.user).toHaveLength(0);
+      return;
+    }
     const mobile = location(complete);
     expect(`${mobile.protocol}//${mobile.host}`).toBe("whisp-preview://camera");
     expect(mobile.searchParams.get("cookie")).toContain(
@@ -137,6 +185,7 @@ test.each(["legacy", "current"])(
     expect(preview.store.session).toHaveLength(1);
     expect(preview.store.user).toHaveLength(1);
     expect(preview.store.account).toHaveLength(1);
+    expectCosmetics(preview.store.user[0]);
 
     const replay = location(
       await preview.auth.handler(new Request(relay.toString())),
@@ -207,6 +256,7 @@ test.each(["legacy", "current"])(
       "better-auth.session_token",
     );
     expect(production.store.session).toHaveLength(1);
+    expectCosmetics(production.store.user[0]);
   },
 );
 

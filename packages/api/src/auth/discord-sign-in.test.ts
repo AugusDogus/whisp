@@ -179,6 +179,44 @@ describe("Discord OAuth profile persistence", () => {
     expect(await db.select().from(schema.user)).toEqual(before);
   });
 
+  test("client updates cannot alter server-managed Discord fields", async () => {
+    discordResponse = { ...baseProfile, banner: hash, accent_color: 123 };
+    const signedIn = await signIn();
+    expect(signedIn.status).toBe(302);
+    const cookie = signedIn.headers
+      .getSetCookie()
+      .map((value) => value.split(";")[0])
+      .join("; ");
+    const before = await db.select().from(schema.user);
+    for (const fields of [
+      {
+        discordUsername: "spoofed",
+        discordBannerUrl: "https://example.com/fake.png",
+        discordPublicFlags: 1,
+      },
+      {
+        discordUsername: "",
+        discordBannerUrl: null,
+        discordAccentColor: 0,
+        discordProfileRevision: null,
+      },
+    ]) {
+      const response = await auth.handler(
+        new Request("http://localhost:3000/api/auth/update-user", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Origin: "http://localhost:3000",
+            Cookie: cookie,
+          },
+          body: JSON.stringify(fields),
+        }),
+      );
+      expect(response.status).toBe(400);
+      expect(await db.select().from(schema.user)).toEqual(before);
+    }
+  });
+
   test("sign-in wins over a refresh that was already fetching older data", async () => {
     discordResponse = baseProfile;
     await signIn();
