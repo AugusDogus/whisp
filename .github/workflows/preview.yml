@@ -109,7 +109,8 @@ jobs:
             --build-env DATABASE_TOKEN="$DATABASE_TOKEN" \
             --env DATABASE_URL="$DATABASE_URL" \
             --env DATABASE_TOKEN="$DATABASE_TOKEN")
-          url=$(jq -er '.deployment.url | strings | select(startswith("https://"))' <<< "$deployment")
+          # Agent sessions wrap the deployment; ordinary CI emits it directly.
+          url=$(jq -er '(.deployment // .).url | strings | select(startswith("https://"))' <<< "$deployment")
           echo "url=$url" >> "$GITHUB_OUTPUT"
           echo "Preview: $url (database: whisp-pr-$PR_NUMBER)" >> "$GITHUB_STEP_SUMMARY"
 
