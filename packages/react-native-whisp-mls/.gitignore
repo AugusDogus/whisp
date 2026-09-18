@@ -1,0 +1,11 @@
+/rust/target/
+/android/build/
+/android/.cxx/
+/android/src/main/jniLibs/
+/build/
+/.cache/
+/src/generated/
+/cpp/generated/
+/*.xcframework/
+/android/src/main/generated/
+/ios/generated-core/

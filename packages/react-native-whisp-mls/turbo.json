@@ -1,0 +1,12 @@
+{
+  "extends": ["//"],
+  "tasks": {
+    "typecheck": {
+      "outputs": [
+        ".cache/tsbuildinfo.json",
+        "src/generated/**",
+        "cpp/generated/**"
+      ]
+    }
+  }
+}
