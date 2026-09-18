@@ -58,12 +58,35 @@ function AppContent() {
 
   useEffect(() => {
     if (!session?.user.id) return;
-    // Sending and opening also provision keys and surface actionable failures.
-    void prepareEncryptionDevice().catch(() => {
-      console.warn(
-        "Encryption device provisioning failed. Sending will retry registration.",
-      );
+    let stopped = false;
+    let provisioning = false;
+    async function replenish() {
+      if (stopped || provisioning || AppState.currentState !== "active") return;
+      provisioning = true;
+      try {
+        await prepareEncryptionDevice();
+      } catch {
+        console.warn(
+          "Encryption key provisioning failed. It will retry while Whisp is open.",
+        );
+      } finally {
+        provisioning = false;
+      }
+    }
+    void replenish();
+    // Retry failed offline provisioning and refill keys consumed by other
+    // devices without requiring a session change or a process restart.
+    const timer = setInterval(() => {
+      void replenish();
+    }, 60_000);
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") void replenish();
     });
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+      subscription.remove();
+    };
   }, [session?.user.id]);
 
   useEffect(() => {
@@ -83,6 +106,7 @@ function AppContent() {
       }
     }
     void configureNativeSends()
+      .then(resumeNativeSends)
       .then(refresh)
       .catch(() => {
         console.warn("Native sends are paused. Sign in and retry to resume.");

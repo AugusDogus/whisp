@@ -1,5 +1,8 @@
 package chat.whisp.mls
 
+import chat.whisp.mls.core.MediaKind
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -15,11 +18,15 @@ import kotlin.math.max
 import kotlin.math.roundToInt
 
 internal object SendCompression {
-  suspend fun compress(context: Context, kind: String, source: String, output: String) {
+  private val compressor = Mutex()
+  suspend fun compress(context: Context, kind: MediaKind, source: String, output: String) = compressor.withLock {
     val temporary = File("$output.partial")
     temporary.delete()
     try {
-      if (kind == "photo") image(source, temporary) else video(context, source, temporary)
+      when (kind) {
+        MediaKind.PHOTO -> image(source, temporary)
+        MediaKind.VIDEO -> video(context, source, temporary)
+      }
       check(temporary.length() > 0) { "Compression produced an empty file. Capture the media again." }
       FileOutputStream(temporary, true).use { it.fd.sync() }
       check(temporary.renameTo(File(output))) { "Could not publish compressed media. Retry the queued whisp." }

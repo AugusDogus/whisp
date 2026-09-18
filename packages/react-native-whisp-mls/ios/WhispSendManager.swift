@@ -2,8 +2,6 @@ import Foundation
 import UIKit
 import BackgroundTasks
 
-struct SendConfiguration: Decodable { let deviceId: String; let root: String; let uploadthingVersion: String }
-struct SendJobStatus: Decodable { let id: String; let status: String }
 private struct TransferReceipt: Codable { let deviceId: String; let id: String; let success: Bool }
 
 final class WhispSendManager: NSObject, URLSessionTaskDelegate {
@@ -14,6 +12,7 @@ final class WhispSendManager: NSObject, URLSessionTaskDelegate {
   private let lock = NSLock()
   private var completionHandlers: [() -> Void] = []
   private var activeCancellation: SendCancellation?
+  private var foregroundRetryPending = false
   private lazy var session: URLSession = {
     let config = URLSessionConfiguration.background(withIdentifier: Self.sessionIdentifier)
     config.isDiscretionary = false
@@ -38,14 +37,29 @@ final class WhispSendManager: NSObject, URLSessionTaskDelegate {
     try SendVault.set(config)
     if config != nil { resume() }
   }
-  func resume() {
+  func resume(retryBlocked: Bool = false) {
     schedule()
     DispatchQueue.main.async {
       let cancellation = SendCancellation()
       let token = UIApplication.shared.beginBackgroundTask(withName: "Prepare encrypted whisp") { cancellation.cancel() }
       self.queue.async {
-        _ = self.run(cancellation)
+        _ = self.run(cancellation, retryBlocked: retryBlocked)
         DispatchQueue.main.async { if token != .invalid { UIApplication.shared.endBackgroundTask(token) } }
+      }
+    }
+  }
+  // BGProcessing is opportunistic and may not run while the app is foregrounded.
+  // Only transient failures and pending confirmations request this bounded wakeup.
+  private func retryWhenForeground() {
+    DispatchQueue.main.async {
+      guard UIApplication.shared.applicationState == .active else { return }
+      self.lock.lock()
+      guard !self.foregroundRetryPending else { self.lock.unlock(); return }
+      self.foregroundRetryPending = true
+      self.lock.unlock()
+      DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
+        self.lock.lock(); self.foregroundRetryPending = false; self.lock.unlock()
+        if UIApplication.shared.applicationState == .active { self.resume() }
       }
     }
   }
@@ -57,39 +71,56 @@ final class WhispSendManager: NSObject, URLSessionTaskDelegate {
     do { try BGTaskScheduler.shared.submit(request) }
     catch { NSLog("Whisp send scheduling deferred until the next app activation.") }
   }
-  private func run(_ cancellation: SendCancellation) -> Bool {
+  private func run(_ cancellation: SendCancellation, retryBlocked: Bool = false) -> Bool {
     lock.lock(); activeCancellation = cancellation; lock.unlock()
     defer { lock.lock(); activeCancellation = nil; lock.unlock() }
     do {
       guard let config = try SendVault.get() else { return true }
-      let settings = try JSONDecoder().decode(SendConfiguration.self, from: Data(config.utf8))
-      let jobs = try JSONDecoder().decode([SendJobStatus].self, from: Data(try listSendJobs(config: config).utf8))
+      let settings = try sendWorkerConfig(config: config)
+      let jobs = try sendJobStatuses(config: config)
       var complete = true
-      for job in jobs where job.status == "uploading" {
+      for job in jobs where job.status == .uploading || job.status == .blocked {
         do {
+          if retryBlocked { try retrySendJob(config: config, id: job.id) }
           let receiptURL = try receiptDirectory().appendingPathComponent(settings.deviceId + ":" + job.id)
           if FileManager.default.fileExists(atPath: receiptURL.path) {
             let receipt = try JSONDecoder().decode(TransferReceipt.self, from: Data(contentsOf: receiptURL))
             guard receipt.deviceId == settings.deviceId && receipt.id == job.id else { throw SendError.invalidCheckpoint }
             try completeSendUpload(config: config, id: job.id, success: receipt.success)
             try FileManager.default.removeItem(at: receiptURL)
+            if !receipt.success {
+              _ = try pauseSendJob(config: config, id: job.id, reason: .transfer)
+              retryWhenForeground()
+              complete = false
+              continue
+            }
           }
           var finished = false
           while !finished {
             if cancellation.isCancelled { return false }
             if try SendVault.get() != config { return false }
-            let step = try JSONDecoder().decode(SendStep.self, from: Data(try advanceSendJob(config: config, id: job.id).utf8))
-            switch step.stage {
-            case "compress": try SendCompression.compress(step, cancellation: cancellation)
-            case "upload": try enqueueTransfer(step, settings: settings, cancellation: cancellation); finished = true; complete = false
-            case "confirm": finished = true; complete = false
-            case "sent", "failed": finished = true
-            case "continue": break
-            default: throw SendError.invalidCheckpoint
+            switch try advanceSendJob(config: config, id: job.id) {
+            case let .compress(kind, source, output):
+              do { try SendCompression.compress(kind: kind, source: source, output: output, cancellation: cancellation) }
+              catch SendError.stopped { return false }
+              catch {
+                _ = try pauseSendJob(config: config, id: job.id, reason: .compression)
+                finished = true; complete = false
+              }
+            case let .upload(transfer):
+              try enqueueTransfer(transfer, settings: settings, cancellation: cancellation)
+              finished = true; complete = false
+            case .confirm: retryWhenForeground(); finished = true; complete = false
+            case .sent, .failed: finished = true
+            case .continue: break
+            case let .paused(failure):
+              if failure.disposition == .retry { retryWhenForeground() }
+              finished = true; complete = false
             }
           }
-        } catch {
-          try? pauseSendJob(config: config, id: job.id)
+        } catch SendError.stopped { return false }
+        catch {
+          _ = try? pauseSendJob(config: config, id: job.id, reason: .storage)
           complete = false
         }
       }
@@ -97,8 +128,10 @@ final class WhispSendManager: NSObject, URLSessionTaskDelegate {
       return complete
     } catch { return false }
   }
-  private func enqueueTransfer(_ step: SendStep, settings: SendConfiguration, cancellation: SendCancellation) throws {
-    guard let id = step.id, let rawURL = step.url, let url = URL(string: rawURL), url.scheme == "https", let path = step.file else { throw SendError.invalidCheckpoint }
+  private func enqueueTransfer(_ transfer: SendUpload, settings: SendWorkerConfig, cancellation: SendCancellation) throws {
+    guard let url = URL(string: transfer.url), url.scheme == "https" else { throw SendError.invalidCheckpoint }
+    let id = transfer.id
+    let path = transfer.file
     let description = settings.deviceId + ":" + id
     let existing = DispatchSemaphore(value: 0)
     let tasks = TransferTasks()
@@ -127,9 +160,9 @@ final class WhispSendManager: NSObject, URLSessionTaskDelegate {
     request.httpMethod = "PUT"
     request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
     request.setValue(settings.uploadthingVersion, forHTTPHeaderField: "x-uploadthing-version")
-    let transfer = session.uploadTask(with: request, fromFile: payload)
-    transfer.taskDescription = description
-    transfer.resume()
+    let task = session.uploadTask(with: request, fromFile: payload)
+    task.taskDescription = description
+    task.resume()
   }
   private func receiptDirectory() throws -> URL {
     let url = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true).appendingPathComponent("whisp-send-receipts")
@@ -152,7 +185,7 @@ final class WhispSendManager: NSObject, URLSessionTaskDelegate {
   }
   func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) { completionHandler(nil) }
   func handleEvents(_ identifier: String, completion: @escaping () -> Void) {
-    guard identifier == Self.sessionIdentifier else { return }
+    guard identifier == Self.sessionIdentifier else { completion(); return }
     lock.lock(); completionHandlers.append(completion); lock.unlock()
     _ = session
   }

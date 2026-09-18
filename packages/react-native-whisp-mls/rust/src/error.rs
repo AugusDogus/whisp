@@ -12,6 +12,14 @@ pub enum MlsError {
     MemberNotFound,
     #[error("The MLS session lock is poisoned. Restore the last durable session state and retry.")]
     SessionUnavailable,
+    #[error("The send server could not be reached. Retry when connected.")]
+    Transport,
+    #[error("Send request {operation} failed ({status}). {recovery}")]
+    Request {
+        operation: String,
+        status: u16,
+        recovery: String,
+    },
     // Do not include library Debug output: it can contain sensitive protocol data.
     #[error("MLS {operation} failed. {recovery}")]
     Protocol { operation: String, recovery: String },
