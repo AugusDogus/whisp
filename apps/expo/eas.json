@@ -18,13 +18,23 @@
     },
     "preview": {
       "extends": "base",
+      "environment": "preview",
+      "env": {
+        "APP_VARIANT": "preview"
+      },
+      "android": {
+        "buildType": "apk"
+      },
       "distribution": "internal",
       "ios": {
         "simulator": false
       }
     },
     "production": {
-      "extends": "base"
+      "extends": "base",
+      "env": {
+        "APP_VARIANT": "production"
+      }
     }
   },
   "submit": {

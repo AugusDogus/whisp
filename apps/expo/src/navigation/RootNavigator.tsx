@@ -6,6 +6,8 @@ import type {
 
 import { createRef, useRef } from "react";
 
+import * as Linking from "expo-linking";
+
 import { createMaterialTopTabNavigator } from "@react-navigation/material-top-tabs";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
@@ -34,7 +36,7 @@ export const navigationRef =
   createRef<NavigationContainerRef<RootStackParamList>>();
 
 const linking: LinkingOptions<RootStackParamList> = {
-  prefixes: ["whisp://", "exp+whisp://"],
+  prefixes: [Linking.createURL("/")],
   config: {
     screens: {
       Splash: "splash",

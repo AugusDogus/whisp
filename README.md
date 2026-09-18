@@ -154,6 +154,10 @@ branching API, equivalent to `turso db create whisp-pr-<number> --from-db <main-
 It uses the source database's existing group; no separate preview group is needed.
 The workflow then applies the PR's Drizzle schema with `drizzle-kit push --force`
 and passes the branch's credentials to both the Vercel build and runtime.
+Before deploying, initialization clears inherited `push_token` rows in the branch.
+A transactional marker makes this a one-time operation per branch, including
+existing previews upgraded to this workflow. Later deployments retain tokens
+registered by preview devices. The source database is never changed.
 Later pushes reuse the branch without copying the source again, although
 destructive schema changes can remove preview data. Changes to the branch do not
 affect the source database and are not merged back into it.
@@ -178,6 +182,34 @@ were still in progress when the PR closed. It checks the current GitHub PR state
 under the same concurrency lock as deployment, skips open/reopened PRs, and retries
 cleanup for closed PRs. GitHub can delay scheduled runs; file removal is eventual.
 Other services still use the Vercel Preview environment configuration.
+
+#### Mobile preview builds
+
+The EAS `preview` profile sets `APP_VARIANT=preview`. Preview builds use the name
+**Whisp Preview**, Android application ID (and iOS bundle ID) `whisp.chat.preview`,
+and deep-link scheme `whisp-preview://`. They install alongside production with
+separate app data. All PRs share this preview app identity; installing another
+preview build replaces the previous preview app, not production.
+
+Set `EXPO_PUBLIC_API_URL` in the EAS **preview** environment to the selected PR's
+backend before running `eas build --profile preview --platform android`. The
+profile produces an APK. Local builds need `APP_VARIANT=preview` and the same URL
+when generating native files and bundling JavaScript. Preview configuration
+rejects a missing URL or the production `whisp.chat` URL instead of silently
+using production.
+
+Android push delivery still uses Expo's existing FCM setup. Register
+`whisp.chat.preview` as an additional Android app in the existing Firebase project
+and use its downloaded config as `apps/expo/google-services.preview.json` for local
+builds, or as the EAS preview environment's `GOOGLE_SERVICES_JSON` file variable.
+The config must include a client matching `whisp.chat.preview`. Associate the
+existing project's FCM V1 credentials with the preview application in EAS.
+Production keeps its current package and Google Services configuration. iOS
+preview builds need provisioning and push credentials for the new bundle ID.
+
+OAuth and navigation read the build's scheme, and the backend accepts both mobile
+schemes. Regenerate local native projects when switching variants so the installed
+package and intent filters match the selected configuration.
 
 #### One-time configuration
 

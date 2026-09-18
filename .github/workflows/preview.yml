@@ -94,7 +94,7 @@ jobs:
           # Only disposable PR data is affected by destructive schema changes.
           bunx --no-install drizzle-kit push --force < /dev/null
 
-      - name: Enable preview uploads
+      - name: Clear inherited push registrations and enable preview uploads
         if: steps.pr.outputs.state == 'open'
         run: bun tooling/github/preview-uploads.ts open
 
