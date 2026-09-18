@@ -344,12 +344,10 @@ no bulk backfill: their next successful sign-in or refresh populates the columns
 
 Avatars, banners, decorations, and nameplates animate only while the profile is
 visible and the app is active. System reduced-motion changes take effect live.
-Nameplates use an authenticated image endpoint that converts Discord's transparent
-VP9 WebM into animated WebP with the bundled FFmpeg binary. The server caches each
-converted asset for 24 hours; clients retain the static image during loading or
-conversion failures. Conversion has input/output limits, a timeout, and a limit of
-two concurrent assets per server instance. No additional schema change is needed.
-The Next.js deployment must include the traced `ffmpeg-static/ffmpeg` binary.
+Nameplates load Discord's transparent APNG directly through `expo-image`, using
+`img.png?passthrough=true` beside the stored `static.png` asset. The static image
+stays visible during loading or animation failures and is used when motion is
+disabled. No conversion endpoint, native server binary, or schema change is needed.
 
 Public badges are labels. Discord does not provide profile badge icon URLs in the
 User API. Private profile themes and effects are not included.

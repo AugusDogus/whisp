@@ -7,12 +7,6 @@ await jiti.import("./src/env");
 
 /** @type {import("next").NextConfig} */
 const config = {
-  serverExternalPackages: ["ffmpeg-static"],
-  outputFileTracingIncludes: {
-    "/api/discord-profile/*/nameplate": [
-      "../../node_modules/ffmpeg-static/ffmpeg",
-    ],
-  },
   /** Enables hot reloading for local packages without a build step */
   transpilePackages: [
     "@acme/api",

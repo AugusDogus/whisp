@@ -66,8 +66,7 @@
     "@types/minimatch": "5.1.2"
   },
   "trustedDependencies": [
-    "core-js-pure",
-    "ffmpeg-static"
+    "core-js-pure"
   ],
   "patchedDependencies": {
     "react-native-vision-camera@4.7.3": "patches/react-native-vision-camera@4.7.3.patch"

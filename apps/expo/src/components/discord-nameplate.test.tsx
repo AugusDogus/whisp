@@ -12,8 +12,8 @@ let renderer: ReactTestRenderer | undefined;
 async function show(animate: boolean) {
   await act(async () => {
     const tree = createElement(DiscordNameplate, {
-      userId: "friend",
-      staticUrl: "https://cdn.discordapp.com/static.png",
+      staticUrl:
+        "https://cdn.discordapp.com/assets/collectibles/nameplates/nameplates/twilight/static.png",
       animate,
     });
     if (renderer) renderer.update(tree);
@@ -32,8 +32,8 @@ test("paused nameplates never mount the animation request", async () => {
   expect([...images].some((image) => image.autoplay)).toBe(false);
   await show(true);
   const animation = [...images].find((image) => image.autoplay);
-  expect(animation?.source).toMatchObject({
-    headers: { Cookie: "test-session" },
+  expect(animation?.source).toEqual({
+    uri: "https://cdn.discordapp.com/assets/collectibles/nameplates/nameplates/twilight/img.png?passthrough=true",
   });
   await show(false);
   expect(images.size).toBe(1);

@@ -100,7 +100,6 @@ export function DiscordProfileCard({
           </View>
           {cosmetics?.nameplateUrl && (
             <DiscordNameplate
-              userId={userId}
               staticUrl={cosmetics.nameplateUrl}
               animate={animate}
             />
