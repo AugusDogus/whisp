@@ -100,23 +100,11 @@ jobs:
           VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
         run: |
-          # Temporary diagnostic: report API status and metadata, never credentials.
-          for endpoint in \
-            "/v2/user" \
-            "/v5/user/tokens/current" \
-            "/teams/$VERCEL_ORG_ID?teamId=$VERCEL_ORG_ID" \
-            "/v9/projects/$VERCEL_PROJECT_ID?teamId=$VERCEL_ORG_ID"; do
-            status=$(curl --silent --show-error --max-time 20 \
-              --header "Authorization: Bearer $VERCEL_TOKEN" \
-              --output "$RUNNER_TEMP/vercel-access.json" --write-out '%{http_code}' \
-              "https://api.vercel.com$endpoint")
-            echo "$endpoint: HTTP $status"
-            jq '{errorCode: .error.code, errorMessage: .error.message, tokenName: .token.name, tokenScopes: .token.scopes, userPresent: has("user"), projectId: .id}' "$RUNNER_TEMP/vercel-access.json"
-          done
           # Upload from the monorepo root. Vercel's project root is apps/nextjs.
           # Remote builds retain Vercel's system URL variables for Better Auth.
-          deployment=$(bunx vercel@56.1.0 deploy --yes --target=preview --format=json \
-            --scope="$VERCEL_ORG_ID" --token="$VERCEL_TOKEN" \
+          # This version supports tokens restricted to a single project.
+          deployment=$(bunx vercel@59.23.2 deploy --yes --target=preview --format=json \
+            --token="$VERCEL_TOKEN" \
             --build-env DATABASE_URL="$DATABASE_URL" \
             --build-env DATABASE_TOKEN="$DATABASE_TOKEN" \
             --env DATABASE_URL="$DATABASE_URL" \
