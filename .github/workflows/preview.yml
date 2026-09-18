@@ -1,0 +1,140 @@
+name: Preview
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+
+# Let provisioning/deployment finish before cleanup. Cancellation can orphan a
+# database when an API request completes after its runner has been stopped.
+concurrency:
+  group: preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pull-requests: read
+
+env:
+  PR_NUMBER: ${{ github.event.pull_request.number }}
+  TURSO_ORGANIZATION: ${{ vars.TURSO_ORGANIZATION }}
+
+jobs:
+  deploy:
+    if: >-
+      github.event.action != 'closed' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: preview
+      url: ${{ steps.deploy.outputs.url }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      # Old queued runs and reruns must not recreate a closed PR's database.
+      - name: Check current PR state
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          state=$(gh api "repos/$GH_REPO/pulls/$PR_NUMBER" --jq .state)
+          echo "state=$state" >> "$GITHUB_OUTPUT"
+
+      - name: Check configuration
+        if: steps.pr.outputs.state == 'open'
+        env:
+          TURSO_API_TOKEN: ${{ secrets.TURSO_API_TOKEN }}
+          TURSO_SOURCE_DATABASE: ${{ vars.TURSO_SOURCE_DATABASE }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+        run: |
+          : "${TURSO_API_TOKEN:?Set the TURSO_API_TOKEN repository secret.}"
+          : "${TURSO_ORGANIZATION:?Set the TURSO_ORGANIZATION repository variable.}"
+          : "${TURSO_SOURCE_DATABASE:?Set TURSO_SOURCE_DATABASE to the main Turso database name.}"
+          : "${VERCEL_TOKEN:?Set the VERCEL_TOKEN repository secret.}"
+          : "${VERCEL_ORG_ID:?Set the VERCEL_ORG_ID repository variable.}"
+          : "${VERCEL_PROJECT_ID:?Set the VERCEL_PROJECT_ID repository variable.}"
+
+      - name: Setup
+        if: steps.pr.outputs.state == 'open'
+        uses: ./tooling/github/setup
+
+      - name: Provision PR database branch
+        if: steps.pr.outputs.state == 'open'
+        env:
+          TURSO_API_TOKEN: ${{ secrets.TURSO_API_TOKEN }}
+          TURSO_SOURCE_DATABASE: ${{ vars.TURSO_SOURCE_DATABASE }}
+        run: bash tooling/github/preview-database.sh ensure
+
+      - name: Wait for database and apply preview schema
+        if: steps.pr.outputs.state == 'open'
+        working-directory: packages/db
+        run: |
+          bun --eval '
+            import { createClient } from "@libsql/client";
+            const client = createClient({ url: process.env.DATABASE_URL, authToken: process.env.DATABASE_TOKEN });
+            try {
+              for (let attempt = 1; ; attempt++) {
+                try { await client.execute("SELECT 1"); break; }
+                catch (error) {
+                  if (attempt === 6) throw error;
+                  await Bun.sleep(5000);
+                }
+              }
+            } finally { client.close(); }
+          '
+          # Only disposable PR data is affected by destructive schema changes.
+          bunx --no-install drizzle-kit push --force < /dev/null
+
+      - name: Deploy Vercel preview
+        if: steps.pr.outputs.state == 'open'
+        id: deploy
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+        run: |
+          # Upload from the monorepo root. Vercel's project root is apps/nextjs.
+          # Remote builds retain Vercel's system URL variables for Better Auth.
+          url=$(bunx vercel@56.1.0 deploy --yes --target=preview --token="$VERCEL_TOKEN" \
+            --build-env DATABASE_URL="$DATABASE_URL" \
+            --build-env DATABASE_TOKEN="$DATABASE_TOKEN" \
+            --env DATABASE_URL="$DATABASE_URL" \
+            --env DATABASE_TOKEN="$DATABASE_TOKEN")
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "Preview: $url (database: whisp-pr-$PR_NUMBER)" >> "$GITHUB_STEP_SUMMARY"
+
+  cleanup:
+    if: >-
+      github.event.action == 'closed' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # Cleanup uses trusted base-branch code, including on unmerged PRs.
+          ref: ${{ github.event.pull_request.base.ref }}
+          persist-credentials: false
+
+      - name: Check current PR state
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          state=$(gh api "repos/$GH_REPO/pulls/$PR_NUMBER" --jq .state)
+          echo "state=$state" >> "$GITHUB_OUTPUT"
+
+      - name: Delete PR database
+        if: steps.pr.outputs.state == 'closed'
+        env:
+          TURSO_API_TOKEN: ${{ secrets.TURSO_API_TOKEN }}
+        run: bash tooling/github/preview-database.sh destroy
