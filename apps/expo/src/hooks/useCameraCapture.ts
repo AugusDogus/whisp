@@ -130,6 +130,7 @@ export function useCameraCapture({
         const useFrontFlash = cameraPosition === "front" && flash === "on";
 
         camera.current.startRecording({
+          fileType: "mp4",
           flash: useFrontFlash ? "off" : flash, // Use hardware flash only for back camera
           onRecordingError: (error) => {
             if (error.code !== "capture/recording-canceled") {

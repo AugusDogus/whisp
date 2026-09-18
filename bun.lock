@@ -80,6 +80,7 @@
         "react-native-uploadthing-background": "workspace:*",
         "react-native-vision-camera": "^4.7.2",
         "react-native-volume-manager": "^2.0.8",
+        "react-native-whisp-mls": "workspace:*",
         "react-native-worklets": "0.5.1",
         "sonner-native": "^0.21.1",
         "superjson": "2.2.2",

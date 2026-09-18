@@ -49,6 +49,8 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       icon: "./assets/icon.png",
       infoPlist: {
         ITSAppUsesNonExemptEncryption: false,
+        UIBackgroundModes: ["processing", "remote-notification"],
+        BGTaskSchedulerPermittedIdentifiers: ["whisp.chat.send"],
         NSCameraUsageDescription:
           "Whisp needs access to your Camera to capture and send photos and videos to your friends.",
         NSMicrophoneUsageDescription:
@@ -57,6 +59,8 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     },
     android: {
       package: isPreview ? "whisp.chat.preview" : "whisp.chat",
+      // Restoring an old MLS snapshot can roll back secret-tree ratchets.
+      allowBackup: false,
       adaptiveIcon: {
         foregroundImage: "./assets/adaptive-icon-foreground.png",
         backgroundImage: "./assets/adaptive-icon-background.png",

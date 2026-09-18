@@ -18,6 +18,7 @@ import { Dialog } from "heroui-native/dialog";
 import { Switch } from "heroui-native/switch";
 
 import { DiscordProfileCard } from "~/components/discord-profile-card";
+import { EncryptionDevices } from "~/components/EncryptionDevices";
 import { PreviewSettings } from "~/components/preview-settings";
 import { SafeAreaView } from "~/components/styled";
 import { Text } from "~/components/ui/text";
@@ -128,6 +129,10 @@ export default function ProfileScreen() {
             )}
           </View>
 
+          <View className="mt-6">
+            <EncryptionDevices />
+          </View>
+
           {/* Cards */}
           <View className="mt-8 gap-3 pb-4">
             {/* Discord */}
@@ -227,6 +232,15 @@ export default function ProfileScreen() {
                 </Pressable>
               </View>
             </View>
+
+            {__DEV__ ? (
+              <Button
+                variant="secondary"
+                onPress={() => navigation.navigate("MlsTest")}
+              >
+                MLS bridge test
+              </Button>
+            ) : null}
 
             {isBackgroundUploadTestEnabled ? (
               <Pressable
