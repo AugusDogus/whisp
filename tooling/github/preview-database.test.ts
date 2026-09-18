@@ -99,6 +99,25 @@ test("reuses an existing database without resetting data", async () => {
   expect(result.requests).not.toContain("--data");
 });
 
+test("cleanup connects to an existing branch without recreating it", async () => {
+  const result = await run("connect", [
+    { status: 200, body: database },
+    { status: 200, body: { jwt: "test-database-token" } },
+  ]);
+  expect(result.exitCode).toBe(0);
+  expect(result.env).toContain(
+    "DATABASE_URL=libsql://whisp-pr-42-example.turso.io",
+  );
+  expect(result.requests).not.toContain("--data");
+});
+
+test("cleanup of an absent branch does not provision a replacement", async () => {
+  const result = await run("connect", [{ status: 404 }]);
+  expect(result.exitCode).toBe(0);
+  expect(result.env).toBe("");
+  expect(result.requests).not.toContain('"POST"');
+});
+
 test("does not create an empty database when the source is missing", async () => {
   const result = await run("ensure", [{ status: 404 }, { status: 404 }]);
   expect(result.exitCode).not.toBe(0);

@@ -7,6 +7,8 @@ import { and, eq, inArray, isNull } from "@acme/db";
 import { Message, MessageDelivery } from "@acme/db/schema";
 
 import { protectedProcedure } from "../trpc";
+import { PreviewScope } from "../uploadthing/preview-scope";
+import { PreviewUploads } from "../uploadthing/preview-uploads";
 
 export const messagesRouter = {
   inbox: protectedProcedure.query(async ({ ctx }) => {
@@ -140,7 +142,6 @@ export const messagesRouter = {
       )[0];
 
       const derivedKey =
-        input.fileKey ??
         message?.fileKey ??
         (() => {
           const url = message?.fileUrl;
@@ -149,7 +150,16 @@ export const messagesRouter = {
           return idx >= 0 ? url.slice(idx + 3) : undefined;
         })();
 
-      if (derivedKey) {
+      // Never use the client's fileKey for deletion. In previews, only files
+      // registered by this PR's upload callback can be deleted.
+      if (
+        derivedKey &&
+        (await PreviewUploads.canDelete(
+          ctx.db,
+          PreviewScope.fromEnvironment(process.env),
+          derivedKey,
+        ))
+      ) {
         const utapi = new UTApi();
         await utapi.deleteFiles(derivedKey).catch(() => undefined);
       }

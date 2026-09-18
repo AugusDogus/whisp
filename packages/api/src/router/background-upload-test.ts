@@ -6,6 +6,8 @@ import { z } from "zod/v4";
 import { BackgroundUploadTestFile } from "@acme/db/schema";
 
 import { protectedProcedure } from "../trpc";
+import { PreviewScope } from "../uploadthing/preview-scope";
+import { PreviewUploads } from "../uploadthing/preview-uploads";
 
 function assertBackgroundUploadTestEnabled() {
   if (process.env.ENABLE_BACKGROUND_UPLOAD_TEST_PAGE !== "true") {
@@ -49,8 +51,16 @@ export const backgroundUploadTestRouter = {
         return { ok: false as const, reason: "not_found" as const };
       }
 
-      const utapi = new UTApi();
-      await utapi.deleteFiles(file.fileKey);
+      if (
+        await PreviewUploads.canDelete(
+          ctx.db,
+          PreviewScope.fromEnvironment(process.env),
+          file.fileKey,
+        )
+      ) {
+        const utapi = new UTApi();
+        await utapi.deleteFiles(file.fileKey);
+      }
 
       await ctx.db
         .delete(BackgroundUploadTestFile)

@@ -62,5 +62,5 @@ jobs:
       - name: Auth tests
         run: bun test packages/auth/src
 
-      - name: Preview database tests
-        run: bun test tooling/github/preview-database.test.ts
+      - name: Preview lifecycle tests
+        run: bun test tooling/github

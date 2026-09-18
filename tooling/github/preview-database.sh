@@ -44,17 +44,23 @@ case "${1:-}" in
       *) fail_request deletion ;;
     esac
     ;;
-  ensure)
-    : "${TURSO_SOURCE_DATABASE:?Set TURSO_SOURCE_DATABASE to the main Turso database name.}"
-    if [[ ! $TURSO_SOURCE_DATABASE =~ ^[a-z0-9-]+$ || $TURSO_SOURCE_DATABASE == whisp-pr-* ]]; then
-      echo "TURSO_SOURCE_DATABASE must be a database name outside the reserved whisp-pr- prefix." >&2
-      exit 1
+  ensure|connect)
+    if [[ $1 == ensure ]]; then
+      : "${TURSO_SOURCE_DATABASE:?Set TURSO_SOURCE_DATABASE to the main Turso database name.}"
+      if [[ ! $TURSO_SOURCE_DATABASE =~ ^[a-z0-9-]+$ || $TURSO_SOURCE_DATABASE == whisp-pr-* ]]; then
+        echo "TURSO_SOURCE_DATABASE must be a database name outside the reserved whisp-pr- prefix." >&2
+        exit 1
+      fi
     fi
     : "${GITHUB_ENV:?Run provisioning inside GitHub Actions.}"
     request GET "${base_url}/${database}"
     case "$status" in
       200) echo "Reusing ${database}." ;;
       404)
+        if [[ $1 == connect ]]; then
+          echo "${database} is already absent; upload cleanup can still run."
+          exit 0
+        fi
         request GET "${base_url}/${TURSO_SOURCE_DATABASE}"
         [[ $status == 200 ]] || fail_request "source lookup (${TURSO_SOURCE_DATABASE})"
         if ! group=$(jq -er '.database.group | strings | select(test("^[a-zA-Z0-9_-]+$"))' "$response"); then
@@ -89,7 +95,7 @@ case "${1:-}" in
     } >> "$GITHUB_ENV"
     ;;
   *)
-    echo "Usage: preview-database.sh ensure|destroy" >&2
+    echo "Usage: preview-database.sh ensure|connect|destroy" >&2
     exit 1
     ;;
 esac

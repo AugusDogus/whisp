@@ -53,6 +53,7 @@ jobs:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+          UPLOADTHING_TOKEN: ${{ secrets.UPLOADTHING_TOKEN }}
         run: |
           : "${TURSO_API_TOKEN:?Set the TURSO_API_TOKEN repository secret.}"
           : "${TURSO_ORGANIZATION:?Set the TURSO_ORGANIZATION repository variable.}"
@@ -60,6 +61,7 @@ jobs:
           : "${VERCEL_TOKEN:?Set the VERCEL_TOKEN repository secret.}"
           : "${VERCEL_ORG_ID:?Set the VERCEL_ORG_ID repository variable.}"
           : "${VERCEL_PROJECT_ID:?Set the VERCEL_PROJECT_ID repository variable.}"
+          : "${UPLOADTHING_TOKEN:?Set UPLOADTHING_TOKEN to the existing UploadThing app token.}"
 
       - name: Setup
         if: steps.pr.outputs.state == 'open'
@@ -92,6 +94,10 @@ jobs:
           # Only disposable PR data is affected by destructive schema changes.
           bunx --no-install drizzle-kit push --force < /dev/null
 
+      - name: Enable preview uploads
+        if: steps.pr.outputs.state == 'open'
+        run: bun tooling/github/preview-uploads.ts open
+
       - name: Deploy Vercel preview
         if: steps.pr.outputs.state == 'open'
         id: deploy
@@ -99,6 +105,7 @@ jobs:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+          UPLOADTHING_TOKEN: ${{ secrets.UPLOADTHING_TOKEN }}
         run: |
           # Upload from the monorepo root. Vercel's project root is apps/nextjs.
           # Remote builds retain Vercel's system URL variables for Better Auth.
@@ -107,8 +114,12 @@ jobs:
             --token="$VERCEL_TOKEN" \
             --build-env DATABASE_URL="$DATABASE_URL" \
             --build-env DATABASE_TOKEN="$DATABASE_TOKEN" \
+            --build-env PREVIEW_PR_NUMBER="$PR_NUMBER" \
+            --build-env UPLOADTHING_TOKEN="$UPLOADTHING_TOKEN" \
             --env DATABASE_URL="$DATABASE_URL" \
-            --env DATABASE_TOKEN="$DATABASE_TOKEN")
+            --env DATABASE_TOKEN="$DATABASE_TOKEN" \
+            --env PREVIEW_PR_NUMBER="$PR_NUMBER" \
+            --env UPLOADTHING_TOKEN="$UPLOADTHING_TOKEN")
           # Agent sessions wrap the deployment; ordinary CI emits it directly.
           url=$(jq -er '(.deployment // .).url | strings | select(startswith("https://"))' <<< "$deployment")
           echo "url=$url" >> "$GITHUB_OUTPUT"
@@ -120,7 +131,7 @@ jobs:
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
         with:
@@ -137,8 +148,27 @@ jobs:
           state=$(gh api "repos/$GH_REPO/pulls/$PR_NUMBER" --jq .state)
           echo "state=$state" >> "$GITHUB_OUTPUT"
 
-      - name: Delete PR database
+      - name: Setup
         if: steps.pr.outputs.state == 'closed'
+        uses: ./tooling/github/setup
+
+      - name: Connect to existing PR database
+        if: steps.pr.outputs.state == 'closed'
+        env:
+          TURSO_API_TOKEN: ${{ secrets.TURSO_API_TOKEN }}
+        run: bash tooling/github/preview-database.sh connect
+
+      - name: Disable preview uploads and delete their files
+        if: steps.pr.outputs.state == 'closed'
+        id: uploads
+        env:
+          UPLOADTHING_TOKEN: ${{ secrets.UPLOADTHING_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: bun tooling/github/preview-uploads.ts close
+
+      - name: Delete PR database
+        if: steps.uploads.outputs.closed == 'true'
         env:
           TURSO_API_TOKEN: ${{ secrets.TURSO_API_TOKEN }}
         run: bash tooling/github/preview-database.sh destroy
