@@ -39,6 +39,12 @@ const databaseHooks: NonNullable<BetterAuthOptions["databaseHooks"]> = {
     create: {
       before: async (session, context) => {
         if (context?.path !== "/oauth-proxy-callback") return;
+        const skipSync = (reason: string) => {
+          context.context.logger.warn(
+            "Preview Discord cosmetics sync skipped. Sign-in will continue with saved cosmetics; stale profiles can retry through automatic sync.",
+            { userId: session.userId, reason },
+          );
+        };
         // The proxy forwards only standard identity fields. Fetch the full profile
         // with its verified Discord token in the destination database's request.
         const accounts = await context.context.internalAdapter.findAccounts(
@@ -48,10 +54,7 @@ const databaseHooks: NonNullable<BetterAuthOptions["databaseHooks"]> = {
           (candidate) => candidate.providerId === "discord",
         );
         if (!account?.accessToken) {
-          throw new APIError("BAD_GATEWAY", {
-            message:
-              "Discord profile sync could not find the sign-in token. Please sign in again.",
-          });
+          return skipSync("No linked Discord access token was available.");
         }
         let input: unknown;
         const controller = new AbortController();
@@ -61,23 +64,22 @@ const databaseHooks: NonNullable<BetterAuthOptions["databaseHooks"]> = {
             headers: { Authorization: `Bearer ${account.accessToken}` },
             signal: controller.signal,
           });
-          if (!response.ok)
-            throw new Error(`Discord returned HTTP ${response.status}`);
+          if (!response.ok) {
+            return skipSync(`Discord returned HTTP ${response.status}.`);
+          }
           input = await response.json();
         } catch {
-          throw new APIError("BAD_GATEWAY", {
-            message:
-              "Discord profile sync failed during preview sign-in. Please try signing in again.",
-          });
+          return skipSync(
+            "Discord request failed, timed out, or returned invalid JSON.",
+          );
         } finally {
           clearTimeout(timeout);
         }
         const parsed = DiscordProfile.parse(input);
         if (!parsed.success || parsed.data.id !== account.accountId) {
-          throw new APIError("BAD_GATEWAY", {
-            message:
-              "Discord returned unexpected profile data during preview sign-in. Please try signing in again.",
-          });
+          return skipSync(
+            "Discord returned an invalid profile or a different account ID.",
+          );
         }
         await context.context.internalAdapter.updateUser(
           session.userId,
