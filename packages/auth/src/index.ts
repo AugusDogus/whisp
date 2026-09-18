@@ -21,6 +21,11 @@ export function initAuth(options: {
     }),
     baseURL: options.baseUrl,
     secret: options.secret,
+    user: {
+      additionalFields: {
+        discordUsername: { type: "string", required: false, input: false },
+      },
+    },
     session: {
       expiresIn: 60 * 60 * 24 * 400, // 400 days (max cookie lifetime browsers allow)
       updateAge: 60 * 60 * 24 * 30, // roll the window forward on use, at most monthly
@@ -40,6 +45,10 @@ export function initAuth(options: {
         clientId: options.discordClientId,
         clientSecret: options.discordClientSecret,
         redirectURI: `${options.productionUrl}/api/auth/callback/discord`,
+        mapProfileToUser: (profile: { username: string }) => ({
+          discordUsername: profile.username,
+        }),
+        overrideUserInfoOnSignIn: true,
       },
     },
     trustedOrigins: ["whisp://"],

@@ -25,13 +25,13 @@ export const friendsRouter = {
     .input(z.object({ query: z.string().trim().min(1).max(64) }))
     .query(async ({ ctx, input }) => {
       const me = ctx.session.user.id;
-      // Require the complete name; wildcard and partial searches must not list users.
+      // Discord display names can differ from usernames and are not unique.
       const users = await ctx.db
         .select()
         .from(User)
         .where(
           and(
-            sql`lower(${User.name}) = lower(${input.query})`,
+            sql`lower(${User.discordUsername}) = lower(${input.query})`,
             ne(User.id, me),
           ),
         );

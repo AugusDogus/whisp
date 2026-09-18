@@ -3,6 +3,7 @@ import { index, sqliteTable } from "drizzle-orm/sqlite-core";
 export const user = sqliteTable("user", (t) => ({
   id: t.text().primaryKey(),
   name: t.text().notNull(),
+  discordUsername: t.text(),
   email: t.text().notNull().unique(),
   emailVerified: t.integer({ mode: "boolean" }).notNull(),
   image: t.text(),

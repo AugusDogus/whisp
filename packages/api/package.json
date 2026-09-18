@@ -12,6 +12,7 @@
   "license": "MIT",
   "scripts": {
     "build": "tsc",
+    "test": "bun test src",
     "clean": "git clean -xdf .cache .turbo dist node_modules",
     "typecheck": "tsc --noEmit --emitDeclarationOnly false"
   },
@@ -31,6 +32,9 @@
   },
   "devDependencies": {
     "@acme/tsconfig": "workspace:*",
+    "@libsql/client": "^0.15.15",
+    "bun-types": "^1.4.2",
+    "drizzle-orm": "0.45.1",
     "typescript": "catalog:"
   }
 }
