@@ -6,6 +6,13 @@ import { user } from "./auth-schema";
 
 export * from "./auth-schema";
 
+export const PreviewPushTokenReset = sqliteTable(
+  "preview_push_token_reset",
+  (t) => ({
+    scope: t.text().primaryKey(),
+  }),
+);
+
 // Only preview deployments use these tables. Production clones have no ownership
 // entries, so previews cannot delete files inherited from the source database.
 export const PreviewUploadControl = sqliteTable(

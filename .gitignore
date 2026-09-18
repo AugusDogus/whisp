@@ -29,6 +29,7 @@ apps/expo/credentials/
 credentials.json
 *.jks
 google-services.json
+google-services.preview.json
 GoogleService-Info.plist
 
 # production
