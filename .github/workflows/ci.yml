@@ -58,3 +58,6 @@ jobs:
 
       - name: API tests
         run: bun --filter @acme/api test
+
+      - name: Auth tests
+        run: bun test packages/auth/src
