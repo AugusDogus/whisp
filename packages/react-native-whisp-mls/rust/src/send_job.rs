@@ -21,15 +21,9 @@ struct Input {
     id: String,
     device_id: String,
     source: String,
-    kind: Kind,
+    kind: MediaKind,
     recipients: Vec<String>,
     group_id: Option<String>,
-}
-#[derive(Clone, Copy, Deserialize, Serialize)]
-#[serde(rename_all = "lowercase")]
-enum Kind {
-    Photo,
-    Video,
 }
 #[derive(Deserialize, Serialize)]
 #[serde(tag = "stage", rename_all = "camelCase")]
@@ -48,9 +42,9 @@ enum Phase {
 struct Job {
     created_at: u64,
     #[serde(default)]
-    error: Option<String>,
+    failure: Option<SendFailure>,
     id: String,
-    kind: Kind,
+    kind: MediaKind,
     recipients: Vec<String>,
     group_id: Option<String>,
     phase: Phase,
@@ -126,8 +120,10 @@ pub fn enqueue_send_job(config: String, input: String) -> Result<String, MlsErro
         return Err(MlsError::protocol("send account changed before enqueue"));
     }
     let dir = directory(&c, &input.id)?;
-    fs::create_dir_all(&dir).map_err(|_| MlsError::protocol("send directory creation"))?;
+    fs::create_dir_all(Path::new(&c.root).join("sends"))
+        .map_err(|_| MlsError::protocol("send queue creation"))?;
     let _job = DeviceLease::acquire(&dir.to_string_lossy())?;
+    fs::create_dir_all(&dir).map_err(|_| MlsError::protocol("send directory creation"))?;
     {
         let _device = DeviceLease::acquire(&c.root)?;
         check_device(&c)?;
@@ -135,116 +131,243 @@ pub fn enqueue_send_job(config: String, input: String) -> Result<String, MlsErro
     if dir.join("job.age").exists() {
         return Ok(input.id);
     }
-    // Capture owns a temporary file. Copy and flush before accepting the job.
-    let mut source =
-        fs::File::open(&input.source).map_err(|_| MlsError::protocol("captured media read"))?;
-    let mut options = fs::OpenOptions::new();
-    options.write(true).create(true).truncate(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
+    let result = (|| {
+        // Capture owns a temporary file. Copy and flush before accepting the job.
+        let mut source =
+            fs::File::open(&input.source).map_err(|_| MlsError::protocol("captured media read"))?;
+        let mut options = fs::OpenOptions::new();
+        options.write(true).create(true).truncate(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let mut target = options
+            .open(dir.join("source"))
+            .map_err(|_| MlsError::protocol("queued media creation"))?;
+        std::io::copy(&mut source, &mut target)
+            .map_err(|_| MlsError::protocol("queued media copy"))?;
+        target
+            .flush()
+            .and_then(|()| target.sync_all())
+            .map_err(|_| MlsError::protocol("queued media flush"))?;
+        let job = Job {
+            created_at: now()?,
+            failure: None,
+            id: input.id,
+            kind: input.kind,
+            recipients: input.recipients,
+            group_id: input.group_id,
+            phase: Phase::Compress,
+        };
+        save(&c, &job)?;
+        Ok(job.id)
+    })();
+    if result.is_err() && !dir.join("job.age").exists() {
+        fs::remove_dir_all(&dir).map_err(|_| MlsError::protocol("incomplete send cleanup"))?;
     }
-    let mut target = options
-        .open(dir.join("source"))
-        .map_err(|_| MlsError::protocol("queued media creation"))?;
-    std::io::copy(&mut source, &mut target).map_err(|_| MlsError::protocol("queued media copy"))?;
-    target
-        .flush()
-        .and_then(|()| target.sync_all())
-        .map_err(|_| MlsError::protocol("queued media flush"))?;
-    let job = Job {
-        created_at: now()?,
-        error: None,
-        id: input.id,
-        kind: input.kind,
-        recipients: input.recipients,
-        group_id: input.group_id,
-        phase: Phase::Compress,
-    };
-    save(&c, &job)?;
-    Ok(job.id)
+    result
 }
 
 /// One checkpoint per call permits OS expiration/cancellation between phases.
 /// Compression completion uses a flushed, atomically renamed `compressed` file.
 #[uniffi::export]
-pub fn advance_send_job(config: String, id: String) -> Result<String, MlsError> {
+pub fn advance_send_job(config: String, id: String) -> Result<SendStep, MlsError> {
     let c = SendConfig::parse(&config)?;
     let dir = directory(&c, &id)?;
     let _job = DeviceLease::acquire(&dir.to_string_lossy())?;
     let mut job = read(&c, &id)?;
-    job.error = None;
-    if matches!(
-        job.phase,
-        Phase::Compress | Phase::Encrypt | Phase::Publish { .. } | Phase::Authorize
-    ) && now()?.saturating_sub(job.created_at) > 86_400_000
+    let expired = now()?.saturating_sub(job.created_at) > 86_400_000;
+    // Uploads must reconcile first: a lost response may already be delivered.
+    if expired
+        && !matches!(
+            job.phase,
+            Phase::Upload { .. } | Phase::Confirm | Phase::Sent | Phase::Failed { .. }
+        )
     {
         job.phase = Phase::Failed {
             message: "This queued whisp expired after 24 hours. Capture and send it again.".into(),
         };
+        job.failure = None;
         save(&c, &job)?;
     }
-    let api = Api::new(&c)?;
+    if !expired
+        && let Some(failure) = &job.failure
+        && failure.disposition == SendDisposition::Blocked
+    {
+        return Ok(SendStep::Paused {
+            failure: failure.clone(),
+        });
+    }
+    if job.failure.take().is_some() {
+        save(&c, &job)?;
+    }
+    match advance(&c, &mut job, expired) {
+        Ok(step) => Ok(step),
+        Err(error) => record_failure(&c, &mut job, SendFailure::from_error(error)),
+    }
+}
+
+fn record_failure(
+    c: &SendConfig,
+    job: &mut Job,
+    failure: SendFailure,
+) -> Result<SendStep, MlsError> {
+    if failure.disposition == SendDisposition::Terminal {
+        job.phase = Phase::Failed {
+            message: failure.message.clone(),
+        };
+        job.failure = None;
+        save(c, job)?;
+        cleanup(&directory(c, &job.id)?)?;
+        Ok(SendStep::Failed {
+            message: failure.message,
+        })
+    } else {
+        job.failure = Some(failure.clone());
+        save(c, job)?;
+        Ok(SendStep::Paused { failure })
+    }
+}
+
+fn advance(c: &SendConfig, job: &mut Job, expired: bool) -> Result<SendStep, MlsError> {
+    let id = job.id.clone();
+    let dir = directory(c, &id)?;
+    match &job.phase {
+        Phase::Sent => {
+            cleanup(&dir)?;
+            return Ok(SendStep::Sent);
+        }
+        Phase::Failed { message } => {
+            cleanup(&dir)?;
+            return Ok(SendStep::Failed {
+                message: message.clone(),
+            });
+        }
+        _ => (),
+    }
+    let api = Api::new(c)?;
     match &job.phase {
         Phase::Compress if dir.join("compressed").is_file() => job.phase = Phase::Encrypt,
-        Phase::Compress => return Ok(json!({"stage":"compress","kind":job.kind,"source":dir.join("source"),"output":dir.join("compressed")}).to_string()),
+        Phase::Compress => {
+            return Ok(SendStep::Compress {
+                kind: job.kind,
+                source: dir.join("source").to_string_lossy().into_owned(),
+                output: dir.join("compressed").to_string_lossy().into_owned(),
+            });
+        }
         Phase::Encrypt => {
             // An interrupted encryption has no published descriptor, so discard it.
             remove(&dir.join("ciphertext.age"))?;
-            let key = encrypt_attachment_sync(dir.join("compressed").to_string_lossy().into_owned(), dir.join("ciphertext.age").to_string_lossy().into_owned())?;
-            job.phase = Phase::Publish { descriptor: Descriptor { version: 1, message_id: id.clone(), sender_id: c.user_id.clone(), group_id: job.group_id.clone(),
-                key, mime_type: match job.kind { Kind::Photo => "image/jpeg", Kind::Video => "video/mp4" }.into(), thumbhash: None } };
-        },
+            let key = encrypt_attachment_sync(
+                dir.join("compressed").to_string_lossy().into_owned(),
+                dir.join("ciphertext.age").to_string_lossy().into_owned(),
+            )?;
+            job.phase = Phase::Publish {
+                descriptor: Descriptor {
+                    version: 1,
+                    message_id: id.clone(),
+                    sender_id: c.user_id.clone(),
+                    group_id: job.group_id.clone(),
+                    key,
+                    mime_type: match job.kind {
+                        MediaKind::Photo => "image/jpeg",
+                        MediaKind::Video => "video/mp4",
+                    }
+                    .into(),
+                    thumbhash: None,
+                },
+            };
+        }
         Phase::Publish { descriptor } => {
             // The same OS lock guards foreground receives, provisioning and reset.
             let _device = DeviceLease::acquire(&c.root)?;
-            check_device(&c)?;
-            let identity = MlsClient::restore_state(decode_base64(fs::read_to_string(Path::new(&c.root).join("identity.age")).map_err(|_| MlsError::protocol("send identity read"))?)?, c.storage_key.clone())?;
+            check_device(c)?;
+            let identity = MlsClient::restore_state(
+                decode_base64(
+                    fs::read_to_string(Path::new(&c.root).join("identity.age"))
+                        .map_err(|_| MlsError::protocol("send identity read"))?,
+                )?,
+                c.storage_key.clone(),
+            )?;
             api.call::<Value>("register", true, json!({"deviceId":c.device_id,"signatureKey":encode_base64(identity.signature_key()?)}))?;
-            #[derive(Deserialize)] struct Conversation { id: String }
-            #[derive(Deserialize)] struct Prepared { conversations: Vec<Conversation> }
+            #[derive(Deserialize)]
+            struct Conversation {
+                id: String,
+            }
+            #[derive(Deserialize)]
+            struct Prepared {
+                conversations: Vec<Conversation>,
+            }
             let mut input = json!({"deviceId":c.device_id,"draftId":id});
-            if let Some(group) = &job.group_id { input["groupId"] = json!(group); } else { input["recipients"] = json!(job.recipients); }
+            if let Some(group) = &job.group_id {
+                input["groupId"] = json!(group);
+            } else {
+                input["recipients"] = json!(job.recipients);
+            }
             let prepared: Prepared = api.call("prepare", true, input)?;
-            for conversation in prepared.conversations { conversation::send(&api, &conversation.id, descriptor)?; }
+            for conversation in prepared.conversations {
+                conversation::send(&api, &conversation.id, descriptor)?;
+            }
             job.phase = Phase::Authorize;
-        },
+        }
         Phase::Authorize => {
-            let size = fs::metadata(dir.join("ciphertext.age")).map_err(|_| MlsError::protocol("ciphertext metadata read"))?.len();
-            job.phase = Phase::Upload { url: api.presign(&id, size)? };
-        },
-        Phase::Upload { url } => {
-            let status: Value = api.call("uploadStatus", false, json!({"draftId":id}))?;
-            match status["status"].as_str() {
-                Some("sent") => job.phase = Phase::Sent,
-                Some("failed") => job.phase = Phase::Failed { message: "Delivery failed or expired. Send this whisp again.".into() },
-                Some("pending") => return Ok(json!({"stage":"upload","url":url,"file":dir.join("ciphertext.age"),"id":id}).to_string()),
-                _ => return Err(MlsError::protocol("delivery status validation")),
+            let size = fs::metadata(dir.join("ciphertext.age"))
+                .map_err(|_| MlsError::protocol("ciphertext metadata read"))?
+                .len();
+            job.phase = Phase::Upload {
+                url: api.presign(&id, size)?,
+            };
+        }
+        Phase::Upload { .. } | Phase::Confirm => {
+            #[derive(Deserialize)]
+            #[serde(tag = "status", rename_all = "lowercase")]
+            enum DeliveryStatus {
+                Sent,
+                Pending,
+                Failed { message: String },
             }
-        },
-        Phase::Confirm => {
-            let status: Value = api.call("uploadStatus", false, json!({"draftId":id}))?;
-            match status["status"].as_str() {
-                Some("sent") => job.phase = Phase::Sent,
-                Some("failed") => job.phase = Phase::Failed { message: "Delivery failed or expired. Send this whisp again.".into() },
-                Some("pending") => return Ok(json!({"stage":"confirm"}).to_string()),
-                _ => return Err(MlsError::protocol("delivery status validation")),
+            let status: DeliveryStatus = api.call("uploadStatus", false, json!({"draftId":id}))?;
+            match status {
+                DeliveryStatus::Sent => job.phase = Phase::Sent,
+                DeliveryStatus::Failed { message } => job.phase = Phase::Failed { message },
+                DeliveryStatus::Pending if expired => {
+                    return record_failure(
+                        c,
+                        job,
+                        SendFailure {
+                            disposition: SendDisposition::Terminal,
+                            message: "This queued upload expired. Capture and send it again."
+                                .into(),
+                        },
+                    );
+                }
+                DeliveryStatus::Pending => {
+                    return Ok(match &job.phase {
+                        Phase::Upload { url } => SendStep::Upload {
+                            transfer: SendUpload {
+                                url: url.clone(),
+                                file: dir.join("ciphertext.age").to_string_lossy().into_owned(),
+                                id,
+                            },
+                        },
+                        _ => SendStep::Confirm,
+                    });
+                }
             }
-        },
+        }
         Phase::Sent | Phase::Failed { .. } => {
-            cleanup(&dir)?;
-            return serde_json::to_string(&job.phase).map_err(|_| MlsError::protocol("send status encoding"));
-        },
+            unreachable!("terminal phases handled before network setup")
+        }
     }
-    save(&c, &job)?;
+    save(c, job)?;
     // Erase plaintext as soon as the encrypted checkpoint is durable.
     if !matches!(job.phase, Phase::Compress | Phase::Encrypt) {
         remove(&dir.join("source"))?;
         remove(&dir.join("compressed"))?;
         remove(&dir.join("compressed.partial"))?;
     }
-    Ok(json!({"stage":"continue"}).to_string())
+    Ok(SendStep::Continue)
 }
 #[uniffi::export]
 pub fn complete_send_upload(config: String, id: String, success: bool) -> Result<(), MlsError> {
@@ -263,39 +386,92 @@ pub fn complete_send_upload(config: String, id: String, success: bool) -> Result
     Ok(())
 }
 #[uniffi::export]
-pub fn list_send_jobs(config: String) -> Result<String, MlsError> {
+pub fn send_job_statuses(config: String) -> Result<Vec<SendJobStatus>, MlsError> {
     let c = SendConfig::parse(&config)?;
     let root = Path::new(&c.root).join("sends");
     if !root.exists() {
-        return Ok("[]".into());
+        return Ok(Vec::new());
     }
     let mut jobs = Vec::new();
     for entry in fs::read_dir(root).map_err(|_| MlsError::protocol("send queue read"))? {
         let entry = entry.map_err(|_| MlsError::protocol("send queue entry read"))?;
         let id = entry.file_name().to_string_lossy().into_owned();
-        if uuid::Uuid::parse_str(&id).is_err() || !entry.path().join("job.age").exists() {
+        if uuid::Uuid::parse_str(&id).is_err() {
+            continue;
+        }
+        if !entry.path().join("job.age").exists() {
+            // Enqueue owns this same lock from before directory creation until
+            // the journal is durable. Never delete a copy still in progress.
+            if let Some(_lease) = DeviceLease::try_acquire(&entry.path().to_string_lossy())?
+                && entry.path().exists()
+                && !entry.path().join("job.age").exists()
+            {
+                fs::remove_dir_all(entry.path())
+                    .map_err(|_| MlsError::protocol("orphan send cleanup"))?;
+            }
             continue;
         }
         let job = read(&c, &id)?;
-        let status = match job.phase {
-            Phase::Sent => "sent",
-            Phase::Failed { .. } => "failed",
-            _ => "uploading",
+        let (status, error) = match job.phase {
+            Phase::Sent => (SendStatus::Sent, None),
+            Phase::Failed { message } => (SendStatus::Failed, Some(message)),
+            _ => match job.failure {
+                Some(failure) => (
+                    if failure.disposition == SendDisposition::Blocked {
+                        SendStatus::Blocked
+                    } else {
+                        SendStatus::Uploading
+                    },
+                    Some(failure.message),
+                ),
+                None => (SendStatus::Uploading, None),
+            },
         };
-        jobs.push(json!({"id":id,"kind":job.kind,"recipients":job.recipients,"groupId":job.group_id,"status":status,"error":job.error,"createdAt":job.created_at}));
+        jobs.push(SendJobStatus {
+            id,
+            kind: job.kind,
+            recipients: job.recipients,
+            group_id: job.group_id,
+            status,
+            error,
+            created_at: job.created_at,
+        });
     }
-    jobs.sort_by_key(|j| j["createdAt"].as_u64().unwrap_or(0));
-    Ok(Value::Array(jobs).to_string())
+    jobs.sort_by_key(|job| job.created_at);
+    Ok(jobs)
 }
 
-/// Record a bounded, non-sensitive failure without discarding its retry checkpoint.
+/// JSON is the Expo boundary only; native workers use generated records.
 #[uniffi::export]
-pub fn pause_send_job(config: String, id: String) -> Result<(), MlsError> {
+pub fn list_send_jobs(config: String) -> Result<String, MlsError> {
+    serde_json::to_string(&send_job_statuses(config)?)
+        .map_err(|_| MlsError::protocol("send status encoding"))
+}
+
+#[uniffi::export]
+pub fn pause_send_job(
+    config: String,
+    id: String,
+    reason: SendInterruption,
+) -> Result<SendStep, MlsError> {
     let c = SendConfig::parse(&config)?;
     let dir = directory(&c, &id)?;
     let _job = DeviceLease::acquire(&dir.to_string_lossy())?;
     let mut job = read(&c, &id)?;
-    job.error = Some("Sending is paused. Check your connection and sign-in. Whisp will retry; the queued media is preserved.".into());
+    record_failure(&c, &mut job, reason.into())
+}
+
+/// Explicit foreground recovery releases jobs that required user action.
+#[uniffi::export]
+pub fn retry_send_job(config: String, id: String) -> Result<(), MlsError> {
+    let c = SendConfig::parse(&config)?;
+    let dir = directory(&c, &id)?;
+    let _job = DeviceLease::acquire(&dir.to_string_lossy())?;
+    if !dir.join("job.age").exists() {
+        return Ok(());
+    }
+    let mut job = read(&c, &id)?;
+    job.failure = None;
     save(&c, &job)
 }
 #[uniffi::export]

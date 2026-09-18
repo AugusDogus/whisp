@@ -18,6 +18,9 @@ const conversationId = crypto.randomUUID();
 const messageId = crypto.randomUUID();
 const nativeState = z.object({ deviceId: z.string(), groupId: z.string() });
 let userId = "alice";
+let signedOut = false;
+let sessionError: { message: string } | null = null;
+let nativeConfigurations: (string | null)[] = [];
 let descriptors: Record<string, unknown> = {};
 let nativeEnqueue: () => Promise<string> = async () => messageId;
 let download: () => Promise<void> = async () => {};
@@ -53,6 +56,9 @@ class NativeClient {
         signatureKey: new Uint8Array(32).fill(1).buffer,
       },
     ];
+  }
+  keyPackage() {
+    return encode("key package");
   }
   signatureKey() {
     return new Uint8Array(32).fill(1).buffer;
@@ -94,8 +100,11 @@ const api = createTRPCClient<AppRouter>({
 mock.module("./api", () => ({ createExpoTRPCClient: () => api }));
 mock.module("./auth", () => ({
   authClient: {
-    getCookie: () => `session-${userId}`,
-    getSession: async () => ({ data: { user: { id: userId } } }),
+    getCookie: () => (signedOut ? null : `session-${userId}`),
+    getSession: async () => ({
+      data: signedOut || sessionError ? null : { user: { id: userId } },
+      error: sessionError,
+    }),
   },
 }));
 mock.module("expo-secure-store", () => ({
@@ -141,7 +150,12 @@ mock.module("react-native-whisp-mls", () => ({
   },
   MlsClient: NativeClient,
   acquireDeviceLease: async () => ({ release: () => {} }),
-  nativeSend: { configure: async () => {}, enqueue: () => nativeEnqueue() },
+  nativeSend: {
+    configure: async (config: string | null) => {
+      nativeConfigurations.push(config);
+    },
+    enqueue: () => nativeEnqueue(),
+  },
   ReceivedMessage: {},
   initializeMls: () => {},
   generateStorageKey: () => "storage-key",
@@ -165,15 +179,20 @@ mock.module("react-native-whisp-mls", () => ({
   },
 }));
 mock.module("./base-url", () => ({ getBaseUrl: () => "https://whisp.test" }));
-const { withEncryptionDevice } = await import("./mls-device");
+const { withEncryptionDevice, prepareEncryptionDevice } =
+  await import("./mls-device");
 const { openWhisp } = await import("./mls-media");
 
-const { enqueueNativeSend } = await import("./native-send");
+const { enqueueNativeSend, configureNativeSends } =
+  await import("./native-send");
 
 beforeEach(() => {
   files.clear();
   secure.clear();
   userId = "alice";
+  signedOut = false;
+  sessionError = null;
+  nativeConfigurations = [];
   descriptors = {};
   nativeEnqueue = async () => messageId;
   download = async () => {};
@@ -356,4 +375,50 @@ test("legacy close waits for the read receipt before one remote cleanup", async 
   await Promise.all([receipt, disposal, opened.dispose()]);
   expect(cleanups).toBe(1);
   expect(opened.mimeType).toBe("video/quicktime");
+});
+
+test("opening a whisp replenishes keys after offline provisioning failed", async () => {
+  await selfConversation();
+  handlers["mls.inventory"] = () => {
+    throw new Error("offline");
+  };
+  await expect(prepareEncryptionDevice()).rejects.toThrow("offline");
+  let published = 0;
+  handlers["mls.inventory"] = () => [];
+  handlers["mls.publish"] = (input) => {
+    const parsed = z
+      .object({ packages: z.array(z.object({ id: z.string() })) })
+      .parse(input);
+    published += parsed.packages.length;
+    for (const key of parsed.packages) {
+      expect(
+        [...files.keys()].some((path) =>
+          path.endsWith(`/packages/${key.id}.age`),
+        ),
+      ).toBe(true);
+    }
+    return { ok: true };
+  };
+  await seedDescriptor();
+  const opened = await openWhisp(message);
+  expect(published).toBe(32);
+  await opened.dispose();
+});
+
+test("a transient sign-in check failure preserves native worker configuration", async () => {
+  await configureNativeSends();
+  expect(nativeConfigurations).toHaveLength(1);
+  sessionError = { message: "offline" };
+  await expect(configureNativeSends()).rejects.toThrow(
+    "Queued sends are preserved",
+  );
+  expect(nativeConfigurations).toHaveLength(1);
+});
+
+test("signing out clears native configuration even when session lookup fails", async () => {
+  await configureNativeSends();
+  signedOut = true;
+  sessionError = { message: "offline" };
+  await configureNativeSends();
+  expect(nativeConfigurations.at(-1)).toBeNull();
 });

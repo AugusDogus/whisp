@@ -3,7 +3,7 @@ import { decryptAttachment, newId } from "react-native-whisp-mls";
 import * as FS from "expo-file-system/legacy";
 
 import { forgetDescriptor, syncConversation } from "./mls-conversation";
-import { registerDevice, withEncryptionDevice } from "./mls-device";
+import { replenishKeys, withEncryptionDevice } from "./mls-device";
 
 const ENCRYPTED_MIME = "application/vnd.whisp.mls.v1";
 function localPath(uri: string) {
@@ -32,7 +32,7 @@ export async function openWhisp(message: {
 }): Promise<OpenedWhisp> {
   const prepared = await withEncryptionDevice(async (device) => {
     const api = device.api;
-    await registerDevice(device);
+    await replenishKeys(device);
     const delivery = await api.mls.delivery.query({
       deviceId: device.deviceId,
       deliveryId: message.deliveryId,
