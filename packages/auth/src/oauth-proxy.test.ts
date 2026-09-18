@@ -96,30 +96,78 @@ function mockDiscord(proxyResponse = () => Response.json(discordProfile)) {
   mocks.push(mock);
 }
 
-const previewCases = ["legacy", "current"].flatMap((client) => [
-  { client, outcome: "success", response: () => Response.json(discordProfile) },
-  {
-    client,
-    outcome: "malformed profile",
-    response: () => Response.json({ ...discordProfile, banner: "invalid" }),
-  },
-  {
-    client,
-    outcome: "different identity",
-    response: () => Response.json({ ...discordProfile, id: "987654321" }),
-  },
-  {
-    client,
-    outcome: "Discord unavailable",
-    response: () => new Response(null, { status: 503 }),
-  },
-]);
+const previewCases = ["legacy", "current"]
+  .flatMap((client) => [
+    {
+      client,
+      outcome: "success",
+      response: () => Response.json(discordProfile),
+    },
+    {
+      client,
+      outcome: "malformed profile",
+      response: () => Response.json({ ...discordProfile, banner: "invalid" }),
+    },
+    {
+      client,
+      outcome: "different identity",
+      response: () => Response.json({ ...discordProfile, id: "987654321" }),
+    },
+    {
+      client,
+      outcome: "Discord unavailable",
+      response: () => new Response(null, { status: 503 }),
+    },
+    {
+      client,
+      outcome: "network timeout",
+      response: () => {
+        throw new DOMException("Request timed out", "AbortError");
+      },
+    },
+    {
+      client,
+      outcome: "invalid JSON",
+      response: () => new Response("{"),
+    },
+  ])
+  .flatMap((scenario) =>
+    ["new", "existing"].map((userState) => ({ ...scenario, userState })),
+  );
 
 test.each(previewCases)(
-  "$client native preview login: $outcome",
-  async ({ client, outcome, response }) => {
+  "$client native preview login for $userState user: $outcome",
+  async ({ client, outcome, response, userState }) => {
     const production = await fixture(productionURL);
     const preview = await fixture(previewURL);
+    if (userState === "existing") {
+      preview.store.user.push({
+        id: "saved-user",
+        name: "Preview Tester",
+        email: discordProfile.email,
+        emailVerified: true,
+        image: "https://cdn.discordapp.com/embed/avatars/0.png",
+        createdAt: new Date(0),
+        updatedAt: new Date(0),
+        discordUsername: "saved-name",
+        discordBannerUrl:
+          "https://cdn.discordapp.com/banners/123456789/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.webp?size=1024",
+        discordAccentColor: 123,
+        discordPublicFlags: 128,
+        discordProfileSyncedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+        discordProfileRevision: "saved-revision",
+      });
+      preview.store.account.push({
+        id: "saved-account",
+        userId: "saved-user",
+        providerId: "discord",
+        accountId: discordProfile.id,
+        accessToken: "previous-token",
+        createdAt: new Date(0),
+        updatedAt: new Date(0),
+      });
+    }
+    const savedUser = structuredClone(preview.store.user[0]);
     mockDiscord(response);
 
     const signIn = await preview.auth.handler(
@@ -170,13 +218,6 @@ test.each(previewCases)(
     expect(production.store.account).toHaveLength(0);
 
     const complete = await preview.auth.handler(new Request(relay.toString()));
-    if (outcome !== "success") {
-      expect(complete.status).toBe(502);
-      expect(preview.store.session).toHaveLength(0);
-      expect(preview.store.user[0]?.discordProfileRevision).toBeUndefined();
-      expect(production.store.user).toHaveLength(0);
-      return;
-    }
     const mobile = location(complete);
     expect(`${mobile.protocol}//${mobile.host}`).toBe("whisp-preview://camera");
     expect(mobile.searchParams.get("cookie")).toContain(
@@ -185,7 +226,18 @@ test.each(previewCases)(
     expect(preview.store.session).toHaveLength(1);
     expect(preview.store.user).toHaveLength(1);
     expect(preview.store.account).toHaveLength(1);
-    expectCosmetics(preview.store.user[0]);
+    if (outcome === "success") {
+      expectCosmetics(preview.store.user[0]);
+    } else if (savedUser) {
+      expect(preview.store.user[0]).toEqual(savedUser);
+    } else {
+      expect(preview.store.user[0]?.discordProfileRevision).toBeUndefined();
+      expect(preview.store.user[0]?.discordProfileSyncedAt).toBeUndefined();
+      expect(preview.store.user[0]?.discordBannerUrl).toBeUndefined();
+    }
+    expect(production.store.user).toHaveLength(0);
+    expect(production.store.session).toHaveLength(0);
+    expect(production.store.account).toHaveLength(0);
 
     const replay = location(
       await preview.auth.handler(new Request(relay.toString())),
