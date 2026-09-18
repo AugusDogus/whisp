@@ -1,8 +1,10 @@
 import type { BetterAuthOptions } from "better-auth";
 
 import { betterAuth } from "better-auth";
+import { APIError } from "better-auth/api";
 import { oAuthProxy } from "better-auth/plugins";
 
+import { DiscordProfile } from "./discord-profile";
 import { expoWithOAuthProxy } from "./expo-oauth-proxy";
 
 export function initAuth(options: {
@@ -22,6 +24,60 @@ export function initAuth(options: {
     user: {
       additionalFields: {
         discordUsername: { type: "string", required: false, input: false },
+        discordBannerUrl: {
+          type: "string",
+          required: false,
+          input: false,
+          returned: false,
+        },
+        discordAccentColor: {
+          type: "number",
+          required: false,
+          input: false,
+          returned: false,
+        },
+        discordAvatarDecorationUrl: {
+          type: "string",
+          required: false,
+          input: false,
+          returned: false,
+        },
+        discordGuildTag: {
+          type: "string",
+          required: false,
+          input: false,
+          returned: false,
+        },
+        discordGuildBadgeUrl: {
+          type: "string",
+          required: false,
+          input: false,
+          returned: false,
+        },
+        discordNameplateUrl: {
+          type: "string",
+          required: false,
+          input: false,
+          returned: false,
+        },
+        discordPublicFlags: {
+          type: "number",
+          required: false,
+          input: false,
+          returned: false,
+        },
+        discordProfileSyncedAt: {
+          type: "date",
+          required: false,
+          input: false,
+          returned: false,
+        },
+        discordProfileRevision: {
+          type: "string",
+          required: false,
+          input: false,
+          returned: false,
+        },
       },
     },
     session: {
@@ -41,9 +97,16 @@ export function initAuth(options: {
         clientId: options.discordClientId,
         clientSecret: options.discordClientSecret,
         redirectURI: `${options.productionUrl}/api/auth/callback/discord`,
-        mapProfileToUser: (profile: { username: string }) => ({
-          discordUsername: profile.username,
-        }),
+        mapProfileToUser: (profile: unknown) => {
+          const parsed = DiscordProfile.parse(profile);
+          if (!parsed.success) {
+            throw new APIError("BAD_GATEWAY", {
+              message:
+                "Discord returned unexpected profile data. Your saved profile is unchanged. Please try signing in again later.",
+            });
+          }
+          return DiscordProfile.toUserFields(parsed.data);
+        },
         overrideUserInfoOnSignIn: true,
       },
     },

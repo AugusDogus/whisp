@@ -1,38 +1,36 @@
 import type { TRPCRouterRecord } from "@trpc/server";
-import type { APIUser } from "discord-api-types/v10";
 
-import { calculateUserDefaultAvatarIndex, CDN, REST } from "@discordjs/rest";
+import { REST } from "@discordjs/rest";
+import { TRPCError } from "@trpc/server";
 import { Routes } from "discord-api-types/v10";
 import { eq } from "drizzle-orm";
 import { z } from "zod/v4";
 
 import { authEnv } from "@acme/auth/env";
-import { account, user } from "@acme/db/schema";
+import { user } from "@acme/db/schema";
 
-import { checkIsFriend } from "../services/friendship";
+import { DiscordProfile } from "../services/discord-profile";
 import { protectedProcedure, publicProcedure } from "../trpc";
 
-const cdn = new CDN();
 const env = authEnv();
-
-async function fetchDiscordAvatar(
-  discordUserId: string,
-): Promise<string | null> {
-  try {
-    const rest = new REST({ version: "10" }).setToken(env.DISCORD_BOT_TOKEN);
-    const discordUser = (await rest.get(Routes.user(discordUserId))) as APIUser;
-
-    if (!discordUser.avatar) {
-      return cdn.defaultAvatar(calculateUserDefaultAvatarIndex(discordUserId));
-    }
-
-    return cdn.avatar(discordUserId, discordUser.avatar, { size: 256 });
-  } catch {
-    return null;
-  }
-}
+const rest = new REST({ version: "10" }).setToken(env.DISCORD_BOT_TOKEN);
+const fetchDiscordUser = (discordId: string) =>
+  rest.get(Routes.user(discordId));
 
 export const authRouter = {
+  discordProfile: protectedProcedure
+    .input(z.object({ userId: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      const result = await DiscordProfile.read(
+        ctx.db,
+        ctx.session.user.id,
+        input.userId,
+      );
+      if (!result.success) {
+        throw new TRPCError({ code: result.code, message: result.error });
+      }
+      return { profile: result.profile, needsRefresh: result.needsRefresh };
+    }),
   getSession: publicProcedure.query(({ ctx }) => {
     return ctx.session;
   }),
@@ -54,39 +52,21 @@ export const authRouter = {
   }),
 
   refreshAvatar: protectedProcedure
-    .input(z.object({ userId: z.string().min(1) }))
+    .input(
+      z.object({
+        userId: z.string().min(1),
+        mode: z.enum(["force", "if-stale"]).default("force"),
+      }),
+    )
     .mutation(async ({ ctx, input }) => {
-      const me = ctx.session.user.id;
-
-      // Allow refreshing own avatar or friends' avatars
-      if (input.userId !== me) {
-        const isFriend = await checkIsFriend(ctx.db, me, input.userId);
-        if (!isFriend) {
-          return { success: false, error: "Unauthorized" };
-        }
-      }
-
-      const [discordAccount] = await ctx.db
-        .select()
-        .from(account)
-        .where(eq(account.userId, input.userId))
-        .limit(1);
-
-      if (!discordAccount) {
-        return { success: false, error: "No Discord account linked" };
-      }
-
-      const avatarUrl = await fetchDiscordAvatar(discordAccount.accountId);
-
-      if (!avatarUrl) {
-        return { success: false, error: "Failed to fetch avatar from Discord" };
-      }
-
-      await ctx.db
-        .update(user)
-        .set({ image: avatarUrl })
-        .where(eq(user.id, input.userId));
-
-      return { success: true, image: avatarUrl };
+      const result = await DiscordProfile.refresh(
+        ctx.db,
+        ctx.session.user.id,
+        input.userId,
+        fetchDiscordUser,
+        input.mode,
+      );
+      if (!result.success) return result;
+      return { ...result, image: result.profile.avatarUrl };
     }),
 } satisfies TRPCRouterRecord;
