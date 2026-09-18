@@ -55,3 +55,6 @@ jobs:
 
       - name: Typecheck
         run: bun typecheck
+
+      - name: API tests
+        run: bun --filter @acme/api test
