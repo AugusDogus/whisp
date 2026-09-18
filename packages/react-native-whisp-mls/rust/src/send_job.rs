@@ -178,11 +178,16 @@ pub fn advance_send_job(config: String, id: String) -> Result<SendStep, MlsError
     let _job = DeviceLease::acquire(&dir.to_string_lossy())?;
     let mut job = read(&c, &id)?;
     let expired = now()?.saturating_sub(job.created_at) > 86_400_000;
-    // Uploads must reconcile first: a lost response may already be delivered.
+    // Reauthorization also follows interrupted uploads, whose response may be
+    // lost after delivery. Reconcile these before retrying or expiring locally.
     if expired
         && !matches!(
             job.phase,
-            Phase::Upload { .. } | Phase::Confirm | Phase::Sent | Phase::Failed { .. }
+            Phase::Authorize
+                | Phase::Upload { .. }
+                | Phase::Confirm
+                | Phase::Sent
+                | Phase::Failed { .. }
         )
     {
         job.phase = Phase::Failed {
@@ -311,15 +316,7 @@ fn advance(c: &SendConfig, job: &mut Job, expired: bool) -> Result<SendStep, Mls
             }
             job.phase = Phase::Authorize;
         }
-        Phase::Authorize => {
-            let size = fs::metadata(dir.join("ciphertext.age"))
-                .map_err(|_| MlsError::protocol("ciphertext metadata read"))?
-                .len();
-            job.phase = Phase::Upload {
-                url: api.presign(&id, size)?,
-            };
-        }
-        Phase::Upload { .. } | Phase::Confirm => {
+        Phase::Authorize | Phase::Upload { .. } | Phase::Confirm => {
             #[derive(Deserialize)]
             #[serde(tag = "status", rename_all = "lowercase")]
             enum DeliveryStatus {
@@ -341,6 +338,14 @@ fn advance(c: &SendConfig, job: &mut Job, expired: bool) -> Result<SendStep, Mls
                                 .into(),
                         },
                     );
+                }
+                DeliveryStatus::Pending if matches!(job.phase, Phase::Authorize) => {
+                    let size = fs::metadata(dir.join("ciphertext.age"))
+                        .map_err(|_| MlsError::protocol("ciphertext metadata read"))?
+                        .len();
+                    job.phase = Phase::Upload {
+                        url: api.presign(&id, size)?,
+                    };
                 }
                 DeliveryStatus::Pending => {
                     return Ok(match &job.phase {

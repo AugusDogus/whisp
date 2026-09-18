@@ -527,6 +527,17 @@ async fn recovery_does_not_remove_an_enqueue_that_owns_its_job_lock() {
 }
 
 fn respond_once(listener: TcpListener, status: u16, value: Value) -> thread::JoinHandle<()> {
+    let body = value.to_string();
+    let length = body.len();
+    respond_body_once(listener, status, body, length)
+}
+
+fn respond_body_once(
+    listener: TcpListener,
+    status: u16,
+    body: String,
+    content_length: usize,
+) -> thread::JoinHandle<()> {
     thread::spawn(move || {
         let (mut socket, _) = listener.accept().unwrap();
         let mut reader = BufReader::new(socket.try_clone().unwrap());
@@ -537,9 +548,69 @@ fn respond_once(listener: TcpListener, status: u16, value: Value) -> thread::Joi
                 break;
             }
         }
-        let body = value.to_string();
-        write!(socket, "HTTP/1.1 {status} Result\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
+        write!(socket, "HTTP/1.1 {status} Result\r\nContent-Type: application/json\r\nContent-Length: {content_length}\r\nConnection: close\r\n\r\n{body}").unwrap();
     })
+}
+
+#[test]
+fn interrupted_response_body_retries_without_explicit_resume() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let f = Fixture::new(&format!("http://{}", listener.local_addr().unwrap()));
+    f.enqueue();
+    replace_phase(&f, json!({"stage":"confirm"}), u64::MAX);
+    let retry_listener = listener.try_clone().unwrap();
+    let server = respond_body_once(listener, 200, "{\"result\":".into(), 1000);
+    assert_eq!(f.advance()["failure"]["disposition"], "retry");
+    server.join().unwrap();
+    let server = respond_once(
+        retry_listener,
+        200,
+        json!({"result":{"data":{"json":{"status":"sent"}}}}),
+    );
+    assert_eq!(f.advance()["stage"], "continue");
+    assert_eq!(f.advance()["stage"], "sent");
+    server.join().unwrap();
+}
+
+#[test]
+fn malformed_complete_response_still_requires_explicit_resume() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let f = Fixture::new(&format!("http://{}", listener.local_addr().unwrap()));
+    f.enqueue();
+    replace_phase(&f, json!({"stage":"confirm"}), u64::MAX);
+    let body = "invalid JSON".to_owned();
+    let length = body.len();
+    let server = respond_body_once(listener, 200, body, length);
+    assert_eq!(f.advance()["failure"]["disposition"], "blocked");
+    server.join().unwrap();
+    assert_eq!(f.advance()["failure"]["disposition"], "blocked");
+}
+
+#[test]
+fn interrupted_upload_reconciles_delivery_before_reauthorizing_or_expiring() {
+    for created_at in [0, u64::MAX] {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let f = Fixture::new(&format!("http://{}", listener.local_addr().unwrap()));
+        f.enqueue();
+        replace_phase(
+            &f,
+            json!({"stage":"upload","url":"https://upload.example.test"}),
+            created_at,
+        );
+        fs::write(f.dir().join("ciphertext.age"), b"ciphertext").unwrap();
+        // The server accepted the upload, but the platform lost its response.
+        complete_send_upload(f.config.clone(), f.id.clone(), false).unwrap();
+        pause_send_job(f.config.clone(), f.id.clone(), SendInterruption::Transfer).unwrap();
+        let server = respond_once(
+            listener,
+            200,
+            json!({"result":{"data":{"json":{"status":"sent"}}}}),
+        );
+        assert_eq!(f.advance()["stage"], "continue");
+        assert_eq!(f.advance()["stage"], "sent");
+        server.join().unwrap();
+        assert!(!f.dir().join("ciphertext.age").exists());
+    }
 }
 
 #[test]
