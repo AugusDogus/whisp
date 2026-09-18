@@ -102,7 +102,8 @@ jobs:
         run: |
           # Upload from the monorepo root. Vercel's project root is apps/nextjs.
           # Remote builds retain Vercel's system URL variables for Better Auth.
-          deployment=$(bunx vercel@56.1.0 deploy --yes --target=preview --format=json --token="$VERCEL_TOKEN" \
+          deployment=$(bunx vercel@56.1.0 deploy --yes --target=preview --format=json \
+            --scope="$VERCEL_ORG_ID" --token="$VERCEL_TOKEN" \
             --build-env DATABASE_URL="$DATABASE_URL" \
             --build-env DATABASE_TOKEN="$DATABASE_TOKEN" \
             --env DATABASE_URL="$DATABASE_URL" \
