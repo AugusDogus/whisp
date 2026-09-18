@@ -164,6 +164,7 @@
       "dependencies": {
         "@acme/db": "workspace:*",
         "@better-auth/expo": "1.6.33",
+        "@discordjs/rest": "^2.6.0",
         "@t3-oss/env-nextjs": "^0.13.8",
         "better-auth": "1.6.33",
         "next": "^15.5.2",

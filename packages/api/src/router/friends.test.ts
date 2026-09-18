@@ -24,6 +24,14 @@ await db.run(sql`CREATE TABLE user (
   emailVerified INTEGER, image TEXT, createdAt INTEGER, updatedAt INTEGER,
   notifyOnMessages INTEGER, notifyOnFriendActivity INTEGER
 )`);
+await client.executeMultiple(
+  await Bun.file(
+    new URL(
+      "../../../db/migrations/20260918_discord_cosmetics.sql",
+      import.meta.url,
+    ),
+  ).text(),
+);
 await db.run(sql`CREATE TABLE friendship (
   id TEXT, userIdA TEXT, userIdB TEXT, createdAt INTEGER, currentStreak INTEGER,
   lastActivityTimestampA INTEGER, lastActivityTimestampB INTEGER, streakUpdatedAt INTEGER
