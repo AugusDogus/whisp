@@ -3,21 +3,12 @@ import { StyleSheet, View } from "react-native";
 
 import { Image } from "expo-image";
 
-import { authClient } from "~/utils/auth";
-import { getBaseUrl } from "~/utils/base-url";
-
-function AnimatedNameplate({
-  userId,
-  staticUrl,
-}: {
-  userId: string;
-  staticUrl: string;
-}) {
+function AnimatedNameplate({ staticUrl }: { staticUrl: string }) {
   const [status, setStatus] = useState<"loading" | "loaded" | "failed">(
     "loading",
   );
-  const cookie = authClient.getCookie();
-  const uri = `${getBaseUrl()}/api/discord-profile/${encodeURIComponent(userId)}/nameplate?asset=${encodeURIComponent(staticUrl)}`;
+  // Saved URLs use static.png. Discord also serves the animation as APNG.
+  const uri = staticUrl.replace(/\/static\.png$/, "/img.png?passthrough=true");
   return (
     <>
       <Image
@@ -31,14 +22,13 @@ function AnimatedNameplate({
       />
       {status !== "failed" && (
         <Image
-          source={{ uri, headers: cookie ? { Cookie: cookie } : undefined }}
+          source={{ uri }}
           style={[
             StyleSheet.absoluteFill,
             { opacity: status === "loaded" ? 1 : 0 },
           ]}
           contentFit="contain"
           autoplay
-          useAppleWebpCodec={false}
           onLoad={() => setStatus("loaded")}
           onError={() => setStatus("failed")}
           accessibilityElementsHidden
@@ -50,22 +40,16 @@ function AnimatedNameplate({
 }
 
 export function DiscordNameplate({
-  userId,
   staticUrl,
   animate,
 }: {
-  userId: string;
   staticUrl: string;
   animate: boolean;
 }) {
   return (
     <View style={{ width: "45%", aspectRatio: 16 / 3 }}>
       {animate ? (
-        <AnimatedNameplate
-          key={staticUrl}
-          userId={userId}
-          staticUrl={staticUrl}
-        />
+        <AnimatedNameplate key={staticUrl} staticUrl={staticUrl} />
       ) : (
         <Image
           source={{ uri: staticUrl }}

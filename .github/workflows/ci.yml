@@ -76,7 +76,3 @@ jobs:
 
       - name: Expo tests
         run: bun --filter @acme/expo test
-
-      - name: Nameplate conversion tests
-        working-directory: apps/nextjs
-        run: bun test src/lib/discord-nameplate.test.ts src/app/api/discord-profile

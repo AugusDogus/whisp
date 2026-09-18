@@ -66,7 +66,7 @@ const profileSchema = discordUser.transform((user) => {
               : null,
           }
         : null,
-    // Discord collectible assets use a static PNG and an optional WebM.
+    // Store the static PNG; clients derive img.png for Discord's APNG animation.
     nameplateUrl: nameplate
       ? `https://cdn.discordapp.com/assets/collectibles/${nameplate.asset}static.png`
       : null,
