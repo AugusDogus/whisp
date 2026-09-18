@@ -1,0 +1,63 @@
+name: Preview upload sweep
+
+on:
+  schedule:
+    - cron: "23 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      prs: ${{ steps.uploads.outputs.prs }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./tooling/github/setup
+      - id: uploads
+        env:
+          UPLOADTHING_TOKEN: ${{ secrets.UPLOADTHING_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: bun tooling/github/preview-uploads.ts discover
+
+  cleanup:
+    needs: discover
+    if: needs.discover.outputs.prs != '[]'
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        pr: ${{ fromJSON(needs.discover.outputs.prs) }}
+    # Same lock as deployment/close cleanup, including when a PR is reopened.
+    concurrency:
+      group: preview-${{ matrix.pr }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PR_NUMBER: ${{ matrix.pr }}
+      TURSO_ORGANIZATION: ${{ vars.TURSO_ORGANIZATION }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./tooling/github/setup
+      - name: Connect to existing PR database
+        env:
+          TURSO_API_TOKEN: ${{ secrets.TURSO_API_TOKEN }}
+        run: bash tooling/github/preview-database.sh connect
+      - name: Delete late uploads only if the PR is still closed
+        id: uploads
+        env:
+          UPLOADTHING_TOKEN: ${{ secrets.UPLOADTHING_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: bun tooling/github/preview-uploads.ts close
+      - name: Finish database cleanup if an earlier close run was interrupted
+        if: steps.uploads.outputs.closed == 'true'
+        env:
+          TURSO_API_TOKEN: ${{ secrets.TURSO_API_TOKEN }}
+        run: bash tooling/github/preview-database.sh destroy

@@ -16,6 +16,7 @@
         "OAUTH_PROXY_SECRET",
         "DISCORD_BOT_TOKEN",
         "UPLOADTHING_TOKEN",
+        "PREVIEW_PR_NUMBER",
         "UPSTASH_REDIS_REST_URL",
         "UPSTASH_REDIS_REST_TOKEN",
         "PORT",

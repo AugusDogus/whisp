@@ -1,6 +1,10 @@
 import type { FileRouter } from "uploadthing/types";
 
-import { createUploadthing, UploadThingError } from "uploadthing/server";
+import {
+  createUploadthing,
+  UploadThingError,
+  UTFiles,
+} from "uploadthing/server";
 import { z } from "zod/v4";
 
 import { and, eq } from "@acme/db";
@@ -14,6 +18,8 @@ import {
 
 import { notifyNewMessage } from "../utils/send-notification";
 import { updateStreak } from "../utils/update-streak";
+import { PreviewScope } from "./preview-scope";
+import { PreviewUploads } from "./preview-uploads";
 
 interface CreateDeps {
   getSession: () => Promise<{ user: { id: string } } | null>;
@@ -45,10 +51,12 @@ export function createUploadRouter({ getSession }: CreateDeps) {
           thumbhash: z.string().optional(),
         }),
       )
-      .middleware(async ({ input }) => {
+      .middleware(async ({ input, files }) => {
         const session = await getSession();
         // eslint-disable-next-line @typescript-eslint/only-throw-error -- UploadThingError maps to proper HTTP status in UploadThing
         if (!session) throw new UploadThingError("Unauthorized");
+        const scope = PreviewScope.fromEnvironment(process.env);
+        await PreviewUploads.assertOpen(db, scope);
         const hasRecipients = input.recipients && input.recipients.length > 0;
         const hasGroupId = Boolean(input.groupId);
         if (!hasRecipients && !hasGroupId) {
@@ -80,6 +88,12 @@ export function createUploadRouter({ getSession }: CreateDeps) {
           }
         }
         return {
+          [UTFiles]: files.map((file) => ({
+            ...file,
+            ...(scope
+              ? { customId: `${scope.prefix}${crypto.randomUUID()}` }
+              : {}),
+          })),
           userId: session.user.id,
           recipients: input.recipients ?? [],
           groupId: input.groupId,
@@ -88,6 +102,11 @@ export function createUploadRouter({ getSession }: CreateDeps) {
         };
       })
       .onUploadComplete(async ({ metadata, file }) => {
+        await PreviewUploads.record(
+          db,
+          PreviewScope.fromEnvironment(process.env),
+          { key: getFileKey(file), customId: file.customId },
+        );
         const messageId = crypto.randomUUID();
         const isGroupMessage = Boolean(metadata.groupId);
 
@@ -200,20 +219,33 @@ export function createUploadRouter({ getSession }: CreateDeps) {
       },
     })
       .input(z.object({}))
-      .middleware(async () => {
+      .middleware(async ({ files }) => {
         const session = await getSession();
         // eslint-disable-next-line @typescript-eslint/only-throw-error -- UploadThingError maps to proper HTTP status in UploadThing
         if (!session) throw new UploadThingError("Unauthorized");
+        const scope = PreviewScope.fromEnvironment(process.env);
+        await PreviewUploads.assertOpen(db, scope);
         if (process.env.ENABLE_BACKGROUND_UPLOAD_TEST_PAGE !== "true") {
           // eslint-disable-next-line @typescript-eslint/only-throw-error -- UploadThingError maps to proper HTTP status in UploadThing
           throw new UploadThingError("Background upload test page is disabled");
         }
 
         return {
+          [UTFiles]: files.map((file) => ({
+            ...file,
+            ...(scope
+              ? { customId: `${scope.prefix}${crypto.randomUUID()}` }
+              : {}),
+          })),
           userId: session.user.id,
         };
       })
       .onUploadComplete(async ({ metadata, file }) => {
+        await PreviewUploads.record(
+          db,
+          PreviewScope.fromEnvironment(process.env),
+          { key: getFileKey(file), customId: file.customId },
+        );
         await db
           .insert(BackgroundUploadTestFile)
           .values({

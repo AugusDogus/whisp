@@ -6,6 +6,21 @@ import { user } from "./auth-schema";
 
 export * from "./auth-schema";
 
+// Only preview deployments use these tables. Production clones have no ownership
+// entries, so previews cannot delete files inherited from the source database.
+export const PreviewUploadControl = sqliteTable(
+  "preview_upload_control",
+  (t) => ({
+    scope: t.text().primaryKey(),
+    state: t.text({ enum: ["open", "closed"] }).notNull(),
+  }),
+);
+
+export const PreviewUpload = sqliteTable("preview_upload", (t) => ({
+  fileKey: t.text().primaryKey(),
+  customId: t.text().notNull(),
+}));
+
 // Friend relationships and messaging (ephemeral media)
 
 // Push notification tokens for multiple devices
