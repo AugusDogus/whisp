@@ -25,6 +25,7 @@ export function Avatar({ userId, image, name, size = 40 }: AvatarProps) {
         setRefreshedImage(data.image);
         setHasError(false);
         void utils.friends.list.invalidate();
+        void utils.auth.discordProfile.invalidate({ userId });
       }
     },
   });

@@ -93,7 +93,10 @@
     "@react-native-community/cli": "latest",
     "@types/babel__core": "^7.20.5",
     "@types/react": "catalog:react19",
+    "@types/react-test-renderer": "19.1.0",
+    "bun-types": "^1.4.2",
     "dotenv-cli": "catalog:",
+    "react-test-renderer": "19.1.0",
     "tailwindcss": "^4.2.1",
     "typescript": "catalog:"
   }

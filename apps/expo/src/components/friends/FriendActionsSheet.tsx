@@ -5,14 +5,19 @@ import type {
 } from "@gorhom/bottom-sheet";
 
 import type { MutableRefObject, ReactElement } from "react";
-import { Pressable, useColorScheme } from "react-native";
+import { useRef, useState } from "react";
+import type { NativeScrollEvent, NativeSyntheticEvent } from "react-native";
+import { Pressable, useWindowDimensions, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import {
-  BottomSheetView,
+  BottomSheetScrollView,
   BottomSheetModal as GorhomBottomSheetModal,
 } from "@gorhom/bottom-sheet";
+import { useThemeColor } from "heroui-native/hooks";
 
+import { DiscordProfileCard } from "~/components/discord-profile-card";
 import { Text } from "~/components/ui/text";
 
 export function FriendActionsSheet({
@@ -34,73 +39,115 @@ export function FriendActionsSheet({
   onViewDiscordProfile: (discordId: string) => void;
   onRemoveFriend: () => void;
 }) {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === "dark";
-  const iconColor = isDark ? "#aaa" : "#666";
+  const [surfaceColor, iconColor, dangerColor] = useThemeColor([
+    "surface",
+    "muted",
+    "danger",
+  ]);
   const discordId = selectedFriend?.discordId;
+  const [isOpen, setIsOpen] = useState(false);
+  const [profileVisible, setProfileVisible] = useState(true);
+  const profileHeight = useRef(0);
+  const insets = useSafeAreaInsets();
+  const { height } = useWindowDimensions();
 
   return (
     <GorhomBottomSheetModal
       ref={bottomSheetRef}
       enableDynamicSizing
+      maxDynamicContentSize={height - insets.top}
       enablePanDownToClose
       enableDismissOnClose
       backdropComponent={renderBackdrop}
+      handleComponent={null}
+      style={{
+        borderTopLeftRadius: 24,
+        borderTopRightRadius: 24,
+        overflow: "hidden",
+      }}
+      onChange={(index) => setIsOpen(index >= 0)}
       onDismiss={() => {
+        setIsOpen(false);
+        setProfileVisible(true);
         if (!isShowingDialogRef.current) {
           clearSelectedFriend();
         }
       }}
       backgroundStyle={{
-        backgroundColor: isDark ? "#171717" : "#ffffff",
-      }}
-      handleIndicatorStyle={{
-        backgroundColor: isDark ? "#525252" : "#d4d4d4",
+        backgroundColor: surfaceColor,
       }}
     >
-      <BottomSheetView className="px-4 pb-8 pt-2">
-        <Text className="mb-3 px-2 text-sm font-medium text-muted">
-          {selectedFriend?.name}
-        </Text>
-
-        <Pressable
-          className="active:bg-default flex-row items-center gap-3 rounded-lg px-3 py-3"
-          onPress={() => {
-            if (selectedFriend) {
-              onSendWhisp(selectedFriend);
-              bottomSheetRef.current?.close();
-            }
+      <BottomSheetScrollView
+        contentContainerStyle={{
+          gap: 8,
+          paddingBottom: Math.max(32, insets.bottom + 16),
+        }}
+        scrollEventThrottle={100}
+        onScroll={({
+          nativeEvent,
+        }: NativeSyntheticEvent<NativeScrollEvent>) => {
+          setProfileVisible(
+            nativeEvent.contentOffset.y < profileHeight.current,
+          );
+        }}
+      >
+        <View
+          onLayout={({ nativeEvent }) => {
+            profileHeight.current = nativeEvent.layout.height;
           }}
         >
-          <Ionicons name="camera" size={22} color={iconColor} />
-          <Text className="text-base">Send whisp</Text>
-        </Pressable>
+          {selectedFriend && (
+            <DiscordProfileCard
+              key={selectedFriend.id}
+              userId={selectedFriend.id}
+              name={selectedFriend.name}
+              image={selectedFriend.image}
+              active={isOpen && profileVisible}
+              variant="sheet"
+            />
+          )}
+        </View>
 
-        {discordId && (
+        <View className="gap-2 px-4">
           <Pressable
             className="active:bg-default flex-row items-center gap-3 rounded-lg px-3 py-3"
             onPress={() => {
-              onViewDiscordProfile(discordId);
+              if (selectedFriend) {
+                onSendWhisp(selectedFriend);
+                bottomSheetRef.current?.close();
+              }
+            }}
+          >
+            <Ionicons name="camera" size={22} color={iconColor} />
+            <Text className="text-base">Send whisp</Text>
+          </Pressable>
+
+          {discordId && (
+            <Pressable
+              className="active:bg-default flex-row items-center gap-3 rounded-lg px-3 py-3"
+              onPress={() => {
+                onViewDiscordProfile(discordId);
+                bottomSheetRef.current?.close();
+              }}
+            >
+              <MaterialIcons name="discord" size={22} color={iconColor} />
+              <Text className="text-base">View Discord Profile</Text>
+            </Pressable>
+          )}
+
+          <Pressable
+            className="active:bg-default flex-row items-center gap-3 rounded-lg px-3 py-3"
+            onPress={() => {
+              isShowingDialogRef.current = true;
+              onRemoveFriend();
               bottomSheetRef.current?.close();
             }}
           >
-            <MaterialIcons name="discord" size={22} color={iconColor} />
-            <Text className="text-base">View Discord Profile</Text>
+            <Ionicons name="person-remove" size={22} color={dangerColor} />
+            <Text className="text-danger text-base">Remove Friend</Text>
           </Pressable>
-        )}
-
-        <Pressable
-          className="active:bg-default flex-row items-center gap-3 rounded-lg px-3 py-3"
-          onPress={() => {
-            isShowingDialogRef.current = true;
-            onRemoveFriend();
-            bottomSheetRef.current?.close();
-          }}
-        >
-          <Ionicons name="person-remove" size={22} color="#ef4444" />
-          <Text className="text-danger text-base">Remove Friend</Text>
-        </Pressable>
-      </BottomSheetView>
+        </View>
+      </BottomSheetScrollView>
     </GorhomBottomSheetModal>
   );
 }

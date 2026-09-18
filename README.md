@@ -312,6 +312,52 @@ using the [Turso Platform API](https://docs.turso.tech/api-reference/introductio
 for [native database branching](https://docs.turso.tech/features/branching) and
 to distinguish a missing database from a failed cleanup request.
 
+### Discord profile storage
+
+Discord cosmetics are stored in nullable columns on `user`: `discordBannerUrl`,
+`discordAccentColor`, `discordAvatarDecorationUrl`, `discordGuildTag`,
+`discordGuildBadgeUrl`, `discordNameplateUrl`, `discordPublicFlags`, and
+`discordProfileSyncedAt`, plus an internal `discordProfileRevision` used to reject
+outdated refresh writes. Colors and public badge flags are integers; the sync
+time is a timestamp. Badge labels and display colors are derived when reading.
+`auth.discordProfile` reads only the database. When an opened profile has never synced or its saved sync is
+at least 24 hours old, the app calls the existing `auth.refreshAvatar` mutation
+in `if-stale` mode. The server checks the saved timestamp before contacting
+Discord, so all devices share the same freshness check. Syncing and retries run
+in the background, without profile sync controls or error messages. Saved
+profile details remain visible when syncing fails. Avatar image recovery uses
+a forced refresh.
+
+Discord sign-in and refresh share the same validated profile mapping. Refresh
+saves the avatar URL, Discord username, and cosmetics in one database update.
+A revision check prevents a delayed refresh from overwriting a profile saved
+by another refresh or sign-in. Failed Discord requests preserve the saved data;
+automatic refresh can retry when the profile is revisited. Existing users need
+no bulk backfill: their next successful sign-in or refresh populates the columns.
+
+Avatars, banners, decorations, and nameplates animate only while the profile is
+visible and the app is active. System reduced-motion changes take effect live.
+Nameplates use an authenticated image endpoint that converts Discord's transparent
+VP9 WebM into animated WebP with the bundled FFmpeg binary. The server caches each
+converted asset for 24 hours; clients retain the static image during loading or
+conversion failures. Conversion has input/output limits, a timeout, and a limit of
+two concurrent assets per server instance. No additional schema change is needed.
+The Next.js deployment must include the traced `ffmpeg-static/ffmpeg` binary.
+
+Public badges are labels. Discord does not provide profile badge icon URLs in the
+User API. Private profile themes and effects are not included.
+
+Before deploying this change against an existing database, apply
+`packages/db/migrations/20260918_discord_cosmetics.sql` once, or use the existing
+`bun db:push` flow. Do not apply the SQL migration if `db:push` has already added
+the columns. The migration adds these columns together in a transaction and
+preserves existing users and avatar URLs.
+
+For phone testing, use the PR preview workflow described above. It provisions
+the isolated database branch and applies these columns through Drizzle. Set
+`EXPO_PUBLIC_API_URL` to that deployment when building Whisp Preview. Do not also
+apply the SQL migration to a preview whose schema has already been pushed.
+
 ### Scheduled message cleanup
 
 The app includes an automated cleanup system that runs daily via Vercel Cron to prevent the database from growing indefinitely:
