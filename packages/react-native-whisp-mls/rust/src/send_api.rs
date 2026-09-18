@@ -74,9 +74,7 @@ impl<'a> Api<'a> {
             .send()
             .map_err(|_| MlsError::Transport)?;
         let response = successful_response(response, name)?;
-        let body: Value = response
-            .json()
-            .map_err(|_| MlsError::protocol("send server response decoding"))?;
+        let body: Value = decode_response(response, "send server response decoding")?;
         serde_json::from_value(body["result"]["data"]["json"].clone())
             .map_err(|_| MlsError::protocol("send server response validation"))
     }
@@ -91,9 +89,7 @@ impl<'a> Api<'a> {
             .json(&json!({"files":[{"name":format!("{draft}.age"),"size":size,"type":"application/octet-stream","lastModified":0}],"input":{"draftId":draft}}))
             .send().map_err(|_| MlsError::Transport)?;
         let response = successful_response(response, "authorize")?;
-        let targets: Vec<Target> = response
-            .json()
-            .map_err(|_| MlsError::protocol("encrypted upload target decoding"))?;
+        let targets: Vec<Target> = decode_response(response, "encrypted upload target decoding")?;
         let [target] = targets.as_slice() else {
             return Err(MlsError::protocol("encrypted upload target count"));
         };
@@ -104,6 +100,16 @@ impl<'a> Api<'a> {
         }
         Ok(target.url.clone())
     }
+}
+
+fn decode_response<T: DeserializeOwned>(
+    response: reqwest::blocking::Response,
+    operation: &str,
+) -> Result<T, MlsError> {
+    // Reading the body can fail after successful headers. Only a fully read,
+    // invalid payload is a protocol error that requires explicit recovery.
+    let body = response.bytes().map_err(|_| MlsError::Transport)?;
+    serde_json::from_slice(&body).map_err(|_| MlsError::protocol(operation))
 }
 
 fn successful_response(
