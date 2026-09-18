@@ -102,9 +102,9 @@ export function useFriendRows({
 
       const lastMessageAt = latestMs > 0 ? new Date(latestMs) : null;
 
-      let lastMediaKind: MediaKind = "photo";
+      let lastMediaKind: MediaKind | null = null;
       if (outboxState === "uploading" || outboxState === "sent") {
-        lastMediaKind = outbox?.mediaKind ?? "photo";
+        lastMediaKind = outbox?.mediaKind ?? null;
       } else if (incomingIsLatest && hasUnread) {
         lastMediaKind = mimeToMediaKind(senderToLatestMime.get(f.id));
       } else if (outgoingIsLatest) {

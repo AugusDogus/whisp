@@ -1,8 +1,5 @@
 import type { QueryClient } from "@tanstack/react-query";
 
-import { Image } from "expo-image";
-import * as VideoThumbnails from "expo-video-thumbnails";
-
 import { toast } from "sonner-native";
 
 import type { FriendsListOutput } from "~/utils/api";
@@ -12,14 +9,13 @@ import {
   markWhispSent,
   markWhispUploading,
 } from "~/utils/outbox-status";
+
+import { authClient } from "./auth";
 import {
-  BackgroundUploadTaskRemovedError,
-  BackgroundUploadTimeoutError,
-  createFile,
-  removeBackgroundUploadTask,
-  type BackgroundUploadTask,
-  uploadFilesWithInputInBackground,
-} from "~/utils/uploadthing";
+  enqueueNativeSend,
+  listNativeSends,
+  acknowledgeNativeSend,
+} from "./native-send";
 
 interface UploadMediaParams {
   queryClient: QueryClient;
@@ -27,17 +23,6 @@ interface UploadMediaParams {
   type: "photo" | "video";
   recipients: string[];
   groupId?: string;
-}
-
-function isSuccessfulBackgroundTask(task: BackgroundUploadTask) {
-  return task.status === "completed";
-}
-
-async function cleanupBackgroundTasks(tasks: BackgroundUploadTask[]) {
-  const uniqueTaskIds = [...new Set(tasks.map((task) => task.taskId))];
-  await Promise.allSettled(
-    uniqueTaskIds.map((taskId) => removeBackgroundUploadTask(taskId)),
-  );
 }
 
 function invalidateUploadRelatedQueries(
@@ -96,7 +81,7 @@ function applySuccessfulUploadSideEffects(params: {
             ...f,
             lastActivityTimestamp: now,
             lastSentOpened: false,
-          } as typeof f;
+          };
         });
       },
     );
@@ -118,130 +103,62 @@ function applyFailedUploadSideEffects(params: {
   toast.error(message ?? "Upload failed");
 }
 
-/**
- * Generates a thumbhash for the given media URI
- * For images: generates directly from the image
- * For videos: extracts first frame, then generates thumbhash from that frame
- */
-async function generateThumbhash(
-  uri: string,
-  type: "photo" | "video",
-): Promise<string | undefined> {
-  try {
-    if (type === "photo") {
-      // Generate thumbhash directly from image
-      const thumbhash = await Image.generateThumbhashAsync(uri);
-      return thumbhash;
-    } else {
-      // For videos, extract first frame then generate thumbhash
-      const { uri: thumbnailUri } = await VideoThumbnails.getThumbnailAsync(
-        uri,
-        {
-          time: 0, // First frame
-          quality: 0.5, // Medium quality is fine for thumbhash
-        },
-      );
-      const thumbhash = await Image.generateThumbhashAsync(thumbnailUri);
-      return thumbhash;
-    }
-  } catch (err) {
-    console.warn("[Thumbhash] Failed to generate thumbhash:", err);
-    return undefined;
-  }
-}
-
-/**
- * Compresses and uploads media to recipients in the background
- * Navigation happens immediately while upload continues
- * @param params Upload parameters including URI, type, and recipients
- */
-export async function uploadMedia(params: UploadMediaParams): Promise<void> {
-  const { queryClient, uri, type, recipients, groupId } = params;
-  const normalizedGroupId = groupId?.trim();
-  const isGroupSend = Boolean(normalizedGroupId);
-
-  const mediaKind: MediaKind = type === "video" ? "video" : "photo";
-
-  try {
-    if (!isGroupSend && recipients.length > 0) {
-      markWhispUploading(recipients, mediaKind);
-    }
-
-    const thumbhash = await generateThumbhash(uri, type);
-
-    const file = await createFile(uri, type);
-    const mimeType =
-      file.type || (type === "photo" ? "image/jpeg" : "video/mp4");
-
-    if (isGroupSend && !normalizedGroupId) {
-      throw new Error("A group upload requires a valid groupId.");
-    }
-
-    const uploadInput = isGroupSend
-      ? { groupId: normalizedGroupId, mimeType, thumbhash }
-      : { recipients, mimeType, thumbhash };
-
-    const backgroundBatch = await uploadFilesWithInputInBackground(
-      "imageUploader",
-      {
-        files: [file],
-        input: uploadInput,
-      },
-    );
-
-    let tasksForCleanup: BackgroundUploadTask[] = backgroundBatch.tasks;
-    let shouldCleanupTasks = true;
-
-    void backgroundBatch.completion
-      .then((tasks) => {
-        tasksForCleanup = tasks;
-        const failedTask = tasks.find(
-          (task) => !isSuccessfulBackgroundTask(task),
-        );
-        if (failedTask) {
-          applyFailedUploadSideEffects({
-            recipients,
-            isGroupSend,
-            message: failedTask.errorMessage ?? "Upload failed",
-          });
-          return;
-        }
-
+// Native jobs are the durable source of truth. JS only enqueues and observes.
+const observed = new Map<string, string>();
+export async function reconcileNativeSends(queryClient: QueryClient) {
+  const cookie = authClient.getCookie();
+  const jobs = await listNativeSends();
+  if (cookie !== authClient.getCookie()) return;
+  for (const job of jobs) {
+    const status = job.error ?? job.status;
+    if (observed.get(job.id) !== status) {
+      observed.set(job.id, status);
+      const isGroupSend = Boolean(job.groupId);
+      if (job.status === "sent")
         applySuccessfulUploadSideEffects({
           queryClient,
-          recipients,
-          mediaKind,
+          recipients: job.recipients,
+          mediaKind: job.kind,
           isGroupSend,
-          groupId,
+          groupId: job.groupId ?? undefined,
         });
-      })
-      .catch((err: unknown) => {
-        if (
-          err instanceof BackgroundUploadTimeoutError ||
-          err instanceof BackgroundUploadTaskRemovedError
-        ) {
-          // Let foreground reconciliation observe terminal state and remove safely.
-          shouldCleanupTasks = false;
-          return;
-        }
+      else if (job.status === "failed")
         applyFailedUploadSideEffects({
-          recipients,
+          recipients: job.recipients,
           isGroupSend,
-          message: err instanceof Error ? err.message : "Upload failed",
         });
-      })
-      .finally(() => {
-        if (shouldCleanupTasks) {
-          void cleanupBackgroundTasks(tasksForCleanup);
-        }
-      });
-  } catch (err) {
-    console.error("[Upload] Failed to prepare file for upload:", err);
-    const errorMessage = err instanceof Error ? err.message : "Unknown error";
+      else if (job.error)
+        applyFailedUploadSideEffects({
+          recipients: job.recipients,
+          isGroupSend,
+          message: job.error,
+        });
+    }
+    if (job.status !== "uploading") await acknowledgeNativeSend(job.id);
+  }
+  // A completed older send must not hide another queued send to the same person.
+  for (const job of jobs) {
+    if (job.status !== "uploading" || job.groupId) continue;
+    if (job.error) markWhispFailed(job.recipients);
+    else markWhispUploading(job.recipients, job.kind);
+  }
+}
+export async function uploadMedia(params: UploadMediaParams): Promise<void> {
+  const isGroupSend = Boolean(params.groupId?.trim());
+  try {
+    if (!isGroupSend) markWhispUploading(params.recipients, params.type);
+    await enqueueNativeSend({
+      ...params,
+      groupId: params.groupId?.trim() || undefined,
+    });
+  } catch (error) {
     applyFailedUploadSideEffects({
-      recipients,
+      recipients: params.recipients,
       isGroupSend,
-      message: `Failed to prepare media: ${errorMessage}`,
+      message:
+        error instanceof Error
+          ? error.message
+          : "The whisp could not be queued. Retry sending.",
     });
   }
 }
