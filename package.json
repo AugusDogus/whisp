@@ -22,7 +22,7 @@
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
     "lint:ws": "bun x sherif@latest",
-    "postinstall": "bun lint:ws",
+    "postinstall": "bun lint:ws && node packages/react-native-whisp-mls/scripts/eas-build.mjs",
     "typecheck": "turbo run typecheck",
     "check": "turbo run typecheck && oxlint --fix && oxfmt --write",
     "ui-add": "turbo run ui-add",

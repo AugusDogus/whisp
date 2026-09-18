@@ -1,0 +1,29 @@
+rust:
+  directory: rust
+  manifestPath: Cargo.toml
+bindings:
+  cpp: cpp/generated
+  ts: src/generated
+android:
+  apiLevel: 24
+  targets:
+    - armeabi-v7a
+    - arm64-v8a
+    - x86
+    - x86_64
+  cargoExtras:
+    - --locked
+ios:
+  targets:
+    - aarch64-apple-ios
+    - aarch64-apple-ios-sim
+  cargoExtras:
+    - --locked
+noOverwrite:
+  - src/index.ts
+  - src/NativeWhispMls.ts
+  - android/build.gradle
+  - android/src/main/AndroidManifest.xml
+  - ios/WhispMls.mm
+  - android/CMakeLists.txt
+  - WhispMls.podspec

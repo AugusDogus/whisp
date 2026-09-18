@@ -1,0 +1,8 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": {
+    "modules": ["WhispSendModule"],
+    "appDelegateSubscribers": ["WhispSendAppDelegateSubscriber"]
+  },
+  "android": { "modules": ["chat.whisp.mls.WhispSendModule"] }
+}

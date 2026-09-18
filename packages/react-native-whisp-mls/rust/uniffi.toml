@@ -1,0 +1,6 @@
+[bindings.kotlin]
+package_name = "chat.whisp.mls.core"
+cdylib_name = "whisp_mls"
+[bindings.swift]
+module_name = "WhispMlsCore"
+ffi_module_name = "WhispMlsCoreFFI"
