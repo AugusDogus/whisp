@@ -167,7 +167,8 @@ if Drizzle needs an interactive answer.
 Closing or merging the PR disables new uploads, deletes its completed UploadThing
 files, then deletes its database branch. Reopening branches from the current main
 database again.
-Deployment and cleanup share a concurrency group and run serially. Database
+Deployment and cleanup share a concurrency group and run serially. Pending runs
+are queued so sweeps cannot replace a waiting deployment or cleanup. Database
 tokens do not expire while the PR is open; deleting the database ends access.
 Old Vercel deployments remain listed, but their database stops working after
 cleanup. UploadThing uses the existing app: upload middleware assigns each preview
@@ -178,7 +179,9 @@ Normal message cleanup checks a preview-only ownership registry before deleting
 files, protecting production references inherited from the database branch.
 
 [An hourly sweep](.github/workflows/preview-upload-sweep.yml) catches uploads that
-were still in progress when the PR closed. It checks the current GitHub PR state
+were still in progress when the PR closed. It also discovers remaining
+`whisp-pr-<number>` Turso databases, so failed database deletions are retried even
+when no uploads remain. It checks the current GitHub PR state
 under the same concurrency lock as deployment, skips open/reopened PRs, and retries
 cleanup for closed PRs. GitHub can delay scheduled runs; file removal is eventual.
 Other services still use the Vercel Preview environment configuration.

@@ -53,6 +53,32 @@ function prState(prNumber: string) {
     );
 }
 
+async function discoverDatabasePrs(): Promise<string[]> {
+  const organization = z
+    .string()
+    .regex(/^[a-zA-Z0-9_-]+$/)
+    .parse(required("TURSO_ORGANIZATION"));
+  const response = await fetch(
+    `https://api.turso.tech/v1/organizations/${organization}/databases`,
+    {
+      headers: { Authorization: `Bearer ${required("TURSO_API_TOKEN")}` },
+      signal: AbortSignal.timeout(60_000),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(
+      `Turso database discovery failed for ${organization} (HTTP ${response.status}). No cleanup was scheduled; check the API token and Turso status, then rerun the sweep.`,
+    );
+  }
+  const { databases } = z
+    .object({ databases: z.array(z.object({ Name: z.string() })) })
+    .parse(await response.json());
+  return databases.flatMap(({ Name }) => {
+    const match = Name.match(/^whisp-pr-([1-9][0-9]*)$/);
+    return match?.[0] === Name && match[1] ? [match[1]] : [];
+  });
+}
+
 async function main() {
   const action = z.enum(["open", "close", "discover"]).parse(process.argv[2]);
   if (action === "open") {
@@ -61,7 +87,13 @@ async function main() {
   }
   const store = new UTApi({ token: required("UPLOADTHING_TOKEN") });
   if (action === "discover") {
-    const prs = (await PreviewCleanup.discover(store)).filter(
+    // Files can already be gone when database deletion fails. Conversely, late
+    // uploads can outlive the database. Reconcile both resource inventories.
+    const [uploads, databases] = await Promise.all([
+      PreviewCleanup.discover(store),
+      discoverDatabasePrs(),
+    ]);
+    const prs = [...new Set([...uploads, ...databases])].filter(
       (pr) => prState(pr) === "closed",
     );
     appendFileSync(required("GITHUB_OUTPUT"), `prs=${JSON.stringify(prs)}\n`);
