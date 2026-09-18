@@ -102,11 +102,12 @@ jobs:
         run: |
           # Upload from the monorepo root. Vercel's project root is apps/nextjs.
           # Remote builds retain Vercel's system URL variables for Better Auth.
-          url=$(bunx vercel@56.1.0 deploy --yes --target=preview --token="$VERCEL_TOKEN" \
+          deployment=$(bunx vercel@56.1.0 deploy --yes --target=preview --format=json --token="$VERCEL_TOKEN" \
             --build-env DATABASE_URL="$DATABASE_URL" \
             --build-env DATABASE_TOKEN="$DATABASE_TOKEN" \
             --env DATABASE_URL="$DATABASE_URL" \
             --env DATABASE_TOKEN="$DATABASE_TOKEN")
+          url=$(jq -er '.deployment.url | strings | select(startswith("https://"))' <<< "$deployment")
           echo "url=$url" >> "$GITHUB_OUTPUT"
           echo "Preview: $url (database: whisp-pr-$PR_NUMBER)" >> "$GITHUB_STEP_SUMMARY"
 
