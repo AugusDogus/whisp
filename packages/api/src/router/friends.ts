@@ -2,7 +2,7 @@ import type { TRPCRouterRecord } from "@trpc/server";
 
 import { z } from "zod/v4";
 
-import { and, eq, inArray, like, ne, or } from "@acme/db";
+import { and, eq, inArray, ne, or, sql } from "@acme/db";
 import { FriendRequest, Friendship, user as User } from "@acme/db/schema";
 
 import { FRIEND_REQUEST_STATUS } from "../constants";
@@ -22,15 +22,19 @@ import { deriveDisplayedStreakState } from "../utils/streak-state";
 
 export const friendsRouter = {
   searchUsers: protectedProcedure
-    .input(z.object({ query: z.string().min(1).max(64) }))
+    .input(z.object({ query: z.string().trim().min(1).max(64) }))
     .query(async ({ ctx, input }) => {
-      const q = `%${input.query.trim()}%`;
       const me = ctx.session.user.id;
-      // Simple search by name, excluding self
+      // Require the complete name; wildcard and partial searches must not list users.
       const users = await ctx.db
         .select()
         .from(User)
-        .where(and(like(User.name, q), ne(User.id, me)));
+        .where(
+          and(
+            sql`lower(${User.name}) = lower(${input.query})`,
+            ne(User.id, me),
+          ),
+        );
 
       // Determine friendship/request status for each user
       const userIds = users.map((u) => u.id);

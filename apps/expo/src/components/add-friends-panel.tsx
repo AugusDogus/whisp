@@ -131,10 +131,13 @@ export function AddFriendsPanel() {
   return (
     <View className="gap-4">
       <Input
-        placeholder="Search by username"
+        placeholder="Enter their username"
         value={query}
         onChangeText={setQuery}
       />
+      <UIText variant="muted" className="text-sm">
+        Enter their username exactly as it appears on their profile.
+      </UIText>
 
       {query.trim().length > 0 && (
         <View className="gap-2">
@@ -170,7 +173,7 @@ export function AddFriendsPanel() {
             ))
           ) : (
             <UIText variant="muted" className="text-sm">
-              No users found
+              No users found with that username
             </UIText>
           )}
         </View>
