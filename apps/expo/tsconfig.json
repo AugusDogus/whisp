@@ -1,6 +1,7 @@
 {
   "extends": ["@acme/tsconfig/base.json"],
   "compilerOptions": {
+    "types": ["bun-types/test"],
     "jsx": "react-native",
     "checkJs": false,
     "paths": {

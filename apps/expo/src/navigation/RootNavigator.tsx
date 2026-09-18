@@ -24,6 +24,7 @@ import GroupSettingsScreen from "~/app/group-settings";
 import SplashScreen from "~/app/index";
 import LoginScreen from "~/app/login";
 import MediaScreen from "~/app/media";
+import MlsTestScreen from "~/app/mls-test";
 import OnboardingScreen from "~/app/onboarding";
 import ProfileScreen from "~/app/profile";
 import { RecordingProvider, useRecording } from "~/contexts/RecordingContext";
@@ -112,6 +113,9 @@ export function RootNavigator() {
             component={BackgroundUploadTestScreen}
           />
           <Stack.Screen name="CreateGroup" component={CreateGroupScreen} />
+          {__DEV__ ? (
+            <Stack.Screen name="MlsTest" component={MlsTestScreen} />
+          ) : null}
         </Stack.Navigator>
         <Toaster />
       </NavigationContainer>

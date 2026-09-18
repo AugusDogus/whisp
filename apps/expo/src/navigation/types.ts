@@ -24,6 +24,7 @@ export interface RootStackParamList extends ParamListBase {
   GroupAddMembers: { groupId: string };
   CreateGroup: undefined;
   BackgroundUploadTest: undefined;
+  MlsTest: undefined;
 }
 
 export type AppScreenName = keyof RootStackParamList;
