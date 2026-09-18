@@ -73,3 +73,7 @@ jobs:
             echo "Schema changes need a migration. Run bun db:generate and commit packages/db/drizzle."
             exit 1
           fi
+
+      - name: Nameplate conversion tests
+        working-directory: apps/nextjs
+        run: bun test src/lib/discord-nameplate.test.ts src/app/api/discord-profile
