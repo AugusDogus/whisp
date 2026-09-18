@@ -211,6 +211,13 @@ OAuth and navigation read the build's scheme, and the backend accepts both mobil
 schemes. Regenerate local native projects when switching variants so the installed
 package and intent filters match the selected configuration.
 
+Preview login uses Better Auth's OAuth proxy, as in Ask AMLI. Discord keeps its
+registered callback at `https://whisp.chat/api/auth/callback/discord`. Production
+relays the encrypted identity back to the preview, where the user and session are
+stored. This requires Better Auth 1.6 on both servers; the old 1.3 proxy expects a
+shared database. The Expo adapter enables proxying and returns the preview cookie
+to `whisp-preview://`. It also preserves the browser state handoff for older APKs.
+
 #### One-time configuration
 
 1. Identify Whisp's main Turso **libSQL** database and its organization.
@@ -243,6 +250,11 @@ package and intent filters match the selected configuration.
    (auth, etc.). The workflow explicitly passes `UPLOADTHING_TOKEN` and
    `PREVIEW_PR_NUMBER` to preview builds and runtime. No separate UploadThing app
    or Turso Marketplace integration is needed.
+   Set the same randomly generated `OAUTH_PROXY_SECRET` (at least 32 characters)
+   in Vercel Production and Preview. This is a dedicated proxy encryption key;
+   keep it separate from `AUTH_SECRET`. Deploy the updated production proxy before
+   testing preview login. No account-schema migration or Discord callback change
+   is required.
 5. Merge the workflows and helpers into `main` before relying on cleanup.
    Cleanup checks out the current base branch, including for unmerged PRs.
    Scheduled sweeps only run after their workflow reaches the default branch.
@@ -319,12 +331,3 @@ bun build               # Build all packages
 ---
 
 <sub>Scaffolded with [create-t3-turbo](https://github.com/t3-oss/create-t3-turbo)</sub>
-
-### Preview OAuth
-
-Better Auth 1.6 proxies preview Discord login through the registered production
-callback, then creates the session in the preview database. Configure the same
-`OAUTH_PROXY_SECRET` (at least 32 random characters) in Production and Preview,
-separate from `AUTH_SECRET`. Production must run the updated proxy before preview
-login works. The Expo adapter preserves the browser cookie handoff for existing
-APKs and returns preview sessions through `whisp-preview://`.
