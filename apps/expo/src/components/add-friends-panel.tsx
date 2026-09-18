@@ -4,15 +4,9 @@ import { View } from "react-native";
 import { Button } from "heroui-native/button";
 import { Input } from "heroui-native/input";
 
+import { Avatar } from "~/components/ui/avatar";
 import { Text as UIText } from "~/components/ui/text";
 import { trpc } from "~/utils/api";
-
-interface SearchUserResult {
-  id: string;
-  name: string;
-  isFriend: boolean;
-  hasPendingRequest: boolean;
-}
 
 interface IncomingRequestRow {
   requestId: string;
@@ -146,28 +140,39 @@ export function AddFriendsPanel() {
             <UIText variant="muted" className="text-sm">
               Searching…
             </UIText>
-          ) : (results as SearchUserResult[]).length > 0 ? (
-            (results as SearchUserResult[]).map((u) => (
+          ) : results.length > 0 ? (
+            results.map((u) => (
               <View
                 key={u.id}
-                className="bg-default flex-row items-center justify-between rounded-md px-3 py-2"
+                className="bg-default items-center gap-5 rounded-2xl p-6"
               >
-                <UIText>{u.name}</UIText>
+                <Avatar userId={u.id} image={u.image} name={u.name} size={96} />
+                <UIText className="text-center text-2xl font-semibold">
+                  {u.name}
+                </UIText>
                 {u.isFriend ? (
-                  <UIText variant="muted" className="text-xs">
+                  <UIText variant="muted" className="text-center">
                     Friends
                   </UIText>
                 ) : u.hasPendingRequest ? (
-                  <UIText variant="muted" className="text-xs">
-                    Pending
+                  <UIText variant="muted" className="text-center">
+                    Request pending
                   </UIText>
                 ) : (
                   <Button
-                    size="sm"
+                    size="lg"
+                    className="w-full"
+                    isDisabled={sendReq.isPending}
+                    accessibilityLabel={`Add ${u.name} as a friend`}
                     onPress={() => sendReq.mutate({ toUserId: u.id })}
                   >
-                    Add
+                    Add friend
                   </Button>
+                )}
+                {sendReq.isError && sendReq.variables?.toUserId === u.id && (
+                  <UIText className="text-danger text-center text-sm">
+                    Couldn’t send your friend request. Try again.
+                  </UIText>
                 )}
               </View>
             ))
