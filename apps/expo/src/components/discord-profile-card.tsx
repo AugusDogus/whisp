@@ -1,22 +1,20 @@
-import { useState } from "react";
 import { View } from "react-native";
 
 import { Image } from "expo-image";
-
-import { useIsFocused } from "@react-navigation/native";
 
 import { useCosmeticMotion } from "~/hooks/useCosmeticMotion";
 import { useDiscordProfile } from "~/hooks/useDiscordProfile";
 import { cn } from "~/lib/utils";
 
 import { DiscordNameplate } from "./discord-nameplate";
+import { Avatar } from "./ui/avatar";
 import { Text } from "./ui/text";
 
 interface DiscordProfileCardProps {
   userId: string;
   name: string;
   image: string | null;
-  active?: boolean;
+  active: boolean;
   variant?: "card" | "sheet";
 }
 
@@ -24,17 +22,15 @@ export function DiscordProfileCard({
   userId,
   name,
   image,
-  active = true,
+  active,
   variant = "card",
 }: DiscordProfileCardProps) {
-  const isFocused = useIsFocused();
-  const { profile } = useDiscordProfile(userId, active && isFocused);
+  const { profile } = useDiscordProfile(userId, active);
   const savedProfile = profile.data?.profile;
   const cosmetics = savedProfile?.cosmetics;
-  const animate = useCosmeticMotion(active && isFocused);
+  const animate = useCosmeticMotion(active);
   const avatarUrl = savedProfile?.avatarUrl ?? image;
   const displayName = savedProfile?.name ?? name;
-  const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null);
 
   return (
     <View
@@ -70,23 +66,16 @@ export function DiscordProfileCard({
 
       <View className="gap-3 px-4 pb-4">
         <View className="bg-surface -mt-10 size-24 items-center justify-center self-start rounded-full p-1">
-          <View className="bg-default size-full items-center justify-center overflow-hidden rounded-full">
-            {avatarUrl && avatarUrl !== failedAvatarUrl ? (
-              <Image
-                key={`avatar-${animate}`}
-                source={{ uri: avatarUrl }}
-                style={{ width: "100%", height: "100%" }}
-                contentFit="cover"
-                autoplay={animate}
-                onError={() => setFailedAvatarUrl(avatarUrl)}
-                accessibilityLabel={`${displayName}'s avatar`}
-              />
-            ) : (
-              <Text className="text-3xl font-semibold">
-                {Array.from(displayName)[0] ?? "?"}
-              </Text>
-            )}
-          </View>
+          {/* A new visit or source resets the shared avatar's bounded recovery. */}
+          <Avatar
+            key={`${avatarUrl}:${active}`}
+            userId={userId}
+            image={avatarUrl}
+            name={displayName}
+            size={88}
+            active={active}
+            autoplay={animate}
+          />
           {cosmetics?.decorationUrl && (
             <Image
               key={`decoration-${animate}`}

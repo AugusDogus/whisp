@@ -10,6 +10,7 @@
     "dev:ios": "bun with-env expo start --ios",
     "android": "expo run:android",
     "ios": "expo run:ios",
+    "test": "bun test src",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -90,6 +91,7 @@
     "@babel/core": "^7.28.4",
     "@babel/preset-env": "^7.28.3",
     "@babel/runtime": "^7.28.4",
+    "@gorhom/portal": "1.0.14",
     "@react-native-community/cli": "latest",
     "@types/babel__core": "^7.20.5",
     "@types/react": "catalog:react19",

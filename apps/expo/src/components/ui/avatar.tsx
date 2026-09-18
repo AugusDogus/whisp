@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { View } from "react-native";
 
 import { Image } from "expo-image";
@@ -12,11 +12,21 @@ interface AvatarProps {
   image: string | null;
   name: string;
   size?: number;
+  active?: boolean;
+  autoplay?: boolean;
 }
 
-export function Avatar({ userId, image, name, size = 40 }: AvatarProps) {
+export function Avatar({
+  userId,
+  image,
+  name,
+  size = 40,
+  active = true,
+  autoplay = true,
+}: AvatarProps) {
   const [hasError, setHasError] = useState(false);
   const [refreshedImage, setRefreshedImage] = useState<string | null>(null);
+  const attemptedRefresh = useRef(false);
   const utils = trpc.useUtils();
 
   const refreshAvatar = trpc.auth.refreshAvatar.useMutation({
@@ -35,7 +45,8 @@ export function Avatar({ userId, image, name, size = 40 }: AvatarProps) {
 
   const handleImageError = () => {
     setHasError(true);
-    if (!refreshAvatar.isPending && !refreshedImage) {
+    if (active && !refreshAvatar.isPending && !attemptedRefresh.current) {
+      attemptedRefresh.current = true;
       refreshAvatar.mutate({ userId });
     }
   };
@@ -56,10 +67,13 @@ export function Avatar({ userId, image, name, size = 40 }: AvatarProps) {
     >
       {showImage ? (
         <Image
+          key={String(active && autoplay)}
           source={{ uri: displayImage }}
           style={{ width: size, height: size }}
           contentFit="cover"
           onError={handleImageError}
+          autoplay={active && autoplay}
+          accessibilityLabel={`${name}'s avatar`}
         />
       ) : (
         <View className="h-full w-full items-center justify-center">

@@ -12,7 +12,7 @@ import {
 import Constants from "expo-constants";
 
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
-import { useNavigation } from "@react-navigation/native";
+import { useIsFocused, useNavigation } from "@react-navigation/native";
 import { Button } from "heroui-native/button";
 import { Dialog } from "heroui-native/dialog";
 import { Switch } from "heroui-native/switch";
@@ -26,6 +26,7 @@ import { authClient } from "~/utils/auth";
 import { getBaseUrl } from "~/utils/base-url";
 
 export default function ProfileScreen() {
+  const isFocused = useIsFocused();
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -116,7 +117,7 @@ export default function ProfileScreen() {
                 userId={session.user.id}
                 name={session.user.name}
                 image={session.user.image ?? null}
-                active={profileVisible}
+                active={isFocused && profileVisible}
               />
             )}
             {session?.user.email && (

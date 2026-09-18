@@ -15,6 +15,7 @@ import {
   BottomSheetScrollView,
   BottomSheetModal as GorhomBottomSheetModal,
 } from "@gorhom/bottom-sheet";
+import { useIsFocused } from "@react-navigation/native";
 import { useThemeColor } from "heroui-native/hooks";
 
 import { DiscordProfileCard } from "~/components/discord-profile-card";
@@ -39,6 +40,8 @@ export function FriendActionsSheet({
   onViewDiscordProfile: (discordId: string) => void;
   onRemoveFriend: () => void;
 }) {
+  // This component is inside navigation; the modal's portaled children are not.
+  const isFocused = useIsFocused();
   const [surfaceColor, iconColor, dangerColor] = useThemeColor([
     "surface",
     "muted",
@@ -102,7 +105,7 @@ export function FriendActionsSheet({
               userId={selectedFriend.id}
               name={selectedFriend.name}
               image={selectedFriend.image}
-              active={isOpen && profileVisible}
+              active={isFocused && isOpen && profileVisible}
               variant="sheet"
             />
           )}
