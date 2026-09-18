@@ -23,7 +23,7 @@ export interface FriendRow {
   partnerLastActivityTimestamp: Date | null;
   hoursRemaining: number | null;
   lastMessageStatus: MessageStatus;
-  lastMediaKind: MediaKind;
+  lastMediaKind: MediaKind | null;
   lastMessageAt: Date | null;
   outboxState: OutboxState | null;
   outboxUpdatedAt: Date | null;

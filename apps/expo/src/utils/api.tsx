@@ -9,13 +9,23 @@ import { getBaseUrl } from "./base-url";
 
 export const trpc = createTRPCReact<AppRouter>();
 
-export function createExpoTRPCClient() {
+// tRPC includes the path on response log events, but omits it from their types.
+function isEncryptionOperation(operation: object): boolean {
+  return (
+    "path" in operation &&
+    typeof operation.path === "string" &&
+    operation.path.startsWith("mls.")
+  );
+}
+
+export function createExpoTRPCClient(authCookie?: string) {
   return createTRPCClient<AppRouter>({
     links: [
       loggerLink({
         enabled: (opts) =>
-          process.env.NODE_ENV === "development" ||
-          (opts.direction === "down" && opts.result instanceof Error),
+          !isEncryptionOperation(opts) &&
+          (process.env.NODE_ENV === "development" ||
+            (opts.direction === "down" && opts.result instanceof Error)),
         colorMode: "ansi",
       }),
       httpBatchLink({
@@ -25,7 +35,7 @@ export function createExpoTRPCClient() {
           const headers = new Map<string, string>();
           headers.set("x-trpc-source", "expo-react");
 
-          const cookies = authClient.getCookie();
+          const cookies = authCookie ?? authClient.getCookie();
           if (cookies) {
             headers.set("Cookie", cookies);
           }

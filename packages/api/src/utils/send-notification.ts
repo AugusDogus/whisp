@@ -135,10 +135,10 @@ export async function notifyNewMessage(
   senderId: string,
   senderName: string,
   messageId: string,
-  fileUrl?: string,
-  mimeType?: string,
+  _fileUrl?: string,
+  _mimeType?: string,
   deliveryId?: string,
-  thumbhash?: string,
+  _thumbhash?: string,
   group?: { groupId: string; groupName: string },
 ) {
   const recipient = await database.query.user.findFirst({
@@ -162,10 +162,7 @@ export async function notifyNewMessage(
     type: NOTIFICATION_TYPE.MESSAGE,
     messageId,
     senderId,
-    fileUrl,
-    mimeType,
     deliveryId,
-    thumbhash,
   };
   if (group) {
     data.groupId = group.groupId;

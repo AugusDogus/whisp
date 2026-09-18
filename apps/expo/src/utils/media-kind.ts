@@ -8,10 +8,13 @@
 /** The two media types a whisp can be. */
 export type MediaKind = "photo" | "video";
 
-/** Derive {@link MediaKind} from a MIME-type string. Defaults to `"photo"`. */
-export function mimeToMediaKind(mime: string | null | undefined): MediaKind {
+/** Encrypted descriptors do not expose a media kind to the server. */
+export function mimeToMediaKind(
+  mime: string | null | undefined,
+): MediaKind | null {
   if (mime?.startsWith("video/")) return "video";
-  return "photo";
+  if (mime?.startsWith("image/")) return "photo";
+  return null;
 }
 
 /** Whether a MIME-type string represents a video. */
@@ -28,6 +31,8 @@ export const PHOTO_COLOR = "#ef4444";
 export const VIDEO_COLOR = "#a855f7";
 
 /** Returns the accent colour for the given media kind. */
-export function mediaKindColor(kind: MediaKind): string {
-  return kind === "video" ? VIDEO_COLOR : PHOTO_COLOR;
+export function mediaKindColor(kind: MediaKind | null): string {
+  if (kind === "video") return VIDEO_COLOR;
+  if (kind === "photo") return PHOTO_COLOR;
+  return "#9ca3af";
 }

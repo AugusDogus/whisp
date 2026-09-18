@@ -15,15 +15,6 @@ interface GroupInboxItem {
 
 export function useGroupMessageViewer(groupId: string) {
   const utils = trpc.useUtils();
-  const markRead = trpc.messages.markRead.useMutation({
-    onSettled: () => {
-      void utils.groups.inbox.invalidate({ groupId });
-      void utils.groups.list.invalidate();
-      void utils.messages.inbox.invalidate();
-    },
-  });
-  const { mutate: cleanupMessage } =
-    trpc.messages.cleanupIfAllRead.useMutation();
 
   const [viewer, setViewer] = useState<{
     friendId: string;
@@ -45,41 +36,26 @@ export function useGroupMessageViewer(groupId: string) {
         createdAt: m.createdAt,
       }));
       setViewer({ friendId: groupId, queue: asInbox, index: startIndex });
-      const first = asInbox[startIndex];
-      if (first?.deliveryId) {
-        markRead.mutate({ deliveryId: first.deliveryId });
-      }
     },
-    [groupId, markRead],
+    [groupId],
   );
 
   const closeViewer = useCallback(() => {
-    if (viewer) {
-      const messageIds = new Set(
-        viewer.queue
-          .map((m) => m?.messageId)
-          .filter((id): id is string => Boolean(id)),
-      );
-      for (const messageId of messageIds) {
-        cleanupMessage({ messageId });
-      }
-    }
     setViewer(null);
-  }, [cleanupMessage, viewer]);
+    void utils.groups.inbox.invalidate({ groupId });
+    void utils.groups.list.invalidate();
+    void utils.messages.inbox.invalidate();
+  }, [utils, groupId]);
 
   const onViewerTap = useCallback(() => {
     if (!viewer) return;
     const nextIndex = viewer.index + 1;
     if (nextIndex < viewer.queue.length) {
       setViewer({ ...viewer, index: nextIndex });
-      const nextMsg = viewer.queue[nextIndex];
-      if (nextMsg?.deliveryId) {
-        markRead.mutate({ deliveryId: nextMsg.deliveryId });
-      }
     } else {
       closeViewer();
     }
-  }, [closeViewer, markRead, viewer]);
+  }, [closeViewer, viewer]);
 
   return { viewer, openViewer, closeViewer, onViewerTap };
 }

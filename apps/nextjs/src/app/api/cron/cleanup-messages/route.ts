@@ -2,7 +2,12 @@ import { NextResponse } from "next/server";
 
 import { and, inArray, isNotNull, isNull, lt } from "@acme/db";
 import { db } from "@acme/db/client";
-import { Message, MessageDelivery } from "@acme/db/schema";
+import {
+  Message,
+  MessageDelivery,
+  MlsDraft,
+  MlsKeyPackage,
+} from "@acme/db/schema";
 
 import { env } from "~/env";
 
@@ -45,6 +50,8 @@ export async function GET(request: Request) {
 
       deletedDeliveries = deliveriesResult.rowsAffected;
 
+      await db.delete(MlsDraft).where(inArray(MlsDraft.id, messageIds));
+
       // Then delete the messages themselves
       const messagesResult = await db
         .delete(Message)
@@ -80,6 +87,8 @@ export async function GET(request: Request) {
 
       deletedOldDeliveries = oldDeliveriesResult.rowsAffected;
 
+      await db.delete(MlsDraft).where(inArray(MlsDraft.id, oldMessageIds));
+
       // Delete the old messages
       const oldMessagesResult = await db
         .delete(Message)
@@ -87,6 +96,20 @@ export async function GET(request: Request) {
 
       deletedOldMessages = oldMessagesResult.rowsAffected;
     }
+
+    await db
+      .delete(MlsDraft)
+      .where(
+        and(isNull(MlsDraft.completedAt), lt(MlsDraft.expiresAt, new Date())),
+      );
+    await db
+      .delete(MlsKeyPackage)
+      .where(
+        and(
+          isNull(MlsKeyPackage.operationId),
+          lt(MlsKeyPackage.expiresAt, new Date()),
+        ),
+      );
 
     return NextResponse.json({
       success: true,
