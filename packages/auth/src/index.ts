@@ -1,24 +1,22 @@
 import type { BetterAuthOptions } from "better-auth";
 
-import { expo } from "@better-auth/expo";
 import { betterAuth } from "better-auth";
-import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { oAuthProxy } from "better-auth/plugins";
 
-import { db } from "@acme/db/client";
+import { expoWithOAuthProxy } from "./expo-oauth-proxy";
 
 export function initAuth(options: {
+  database: BetterAuthOptions["database"];
   baseUrl: string;
   productionUrl: string;
   secret: string | undefined;
+  proxySecret: string;
 
   discordClientId: string;
   discordClientSecret: string;
 }) {
   const config = {
-    database: drizzleAdapter(db, {
-      provider: "sqlite",
-    }),
+    database: options.database,
     baseURL: options.baseUrl,
     secret: options.secret,
     user: {
@@ -32,13 +30,11 @@ export function initAuth(options: {
     },
     plugins: [
       oAuthProxy({
-        /**
-         * Auto-inference blocked by https://github.com/better-auth/better-auth/pull/2891
-         */
         currentURL: options.baseUrl,
         productionURL: options.productionUrl,
+        secret: options.proxySecret,
       }),
-      expo(),
+      expoWithOAuthProxy(options.baseUrl, options.productionUrl),
     ],
     socialProviders: {
       discord: {
@@ -51,7 +47,12 @@ export function initAuth(options: {
         overrideUserInfoOnSignIn: true,
       },
     },
-    trustedOrigins: ["whisp://"],
+    // The production OAuth proxy also validates the mobile callback scheme.
+    trustedOrigins: [
+      "whisp://",
+      "whisp-preview://",
+      "https://whisp-*-augies-projects.vercel.app",
+    ],
   } satisfies BetterAuthOptions;
 
   return betterAuth(config);

@@ -181,3 +181,12 @@ bun build               # Build all packages
 ---
 
 <sub>Scaffolded with [create-t3-turbo](https://github.com/t3-oss/create-t3-turbo)</sub>
+
+### Preview OAuth
+
+Better Auth 1.6 proxies preview Discord login through the registered production
+callback, then creates the session in the preview database. Configure the same
+`OAUTH_PROXY_SECRET` (at least 32 random characters) in Production and Preview,
+separate from `AUTH_SECRET`. Production must run the updated proxy before preview
+login works. The Expo adapter preserves the browser cookie handoff for existing
+APKs and returns preview sessions through `whisp-preview://`.
