@@ -1,4 +1,4 @@
-import { index, sqliteTable } from "drizzle-orm/sqlite-core";
+import { index, uniqueIndex, sqliteTable } from "drizzle-orm/sqlite-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -276,3 +276,135 @@ export const Waitlist = sqliteTable("waitlist", (t) => ({
     .$defaultFn(() => new Date())
     .notNull(),
 }));
+
+// MLS device keys are immutable. Reinstalls register a new device; revoked
+// devices cannot receive future whisps. The server never stores private keys.
+export const MlsDevice = sqliteTable("mls_device", (t) => ({
+  id: t.text().primaryKey(),
+  userId: t
+    .text()
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  signatureKey: t.text().notNull(),
+  createdAt: t.integer({ mode: "timestamp" }).notNull(),
+  revokedAt: t.integer({ mode: "timestamp" }),
+}));
+
+export type MlsMember = {
+  deviceId: string;
+  userId: string;
+  signatureKey: string;
+};
+export type MlsLogEntry =
+  | { kind: "commit"; data: string; members: MlsMember[] }
+  | {
+      kind: "application";
+      data: string;
+      messageId: string;
+      senderId: string;
+      senderDeviceId: string;
+      groupId: string | null;
+    };
+
+export const MlsConversation = sqliteTable("mls_conversation", (t) => ({
+  id: t.text().primaryKey(),
+  // Canonical direct user pair or application group ID, encoded as JSON.
+  scope: t.text().notNull().unique(),
+  groupId: t.text(),
+  users: t.text({ mode: "json" }).$type<string[]>().notNull(),
+  revision: t.integer().notNull().default(0),
+  members: t.text({ mode: "json" }).$type<MlsMember[]>().notNull(),
+}));
+export const MlsOperation = sqliteTable("mls_operation", (t) => ({
+  id: t.text().primaryKey(),
+  conversationId: t
+    .text()
+    .notNull()
+    .references(() => MlsConversation.id, { onDelete: "cascade" }),
+  deviceId: t
+    .text()
+    .notNull()
+    .references(() => MlsDevice.id, { onDelete: "cascade" }),
+  baseRevision: t.integer().notNull(),
+  revision: t.integer(),
+  members: t.text({ mode: "json" }).$type<MlsMember[]>().notNull(),
+  expiresAt: t.integer({ mode: "timestamp" }).notNull(),
+}));
+export const MlsKeyPackage = sqliteTable(
+  "mls_key_package",
+  (t) => ({
+    id: t.text().primaryKey(),
+    deviceId: t
+      .text()
+      .notNull()
+      .references(() => MlsDevice.id, { onDelete: "cascade" }),
+    data: t.text().notNull(),
+    expiresAt: t.integer({ mode: "timestamp" }).notNull(),
+    operationId: t
+      .text()
+      .references(() => MlsOperation.id, { onDelete: "cascade" }),
+  }),
+  (t) => [index("mls_key_package_device_idx").on(t.deviceId, t.operationId)],
+);
+export const MlsEvent = sqliteTable(
+  "mls_event",
+  (t) => ({
+    id: t.text().primaryKey(),
+    conversationId: t
+      .text()
+      .notNull()
+      .references(() => MlsConversation.id, { onDelete: "cascade" }),
+    sequence: t.integer().notNull(),
+    entry: t.text({ mode: "json" }).$type<MlsLogEntry>().notNull(),
+  }),
+  (t) => [
+    uniqueIndex("mls_event_sequence_idx").on(t.conversationId, t.sequence),
+  ],
+);
+export const MlsWelcome = sqliteTable("mls_welcome", (t) => ({
+  keyPackageId: t
+    .text()
+    .primaryKey()
+    .references(() => MlsKeyPackage.id, { onDelete: "cascade" }),
+  conversationId: t
+    .text()
+    .notNull()
+    .references(() => MlsConversation.id, { onDelete: "cascade" }),
+  deviceId: t
+    .text()
+    .notNull()
+    .references(() => MlsDevice.id, { onDelete: "cascade" }),
+  sequence: t.integer().notNull(),
+  data: t.text().notNull(),
+  members: t.text({ mode: "json" }).$type<MlsMember[]>().notNull(),
+  acknowledgedAt: t.integer({ mode: "timestamp" }),
+}));
+export const MlsDraft = sqliteTable("mls_draft", (t) => ({
+  id: t.text().primaryKey(),
+  senderId: t.text().notNull(),
+  senderDeviceId: t
+    .text()
+    .notNull()
+    .references(() => MlsDevice.id, { onDelete: "cascade" }),
+  groupId: t.text(),
+  recipients: t.text({ mode: "json" }).$type<string[]>().notNull(),
+  conversationIds: t.text({ mode: "json" }).$type<string[]>().notNull(),
+  expiresAt: t.integer({ mode: "timestamp" }).notNull(),
+  completedAt: t.integer({ mode: "timestamp" }),
+  failure: t.text(),
+}));
+export const MlsDraftConversation = sqliteTable(
+  "mls_draft_conversation",
+  (t) => ({
+    id: t.text().primaryKey(),
+    draftId: t
+      .text()
+      .notNull()
+      .references(() => MlsDraft.id, { onDelete: "cascade" }),
+    conversationId: t
+      .text()
+      .notNull()
+      .references(() => MlsConversation.id, { onDelete: "cascade" }),
+    members: t.text({ mode: "json" }).$type<MlsMember[]>().notNull(),
+  }),
+);
