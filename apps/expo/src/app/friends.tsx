@@ -31,6 +31,7 @@ import { useFriendRows } from "~/hooks/useFriendRows";
 import { useMarkReadMutation } from "~/hooks/useMarkReadMutation";
 import { useMessageFromNotification } from "~/hooks/useMessageFromNotification";
 import { useMessageViewerState } from "~/hooks/useMessageViewerState";
+import { usePreviewSettings } from "~/hooks/usePreviewSettings";
 import { useRemoveFriend } from "~/hooks/useRemoveFriend";
 import { useSendModeSelection } from "~/hooks/useSendModeSelection";
 import type { MainTabParamList, RootStackParamList } from "~/navigation/types";
@@ -43,6 +44,7 @@ import {
   markWhispUploading,
   subscribeOutboxStatus,
 } from "~/utils/outbox-status";
+import { SelfMessages } from "~/utils/self-messages";
 
 import WhispLogoDark from "../../assets/splash-icon-dark.png";
 import WhispLogoLight from "../../assets/splash-icon.png";
@@ -59,6 +61,7 @@ export default function FriendsScreen() {
   const colorScheme = useColorScheme();
   const { data: session } = authClient.useSession();
   const selfUserId = session?.user.id ?? null;
+  const { allowSelfMessages } = usePreviewSettings();
 
   // Select the appropriate logo based on color scheme
   const whispLogo = colorScheme === "dark" ? WhispLogoDark : WhispLogoLight;
@@ -189,7 +192,7 @@ export default function FriendsScreen() {
   });
 
   const {
-    selectedFriends,
+    selectedFriends: selection,
     selectedGroupId,
     toggleFriend,
     toggleGroup,
@@ -200,6 +203,9 @@ export default function FriendsScreen() {
     defaultGroupId: mediaParams?.groupId,
     rasterizationPromise: mediaParams?.rasterizationPromise,
   });
+  const selectedFriends = new Set(
+    SelfMessages.recipients(selection, selfUserId, allowSelfMessages),
+  );
 
   /**
    * Handle opening messages from push notifications
@@ -225,12 +231,27 @@ export default function FriendsScreen() {
   });
 
   const filteredRows = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (q.length === 0) return rowsWithTimeRemaining;
-    return rowsWithTimeRemaining.filter((f) =>
-      f.name.toLowerCase().includes(q),
+    const rows = SelfMessages.rows(
+      rowsWithTimeRemaining,
+      session?.user ?? null,
+      inbox,
+      allowSelfMessages,
+      hasMedia,
+      selfUserId ? outboxStatus[selfUserId] : undefined,
     );
-  }, [rowsWithTimeRemaining, searchQuery]);
+    const q = searchQuery.trim().toLowerCase();
+    if (q.length === 0) return rows;
+    return rows.filter((f) => f.name.toLowerCase().includes(q));
+  }, [
+    rowsWithTimeRemaining,
+    searchQuery,
+    session?.user,
+    inbox,
+    allowSelfMessages,
+    hasMedia,
+    selfUserId,
+    outboxStatus,
+  ]);
 
   const filteredGroupRows = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -274,12 +295,16 @@ export default function FriendsScreen() {
         }}
         onSend={async (opts) => {
           if (!mediaParams?.type || !mediaParams.path) return;
+          const recipients = SelfMessages.recipients(
+            opts.recipients ?? [],
+            selfUserId,
+            allowSelfMessages,
+          );
           const hasGroup = Boolean(opts.groupId);
-          if (!hasGroup && (!opts.recipients || opts.recipients.length === 0))
-            return;
+          if (!hasGroup && recipients.length === 0) return;
 
-          if (!hasGroup && opts.recipients) {
-            markWhispUploading(opts.recipients);
+          if (!hasGroup) {
+            markWhispUploading(recipients);
           }
 
           let finalUri = `file://${mediaParams.path}`;
@@ -299,7 +324,7 @@ export default function FriendsScreen() {
             queryClient,
             uri: finalUri,
             type: mediaParams.type,
-            recipients: opts.recipients ?? [],
+            recipients,
             groupId: opts.groupId,
           });
           navigation.reset({ index: 0, routes: [{ name: "Main" }] });
@@ -361,6 +386,7 @@ export default function FriendsScreen() {
                 }
               }}
               onLongPressRow={(item) => {
+                if (item.id === selfUserId) return;
                 void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                 setSelectedFriend(item);
                 bottomSheetRef.current?.present();

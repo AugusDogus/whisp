@@ -226,6 +226,12 @@ development client, not Expo Go. iOS devices must be included in the provisionin
 profile. The initial build for each platform requires signing credentials to be
 configured in EAS. Build minutes and update usage count toward the Expo plan.
 
+In Whisp Preview, **Profile → Developer settings → Send to myself** adds a
+**Me (testing)** recipient. It defaults off and remembers your choice on the
+device. Turning it off removes the recipient, while unread self-messages remain
+accessible in the inbox. This setting is unavailable in production and needs no
+environment flag, server redeployment, or native rebuild.
+
 The workflow runs after backend deployment and shares its per-PR concurrency
 lock, so closing the PR waits for mobile deployment before backend cleanup.
 Builds and update branches remain in EAS after closure, but the PR backend is
