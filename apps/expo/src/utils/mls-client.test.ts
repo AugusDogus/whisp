@@ -1,3 +1,6 @@
+import type { SendJob } from "./native-send";
+
+import { QueryClient } from "@tanstack/react-query";
 import { createTRPCClient, TRPCClientError } from "@trpc/client";
 import { observable } from "@trpc/server/observable";
 import { afterAll, beforeEach, expect, mock, test } from "bun:test";
@@ -5,6 +8,8 @@ import { setTimeout as delay } from "node:timers/promises";
 import { z } from "zod/v4";
 
 import type { AppRouter } from "@acme/api";
+
+import { getOutboxStatusSnapshot } from "./outbox-status";
 
 // Exercise the real client orchestration and serialization queue. Native crypto
 // and platform storage are boundaries here; Rust tests cover their real behavior.
@@ -21,6 +26,20 @@ let userId = "alice";
 let signedOut = false;
 let sessionError: { message: string } | null = null;
 let nativeConfigurations: (string | null)[] = [];
+let nativeJobs: SendJob[] = [];
+let acknowledgedJobs: string[] = [];
+const notices: { error: string[]; info: string[]; success: string[] } = {
+  error: [],
+  info: [],
+  success: [],
+};
+mock.module("sonner-native", () => ({
+  toast: {
+    error: (message: string) => notices.error.push(message),
+    info: (message: string) => notices.info.push(message),
+    success: (message: string) => notices.success.push(message),
+  },
+}));
 let descriptors: Record<string, unknown> = {};
 let nativeEnqueue: () => Promise<string> = async () => messageId;
 let download: () => Promise<void> = async () => {};
@@ -151,6 +170,10 @@ mock.module("react-native-whisp-mls", () => ({
   MlsClient: NativeClient,
   acquireDeviceLease: async () => ({ release: () => {} }),
   nativeSend: {
+    list: async () => JSON.stringify(nativeJobs),
+    acknowledge: async (id: string) => {
+      acknowledgedJobs.push(id);
+    },
     configure: async (config: string | null) => {
       nativeConfigurations.push(config);
     },
@@ -185,6 +208,7 @@ const { openWhisp } = await import("./mls-media");
 
 const { enqueueNativeSend, configureNativeSends } =
   await import("./native-send");
+const { reconcileNativeSends } = await import("./media-upload");
 
 beforeEach(() => {
   files.clear();
@@ -193,6 +217,9 @@ beforeEach(() => {
   signedOut = false;
   sessionError = null;
   nativeConfigurations = [];
+  nativeJobs = [];
+  acknowledgedJobs = [];
+  notices.error.length = notices.info.length = notices.success.length = 0;
   descriptors = {};
   nativeEnqueue = async () => messageId;
   download = async () => {};
@@ -421,4 +448,60 @@ test("signing out clears native configuration even when session lookup fails", a
   sessionError = { message: "offline" };
   await configureNativeSends();
   expect(nativeConfigurations.at(-1)).toBeNull();
+});
+
+function queuedSend(
+  status: SendJob["status"],
+  error: string | null,
+): SendJob & { recipients: [string] } {
+  return {
+    id: crypto.randomUUID(),
+    kind: "photo",
+    recipients: [crypto.randomUUID()],
+    groupId: null,
+    status,
+    error,
+    createdAt: Date.now(),
+  };
+}
+
+test("interrupted sends stay pending until automatic recovery reports delivery", async () => {
+  const client = new QueryClient();
+  const job = queuedSend("uploading", "Connection lost. Whisp will retry.");
+  nativeJobs = [job];
+  await reconcileNativeSends(client);
+  expect(getOutboxStatusSnapshot()[job.recipients[0]]?.state).toBe("retrying");
+  expect(notices.error).toEqual([]);
+  expect(acknowledgedJobs).toEqual([]);
+  nativeJobs = [{ ...job, status: "sent", error: null }];
+  await reconcileNativeSends(client);
+  expect(getOutboxStatusSnapshot()[job.recipients[0]]?.state).toBe("sent");
+  expect(acknowledgedJobs).toEqual([job.id]);
+  client.clear();
+});
+
+test("blocked sends stay paused and keep their recovery reason", async () => {
+  const client = new QueryClient();
+  const reason = "Ask the recipient to open Whisp, then reopen Whisp to retry.";
+  const job = queuedSend("blocked", reason);
+  nativeJobs = [job];
+  await reconcileNativeSends(client);
+  await reconcileNativeSends(client);
+  expect(getOutboxStatusSnapshot()[job.recipients[0]]?.state).toBe("blocked");
+  expect(notices.info).toEqual([reason]);
+  expect(notices.error).toEqual([]);
+  expect(acknowledgedJobs).toEqual([]);
+  client.clear();
+});
+
+test("terminal send failures are reported and acknowledged", async () => {
+  const client = new QueryClient();
+  const reason = "The whisp expired. Capture it again.";
+  const job = queuedSend("failed", reason);
+  nativeJobs = [job];
+  await reconcileNativeSends(client);
+  expect(getOutboxStatusSnapshot()[job.recipients[0]]?.state).toBe("failed");
+  expect(notices.error).toEqual([reason]);
+  expect(acknowledgedJobs).toEqual([job.id]);
+  client.clear();
 });
