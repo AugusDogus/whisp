@@ -96,6 +96,66 @@ async function begin(conversationId: string, revision = 0) {
 }
 
 describe("persistent MLS conversations", () => {
+  test("self and peer deliveries resolve their exact conversation in a multi-recipient send", async () => {
+    const previous = process.env.ALLOW_SELF_MESSAGES;
+    process.env.ALLOW_SELF_MESSAGES = "true";
+    try {
+      // Bob sorts after Alice, so the peer conversation is stored first.
+      const draft = await receiver.prepare({
+        deviceId: recipientDevice,
+        recipients: ["alice", "bob"],
+      });
+      const conversations = await db.select().from(schema.MlsConversation);
+      for (const recipient of ["alice", "bob"]) {
+        const scope = JSON.stringify(
+          recipient === "bob"
+            ? ["direct", "bob", "bob"]
+            : ["direct", "alice", "bob"],
+        );
+        const expected = conversations.find(
+          (conversation) => conversation.scope === scope,
+        );
+        if (!expected) throw new Error("Missing recipient conversation");
+        const deliveryId = crypto.randomUUID();
+        await db.insert(schema.MessageDelivery).values({
+          id: deliveryId,
+          messageId: draft.draftId,
+          recipientId: recipient,
+        });
+        const caller = recipient === "bob" ? receiver : sender;
+        const deviceId = recipient === "bob" ? recipientDevice : senderDevice;
+        expect(await caller.delivery({ deviceId, deliveryId })).toMatchObject({
+          kind: "mls",
+          conversationId: expected.id,
+        });
+      }
+    } finally {
+      if (previous === undefined) delete process.env.ALLOW_SELF_MESSAGES;
+      else process.env.ALLOW_SELF_MESSAGES = previous;
+    }
+  });
+  test("group deliveries resolve the group conversation rather than a direct conversation", async () => {
+    await prepare();
+    await db.insert(schema.GroupMember).values([
+      { groupId: "group", userId: "alice" },
+      { groupId: "group", userId: "bob" },
+    ]);
+    const draft = await prepare("group");
+    const deliveryId = crypto.randomUUID();
+    await db.insert(schema.MessageDelivery).values({
+      id: deliveryId,
+      messageId: draft.draftId,
+      recipientId: "bob",
+      groupId: "group",
+    });
+    expect(
+      await receiver.delivery({ deviceId: recipientDevice, deliveryId }),
+    ).toMatchObject({
+      kind: "mls",
+      conversationId: draft.conversationId,
+      groupId: "group",
+    });
+  });
   test("supports self-delivery only when the existing self-messaging flag is enabled", async () => {
     const previous = process.env.ALLOW_SELF_MESSAGES;
     try {
