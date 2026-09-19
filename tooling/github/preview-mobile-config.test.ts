@@ -29,6 +29,9 @@ test("production keeps its existing native identity", () => {
   expect(config.android?.package).toBe("whisp.chat");
   expect(config.ios?.bundleIdentifier).toBe("whisp.chat");
   expect(config.scheme).toBe("whisp");
+  expect(config.runtimeVersion).toBeUndefined();
+  expect(config.updates?.url).toBeUndefined();
+  expect(config.updates?.enabled).toBe(false);
 });
 
 test("the EAS preview profile selects a separate identity and deep-link scheme", () => {
@@ -40,6 +43,11 @@ test("the EAS preview profile selects a separate identity and deep-link scheme",
   expect(config.android?.package).toBe("whisp.chat.preview");
   expect(config.ios?.bundleIdentifier).toBe("whisp.chat.preview");
   expect(config.scheme).toBe("whisp-preview");
+  expect(config.runtimeVersion).toEqual({ policy: "fingerprint" });
+  expect(config.updates?.enabled).toBe(true);
+  expect(config.updates?.url).toBe(
+    "https://u.expo.dev/9d685be4-a82e-4a29-885f-4fbb76fb008c",
+  );
   expect(config.android?.googleServicesFile).toBe(
     "./google-services.preview.json",
   );
@@ -47,6 +55,16 @@ test("the EAS preview profile selects a separate identity and deep-link scheme",
     "expo-dev-client",
     { addGeneratedScheme: false },
   ]);
+});
+
+test("changing the PR backend does not change native app configuration", () => {
+  process.env.APP_VARIANT = "preview";
+  process.env.EXPO_PUBLIC_API_URL = "https://whisp-pr-17.vercel.app";
+  const first = configure(context);
+  process.env.EXPO_PUBLIC_API_URL = "https://whisp-pr-18.vercel.app";
+  expect(configure(context)).toEqual(first);
+  expect(eas.build["preview:dev"].developmentClient).toBe(true);
+  expect(eas.build["preview:dev"].channel).toBe("preview");
 });
 
 test.each(["", "invalid-url", "https://whisp.chat", "ftp://example.com"])(
