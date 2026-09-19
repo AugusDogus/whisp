@@ -11,6 +11,8 @@ import { beforeEach, mock } from "bun:test";
 export const native = {
   preference: Promise.withResolvers<boolean>(),
   appState: "active",
+  userId: null as string | null,
+  sessionPending: false,
   motionListeners: new Set<(enabled: boolean) => void>(),
   appListeners: new Set<(state: string) => void>(),
 };
@@ -83,7 +85,13 @@ mock.module("react-native", () => ({
 }));
 mock.module("expo-image", () => ({ Image: ImageStub }));
 mock.module("~/utils/auth", () => ({
-  authClient: { getCookie: () => "test-session" },
+  authClient: {
+    getCookie: () => "test-session",
+    useSession: () => ({
+      data: native.userId === null ? null : { user: { id: native.userId } },
+      isPending: native.sessionPending,
+    }),
+  },
 }));
 mock.module("~/utils/base-url", () => ({
   getBaseUrl: () => "http://localhost:3000",
@@ -97,4 +105,6 @@ beforeEach(() => {
   imagePlayback.length = 0;
   native.preference = Promise.withResolvers<boolean>();
   native.appState = "active";
+  native.userId = null;
+  native.sessionPending = false;
 });

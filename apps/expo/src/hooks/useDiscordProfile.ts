@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { getQueryKey } from "@trpc/react-query";
 
 import { trpc } from "~/utils/api";
+import { PROFILE_STALE_TIME } from "~/utils/profile-cache";
 
 export function useDiscordProfile(userId: string, enabled: boolean) {
   const utils = trpc.useUtils();
@@ -13,7 +14,7 @@ export function useDiscordProfile(userId: string, enabled: boolean) {
     {
       enabled,
       retry: false,
-      staleTime: 5 * 60 * 1000,
+      staleTime: PROFILE_STALE_TIME,
       initialData: () =>
         utils.friends.list.getData()?.find((friend) => friend.id === userId)
           ?.discordProfile,

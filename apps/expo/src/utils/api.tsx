@@ -1,4 +1,3 @@
-import { QueryClient } from "@tanstack/react-query";
 import { createTRPCClient, httpBatchLink, loggerLink } from "@trpc/client";
 import { createTRPCReact } from "@trpc/react-query";
 import superjson from "superjson";
@@ -7,14 +6,6 @@ import type { AppRouter, RouterOutputs } from "@acme/api";
 
 import { authClient } from "./auth";
 import { getBaseUrl } from "./base-url";
-
-export const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      // ...
-    },
-  },
-});
 
 export const trpc = createTRPCReact<AppRouter>();
 

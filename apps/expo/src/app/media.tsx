@@ -29,6 +29,7 @@ import {
   useNavigation,
   useRoute,
 } from "@react-navigation/native";
+import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "heroui-native/button";
 import { toast } from "sonner-native";
 
@@ -43,6 +44,7 @@ import {
 } from "~/utils/video-save-alert";
 
 export default function MediaScreen() {
+  const queryClient = useQueryClient();
   const route = useRoute<RouteProp<RootStackParamList, "Media">>();
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -358,6 +360,7 @@ export default function MediaScreen() {
         void rasterizationPromise
           .then((composedUri) => {
             void uploadMedia({
+              queryClient,
               uri: composedUri,
               type,
               recipients: [defaultRecipientId],
@@ -374,6 +377,7 @@ export default function MediaScreen() {
         void rasterizationPromise
           .then((composedUri) => {
             void uploadMedia({
+              queryClient,
               uri: composedUri,
               type,
               recipients: [],
@@ -403,6 +407,7 @@ export default function MediaScreen() {
     } else {
       if (defaultRecipientId) {
         void uploadMedia({
+          queryClient,
           uri: `file://${path}`,
           type,
           recipients: [defaultRecipientId],
@@ -411,6 +416,7 @@ export default function MediaScreen() {
         navigation.reset({ index: 0, routes: [{ name: "Main" }] });
       } else if (groupId) {
         void uploadMedia({
+          queryClient,
           uri: `file://${path}`,
           type,
           recipients: [],

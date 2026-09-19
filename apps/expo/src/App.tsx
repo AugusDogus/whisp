@@ -10,12 +10,12 @@ import { StatusBar } from "expo-status-bar";
 
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import * as Sentry from "@sentry/react-native";
-import { QueryClientProvider } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { HeroUINativeProvider } from "heroui-native/provider";
 import { PostHogProvider } from "posthog-react-native";
 
+import { QueryProvider } from "~/components/query-provider";
 import { usePushNotifications } from "~/hooks/usePushNotifications";
-import { createExpoTRPCClient, queryClient, trpc } from "~/utils/api";
 import { authClient } from "~/utils/auth";
 import { POSTHOG_API_KEY, POSTHOG_HOST } from "~/utils/constants";
 import {
@@ -51,6 +51,7 @@ Sentry.init({
 
 function AppContent() {
   const { data: session } = authClient.useSession();
+  const queryClient = useQueryClient();
 
   // Request notification permissions immediately (before auth)
   // but only register token after authentication
@@ -128,7 +129,7 @@ function AppContent() {
     return () => {
       subscription.remove();
     };
-  }, []);
+  }, [queryClient]);
 
   return (
     <BottomSheetModalProvider>
@@ -156,14 +157,9 @@ export default Sentry.wrap(function App() {
               captureTouches: true,
             }}
           >
-            <QueryClientProvider client={queryClient}>
-              <trpc.Provider
-                client={createExpoTRPCClient()}
-                queryClient={queryClient}
-              >
-                <AppContent />
-              </trpc.Provider>
-            </QueryClientProvider>
+            <QueryProvider>
+              <AppContent />
+            </QueryProvider>
           </PostHogProvider>
         </SafeAreaProvider>
       </HeroUINativeProvider>
