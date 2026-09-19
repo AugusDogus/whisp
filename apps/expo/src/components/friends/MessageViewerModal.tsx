@@ -11,10 +11,10 @@ import {
 import { ResizeMode, Video } from "expo-av";
 import { Image } from "expo-image";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner-native";
 
 import type { ViewerState } from "~/hooks/useMessageViewerState";
-import { queryClient } from "~/utils/api";
 import { isVideoMime } from "~/utils/media-kind";
 import { openWhisp, type OpenedWhisp } from "~/utils/mls-media";
 
@@ -34,6 +34,7 @@ export function MessageViewerModal({
   onRequestClose: () => void;
   onTap: () => void;
 }) {
+  const queryClient = useQueryClient();
   const message = viewer?.queue[viewer.index] ?? null;
   const [state, setState] = useState<MediaState>({ kind: "loading" });
   const [progress, setProgress] = useState(0);
