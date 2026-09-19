@@ -15,6 +15,13 @@
       "when": 1789801233176,
       "tag": "0001_discord_cosmetics",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1789803323810,
+      "tag": "0002_mls",
+      "breakpoints": true
     }
   ]
 }
