@@ -39,6 +39,13 @@ await db.run(sql`CREATE TABLE friendship (
 await db.run(sql`CREATE TABLE friend_request (
   id TEXT, fromUserId TEXT, toUserId TEXT, status TEXT, createdAt INTEGER, updatedAt INTEGER
 )`);
+await client.executeMultiple(`
+  CREATE TABLE account (id TEXT, userId TEXT, providerId TEXT, accountId TEXT);
+  CREATE TABLE message (id TEXT, senderId TEXT, mimeType TEXT);
+  CREATE TABLE message_delivery (
+    id TEXT, messageId TEXT, recipientId TEXT, groupId TEXT, readAt INTEGER, createdAt INTEGER
+  );
+`);
 
 beforeEach(async () => {
   await db.delete(schema.FriendRequest);
@@ -121,5 +128,35 @@ describe("friend search by Discord username", () => {
     expect(await caller.searchUsers({ query: "fixture_friend" })).toMatchObject(
       [{ hasPendingRequest: true }],
     );
+  });
+});
+
+test("the friend list includes saved cosmetics and freshness before opening a profile", async () => {
+  await db.run(
+    sql`INSERT INTO friendship (id, userIdA, userIdB) VALUES ('f', 'friend', 'me')`,
+  );
+  await db.run(sql`UPDATE user SET discordBannerUrl = 'https://example.com/banner.png',
+    discordAccentColor = 16711680, discordProfileSyncedAt = ${Math.floor(Date.now() / 1000)}
+    WHERE id = 'friend'`);
+  const friends = await caller.list();
+  expect(friends.map((friend) => friend.id)).toEqual(["friend"]);
+  expect(friends[0]?.discordProfile).toMatchObject({
+    needsRefresh: false,
+    profile: {
+      name: "Friend Display",
+      username: "fixture_friend",
+      avatarUrl: "https://example.com/avatar.png",
+      cosmetics: {
+        bannerUrl: "https://example.com/banner.png",
+        accentColor: "#ff0000",
+      },
+    },
+  });
+  await db.run(
+    sql`UPDATE user SET discordProfileSyncedAt = NULL WHERE id = 'friend'`,
+  );
+  expect((await caller.list())[0]?.discordProfile).toMatchObject({
+    needsRefresh: true,
+    profile: { cosmetics: null },
   });
 });

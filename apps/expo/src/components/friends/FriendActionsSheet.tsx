@@ -7,7 +7,7 @@ import type {
 import type { MutableRefObject, ReactElement } from "react";
 import { useRef, useState } from "react";
 import type { NativeScrollEvent, NativeSyntheticEvent } from "react-native";
-import { Pressable, useWindowDimensions, View } from "react-native";
+import { Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
@@ -52,13 +52,15 @@ export function FriendActionsSheet({
   const [profileVisible, setProfileVisible] = useState(true);
   const profileHeight = useRef(0);
   const insets = useSafeAreaInsets();
-  const { height } = useWindowDimensions();
 
   return (
     <GorhomBottomSheetModal
       ref={bottomSheetRef}
-      enableDynamicSizing
-      maxDynamicContentSize={height - insets.top}
+      // A first Discord sync can add badges and a guild tag after opening.
+      // Keep the sheet still while its scrollable content updates.
+      enableDynamicSizing={false}
+      snapPoints={["80%"]}
+      topInset={insets.top}
       enablePanDownToClose
       enableDismissOnClose
       backdropComponent={renderBackdrop}

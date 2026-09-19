@@ -3,7 +3,10 @@ import { createElement } from "react";
 import { act, create } from "react-test-renderer";
 import type { ReactTestRenderer } from "react-test-renderer";
 
+import { getQueryKey } from "@trpc/react-query";
 import { afterEach, beforeEach, expect, test } from "bun:test";
+
+import { trpc } from "~/utils/api";
 
 import { createProfileFixture, settle } from "../test/discord-profile";
 
@@ -73,4 +76,31 @@ test("returning while a refresh is pending does not start another request", asyn
   });
   await settle();
   expect(fixture.state.requests.length).toBe(1);
+});
+
+test("saved friend cosmetics are available before the sheet opens without a second read", async () => {
+  fixture.state.stored.needsRefresh = false;
+  fixture.queryClient.setQueryData(
+    getQueryKey(trpc.friends.list, undefined, "query"),
+    [{ id: "me", discordProfile: fixture.state.stored }],
+  );
+  await show(false);
+  expect(latest?.profile.data).toEqual(fixture.state.stored);
+  await show(true);
+  expect(fixture.state.reads).toBe(0);
+  expect(fixture.state.requests).toHaveLength(0);
+});
+
+test("an old friend-list snapshot still revalidates when opened", async () => {
+  fixture.state.stored.needsRefresh = false;
+  fixture.queryClient.setQueryData(
+    getQueryKey(trpc.friends.list, undefined, "query"),
+    [{ id: "me", discordProfile: fixture.state.stored }],
+    { updatedAt: Date.now() - 6 * 60 * 1000 },
+  );
+  await show(false);
+  expect(latest?.profile.data).toEqual(fixture.state.stored);
+  expect(fixture.state.reads).toBe(0);
+  await show(true);
+  expect(fixture.state.reads).toBe(1);
 });

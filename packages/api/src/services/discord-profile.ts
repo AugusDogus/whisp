@@ -85,6 +85,16 @@ function toSavedProfile(row: StoredProfile) {
 
 const REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
+function fromStored(row: StoredProfile) {
+  const profile = toSavedProfile(row);
+  return {
+    profile,
+    needsRefresh:
+      profile.cosmetics === null ||
+      Date.now() - profile.cosmetics.lastSyncedAt >= REFRESH_INTERVAL_MS,
+  };
+}
+
 async function read(
   dbClient: typeof db,
   viewerId: string,
@@ -115,13 +125,9 @@ async function read(
     };
   }
 
-  const profile = toSavedProfile(row);
   return {
     success: true,
-    profile,
-    needsRefresh:
-      profile.cosmetics === null ||
-      Date.now() - profile.cosmetics.lastSyncedAt >= REFRESH_INTERVAL_MS,
+    ...fromStored(row),
   };
 }
 
@@ -212,6 +218,8 @@ async function refresh(
 }
 
 export const DiscordProfile = {
+  storedColumns: storedProfileColumns,
+  fromStored,
   parse: DiscordProfileData.parse,
   read,
   refresh,
