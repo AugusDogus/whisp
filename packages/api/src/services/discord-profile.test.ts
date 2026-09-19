@@ -96,10 +96,7 @@ describe("Discord profile cosmetics", () => {
 const client = createClient({ url: "file::memory:" });
 const db = drizzle({ client, schema });
 const migration = await Bun.file(
-  new URL(
-    "../../../db/migrations/20260918_discord_cosmetics.sql",
-    import.meta.url,
-  ),
+  new URL("../../../db/drizzle/0001_discord_cosmetics.sql", import.meta.url),
 ).text();
 await db.run(sql`CREATE TABLE user (
   id TEXT PRIMARY KEY, name TEXT NOT NULL, discordUsername TEXT, image TEXT,

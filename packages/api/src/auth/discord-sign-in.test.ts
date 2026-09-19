@@ -26,10 +26,7 @@ await client.executeMultiple(`
 `);
 await client.executeMultiple(
   await Bun.file(
-    new URL(
-      "../../../db/migrations/20260918_discord_cosmetics.sql",
-      import.meta.url,
-    ),
+    new URL("../../../db/drizzle/0001_discord_cosmetics.sql", import.meta.url),
   ).text(),
 );
 
