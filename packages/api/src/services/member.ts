@@ -3,6 +3,7 @@ import type { db } from "@acme/db/client";
 import { account as Account, GroupMember, user as User } from "@acme/db/schema";
 
 import { DISCORD_PROVIDER_ID } from "../constants";
+import { DiscordProfile } from "./discord-profile";
 
 /**
  * Fetch group members with their user image (for avatar display in group lists).
@@ -35,22 +36,18 @@ export async function getGroupMemberAvatars(
 }
 
 /**
- * Fetch friends with their Discord account ID for avatar resolution.
- * Used by friends.list to display discord avatars.
+ * Fetch saved profiles with the list so opening a friend does not need another read.
  */
 export async function getFriendsWithDiscordIds(
   dbClient: typeof db,
   friendIds: string[],
-): Promise<
-  { id: string; name: string; image: string | null; discordId: string | null }[]
-> {
+) {
   if (friendIds.length === 0) return [];
 
-  return dbClient
+  const rows = await dbClient
     .select({
       id: User.id,
-      name: User.name,
-      image: User.image,
+      profile: DiscordProfile.storedColumns,
       discordId: Account.accountId,
     })
     .from(User)
@@ -62,6 +59,14 @@ export async function getFriendsWithDiscordIds(
       ),
     )
     .where(inArray(User.id, friendIds));
+
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.profile.name,
+    image: row.profile.image,
+    discordId: row.discordId,
+    discordProfile: DiscordProfile.fromStored(row.profile),
+  }));
 }
 
 /**

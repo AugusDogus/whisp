@@ -1,8 +1,9 @@
 /// <reference lib="es2024.promise" />
 /// <reference types="bun-types/test" />
-import { useEffect } from "react";
+import { useEffect, useImperativeHandle, useRef } from "react";
+import type { Ref } from "react";
 
-import type { ImageProps } from "expo-image";
+import type { Image, ImageProps } from "expo-image";
 
 import { beforeEach, mock } from "bun:test";
 
@@ -14,7 +15,30 @@ export const native = {
   appListeners: new Set<(state: string) => void>(),
 };
 export const images = new Set<ImageProps>();
-function ImageStub(props: ImageProps) {
+export const imageMounts: (string | undefined)[] = [];
+export const imagePlayback: { label: string | undefined; playing: boolean }[] =
+  [];
+function ImageStub(
+  props: ImageProps & {
+    ref?: Ref<Pick<Image, "startAnimating" | "stopAnimating">>;
+  },
+) {
+  const initialLabel = useRef(props.accessibilityLabel);
+  useImperativeHandle(
+    props.ref,
+    () => ({
+      startAnimating: async () => {
+        imagePlayback.push({ label: props.accessibilityLabel, playing: true });
+      },
+      stopAnimating: async () => {
+        imagePlayback.push({ label: props.accessibilityLabel, playing: false });
+      },
+    }),
+    [props.accessibilityLabel],
+  );
+  useEffect(() => {
+    imageMounts.push(initialLabel.current);
+  }, []);
   useEffect(() => {
     images.add(props);
     return () => {
@@ -69,6 +93,8 @@ Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
   configurable: true,
 });
 beforeEach(() => {
+  imageMounts.length = 0;
+  imagePlayback.length = 0;
   native.preference = Promise.withResolvers<boolean>();
   native.appState = "active";
 });

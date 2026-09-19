@@ -4,7 +4,7 @@ import type { ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, expect, test } from "bun:test";
 
 import { createProfileFixture, settle } from "../test/discord-profile";
-import { images, native } from "../test/setup";
+import { imageMounts, imagePlayback, images, native } from "../test/setup";
 
 const { Portal, PortalProvider } = await import("@gorhom/portal");
 const { BaseNavigationContainer } = await import("@react-navigation/native");
@@ -99,4 +99,25 @@ test("an inactive card does not refresh a failed avatar", async () => {
   expect(fixture.state.requests).toHaveLength(0);
   await show(true);
   expect(avatar()).toBeDefined();
+});
+
+test("opening and pausing a loaded card keeps the same native images mounted", async () => {
+  const cosmetics = fixture.state.stored.profile.cosmetics;
+  if (!cosmetics) throw new Error("Expected saved cosmetics in fixture");
+  cosmetics.decorationUrl = "decoration.png";
+  await show(true);
+  const mounts = [...imageMounts];
+  imagePlayback.length = 0;
+  await show(false);
+  expect(imagePlayback).toContainEqual({
+    label: "Me's Discord banner",
+    playing: false,
+  });
+  imagePlayback.length = 0;
+  await show(true);
+  expect(imagePlayback).toContainEqual({
+    label: "Me's Discord banner",
+    playing: true,
+  });
+  expect(imageMounts).toEqual(mounts);
 });

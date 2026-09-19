@@ -7,6 +7,7 @@ import { useDiscordProfile } from "~/hooks/useDiscordProfile";
 import { cn } from "~/lib/utils";
 
 import { DiscordNameplate } from "./discord-nameplate";
+import { AnimatedImage } from "./ui/animated-image";
 import { Avatar } from "./ui/avatar";
 import { Text } from "./ui/text";
 
@@ -47,8 +48,7 @@ export function DiscordProfileCard({
         }}
       >
         {cosmetics?.bannerUrl && (
-          <Image
-            key={`banner-${animate}`}
+          <AnimatedImage
             source={{ uri: cosmetics.bannerUrl }}
             style={{ width: "100%", height: "100%" }}
             contentFit="cover"
@@ -66,9 +66,8 @@ export function DiscordProfileCard({
 
       <View className="gap-3 px-4 pb-4">
         <View className="bg-surface -mt-10 size-24 items-center justify-center self-start rounded-full p-1">
-          {/* A new visit or source resets the shared avatar's bounded recovery. */}
           <Avatar
-            key={`${avatarUrl}:${active}`}
+            key={`${userId}:${avatarUrl}`}
             userId={userId}
             image={avatarUrl}
             name={displayName}
@@ -77,8 +76,7 @@ export function DiscordProfileCard({
             autoplay={animate}
           />
           {cosmetics?.decorationUrl && (
-            <Image
-              key={`decoration-${animate}`}
+            <AnimatedImage
               source={{ uri: cosmetics.decorationUrl }}
               style={{ position: "absolute", width: 112, height: 112 }}
               contentFit="contain"

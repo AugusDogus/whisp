@@ -1,12 +1,27 @@
 import { useEffect, useRef } from "react";
 
+import { useQueryClient } from "@tanstack/react-query";
+import { getQueryKey } from "@trpc/react-query";
+
 import { trpc } from "~/utils/api";
 
 export function useDiscordProfile(userId: string, enabled: boolean) {
   const utils = trpc.useUtils();
+  const queryClient = useQueryClient();
   const profile = trpc.auth.discordProfile.useQuery(
     { userId },
-    { enabled, retry: false },
+    {
+      enabled,
+      retry: false,
+      staleTime: 5 * 60 * 1000,
+      initialData: () =>
+        utils.friends.list.getData()?.find((friend) => friend.id === userId)
+          ?.discordProfile,
+      initialDataUpdatedAt: () =>
+        queryClient.getQueryState(
+          getQueryKey(trpc.friends.list, undefined, "query"),
+        )?.dataUpdatedAt,
+    },
   );
   const refresh = trpc.auth.refreshAvatar.useMutation({
     onSuccess: async (result, input) => {

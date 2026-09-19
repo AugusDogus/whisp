@@ -1,10 +1,9 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { View } from "react-native";
-
-import { Image } from "expo-image";
 
 import { trpc } from "~/utils/api";
 
+import { AnimatedImage } from "./animated-image";
 import { Text } from "./text";
 
 interface AvatarProps {
@@ -27,6 +26,12 @@ export function Avatar({
   const [hasError, setHasError] = useState(false);
   const [refreshedImage, setRefreshedImage] = useState<string | null>(null);
   const attemptedRefresh = useRef(false);
+  useEffect(() => {
+    if (!active) return;
+    setHasError(false);
+    setRefreshedImage(null);
+    attemptedRefresh.current = false;
+  }, [active, image]);
   const utils = trpc.useUtils();
 
   const refreshAvatar = trpc.auth.refreshAvatar.useMutation({
@@ -66,8 +71,7 @@ export function Avatar({
       style={{ width: size, height: size }}
     >
       {showImage ? (
-        <Image
-          key={String(active && autoplay)}
+        <AnimatedImage
           source={{ uri: displayImage }}
           style={{ width: size, height: size }}
           contentFit="cover"

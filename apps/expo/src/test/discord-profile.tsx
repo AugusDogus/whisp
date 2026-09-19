@@ -24,6 +24,7 @@ export function createProfileFixture() {
     stored: Profile;
     unavailable: boolean;
     requests: z.output<typeof refreshInput>[];
+    reads: number;
     holdRefresh: boolean;
     finishRefresh: (() => void) | undefined;
   } = {
@@ -46,6 +47,7 @@ export function createProfileFixture() {
     },
     unavailable: true,
     requests: [],
+    reads: 0,
     holdRefresh: false,
     finishRefresh: undefined,
   };
@@ -55,7 +57,10 @@ export function createProfileFixture() {
         ({ op }) =>
           observable((observer) => {
             async function respond() {
-              if (op.path === "auth.discordProfile") return fixture.stored;
+              if (op.path === "auth.discordProfile") {
+                fixture.reads++;
+                return fixture.stored;
+              }
               if (op.path !== "auth.refreshAvatar")
                 throw new Error(`Unexpected test request: ${op.path}`);
               fixture.requests.push(refreshInput.parse(op.input));

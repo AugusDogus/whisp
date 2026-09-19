@@ -121,22 +121,7 @@ export const friendsRouter = {
       friendIds.push(me);
     }
 
-    if (friendIds.length === 0)
-      return [] as {
-        id: string;
-        name: string;
-        image: string | null;
-        discordId: string | null;
-        streak: number;
-        shouldShowStreak: boolean;
-        bothSentToday: boolean;
-        isStreakAtRisk: boolean;
-        streakDayEndsAt: Date | null;
-        lastActivityTimestamp: Date | null;
-        partnerLastActivityTimestamp: Date | null;
-        lastSentOpened: boolean | null;
-        lastMimeType: string | null;
-      }[];
+    if (friendIds.length === 0) return [];
 
     const friends = await getFriendsWithDiscordIds(ctx.db, friendIds);
     const now = new Date();
@@ -210,6 +195,7 @@ export const friendsRouter = {
         name: u.name,
         image: u.image ?? null,
         discordId: u.discordId ?? null,
+        discordProfile: u.discordProfile,
         streak: streakInfo?.streak ?? 0,
         shouldShowStreak: streakInfo?.shouldShowStreak ?? false,
         bothSentToday: streakInfo?.bothSentToday ?? false,
