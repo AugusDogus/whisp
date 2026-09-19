@@ -2,7 +2,12 @@ import type { MediaKind } from "./media-kind";
 
 export type { MediaKind } from "./media-kind";
 
-export type OutboxState = "uploading" | "sent" | "failed";
+export type OutboxState =
+  | "uploading"
+  | "retrying"
+  | "blocked"
+  | "sent"
+  | "failed";
 
 export interface OutboxStatus {
   state: OutboxState;
@@ -62,6 +67,14 @@ export function markWhispUploading(
   mediaKind?: MediaKind,
 ) {
   setMany(recipientIds, "uploading", mediaKind);
+}
+
+export function markWhispPending(
+  recipientIds: string[],
+  state: "uploading" | "retrying" | "blocked",
+  mediaKind: MediaKind,
+) {
+  setMany(recipientIds, state, mediaKind);
 }
 
 export function markWhispSent(recipientIds: string[], mediaKind?: MediaKind) {
