@@ -31,39 +31,43 @@ function comment(input: unknown, context: unknown): string {
 ## Whisp Preview
 
 Commit: \`${commit.slice(0, 7)}\` · [PR backend](${backend}) · [EAS workflow](${run.url})`;
-  if (run.status !== "SUCCESS") {
-    return `${header}
-
-Mobile preview ${run.status === "FAILURE" ? "failed" : "was canceled"}. The backend is still deployed. Check the EAS workflow logs, fix the reported error, and rerun the GitHub Actions workflow.
-`;
-  }
+  const status =
+    run.status === "SUCCESS"
+      ? "Both mobile previews are ready."
+      : `Mobile deployment ${run.status === "FAILURE" ? "failed" : "was canceled"} for one or more jobs. Available previews are linked below. The backend is still deployed. Check the EAS workflow logs, fix the reported error, and rerun the GitHub Actions workflow.`;
 
   const outputs = (key: string) =>
     run.jobs.find((job) => job.key === key && job.status === "SUCCESS")
       ?.outputs;
-  const updates = updatesSchema.parse(
-    JSON.parse(z.string().parse(outputs("update")?.updates_json)),
-  );
+  const updateOutput = outputs("update");
+  const updates = updateOutput
+    ? updatesSchema.parse(
+        JSON.parse(z.string().parse(updateOutput.updates_json)),
+      )
+    : [];
   const rows = ["android", "ios"].map((platform) => {
-    const buildId = z
-      .uuid()
-      .parse(
-        outputs(`${platform}_build`)?.build_id ??
-          outputs(`${platform}_existing`)?.build_id,
-      );
-    const group = z
-      .uuid()
-      .parse(updates.find((update) => update.platform === platform)?.group);
+    const name = platform === "ios" ? "iOS" : "Android";
+    const buildOutput =
+      outputs(`${platform}_build`)?.build_id ??
+      outputs(`${platform}_existing`)?.build_id;
+    const update = updates.find((candidate) => candidate.platform === platform);
+    if (run.status !== "SUCCESS" && (buildOutput === undefined || !update)) {
+      return `| ${name} | Unavailable | [Check workflow logs](${run.url}) | Unavailable |`;
+    }
+    const buildId = z.uuid().parse(buildOutput);
+    const group = z.uuid().parse(update?.group);
     const qr = new URL("https://qr.expo.dev/eas-update");
     qr.search = new URLSearchParams({
       projectId,
       groupId: group,
       appScheme: "whisp-preview",
     }).toString();
-    return `| ${platform === "ios" ? "iOS" : "Android"} | [Install development build](${projectUrl}/builds/${buildId}) | [Open update](https://expo.dev/projects/${projectId}/updates/${group}) | [![Preview QR](${qr})](${qr}) |`;
+    return `| ${name} | [Install development build](${projectUrl}/builds/${buildId}) | [Open update](https://expo.dev/projects/${projectId}/updates/${group}) | [![Preview QR](${qr})](${qr}) |`;
   });
 
   return `${header}
+
+${status}
 
 Install the development build once, then scan the QR code to open this PR's update. Install the linked build again when native dependencies change. iOS requires a device registered in the build's provisioning profile.
 
