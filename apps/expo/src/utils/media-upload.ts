@@ -6,6 +6,7 @@ import type { FriendsListOutput } from "~/utils/api";
 import type { MediaKind } from "~/utils/media-kind";
 import {
   markWhispFailed,
+  markWhispPending,
   markWhispSent,
   markWhispUploading,
 } from "~/utils/outbox-status";
@@ -128,12 +129,8 @@ export async function reconcileNativeSends(queryClient: QueryClient) {
           isGroupSend,
           message: job.error ?? undefined,
         });
-      else if (job.error)
-        applyFailedUploadSideEffects({
-          recipients: job.recipients,
-          isGroupSend,
-          message: job.error,
-        });
+      else if (job.status === "blocked")
+        toast.info(job.error ?? "This send is paused. Reopen Whisp to retry.");
     }
     if (job.status === "sent" || job.status === "failed")
       await acknowledgeNativeSend(job.id);
@@ -142,8 +139,15 @@ export async function reconcileNativeSends(queryClient: QueryClient) {
   for (const job of jobs) {
     if ((job.status !== "uploading" && job.status !== "blocked") || job.groupId)
       continue;
-    if (job.error) markWhispFailed(job.recipients);
-    else markWhispUploading(job.recipients, job.kind);
+    markWhispPending(
+      job.recipients,
+      job.status === "blocked"
+        ? "blocked"
+        : job.error
+          ? "retrying"
+          : "uploading",
+      job.kind,
+    );
   }
 }
 export async function uploadMedia(params: UploadMediaParams): Promise<void> {

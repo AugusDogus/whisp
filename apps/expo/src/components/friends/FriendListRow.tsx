@@ -82,13 +82,22 @@ export function FriendListRow({
         </View>
 
         {/* Bottom line: Status icon + text + timestamp */}
-        {item.outboxState === "uploading" ? (
+        {item.outboxState === "uploading" || item.outboxState === "retrying" ? (
           <View className="mt-0.5 flex-row items-center gap-1.5">
             <ActivityIndicator
               size="small"
               color={colorScheme === "dark" ? "#9ca3af" : "#6b7280"}
             />
-            <Text className="text-xs text-muted">Sending...</Text>
+            <Text className="text-xs text-muted">
+              {item.outboxState === "retrying"
+                ? "Waiting to retry..."
+                : "Sending..."}
+            </Text>
+          </View>
+        ) : item.outboxState === "blocked" ? (
+          <View className="mt-0.5 flex-row items-center gap-1.5">
+            <Ionicons name="pause-circle-outline" size={14} color="#9ca3af" />
+            <Text className="text-xs text-muted">Send paused</Text>
           </View>
         ) : item.outboxState === "failed" ? (
           <View className="mt-0.5 flex-row items-center gap-1.5">
