@@ -76,6 +76,27 @@ const snapshot = z.object({
   clientState: z.object({ queries: z.array(savedQuery) }),
 });
 
+export function serializeProfileCache(client: PersistedClient): string {
+  return superjson.stringify({
+    ...client,
+    clientState: {
+      ...client.clientState,
+      queries: client.clientState.queries.map((query) => ({
+        ...query,
+        state: {
+          ...query.state,
+          // Keep the last successful data without persisting request errors.
+          // Retry a failed refresh even when the saved data is under five minutes old.
+          isInvalidated:
+            query.state.isInvalidated || query.state.status === "error",
+          error: null,
+          fetchFailureReason: null,
+        },
+      })),
+    },
+  });
+}
+
 export function deserializeProfileCache(value: string): PersistedClient {
   const saved = snapshot.parse(superjson.parse<unknown>(value));
   return {

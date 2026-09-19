@@ -186,15 +186,19 @@ test.each(["account-b@preview", "account-a@production", null])(
   },
 );
 
-test("messages, auth data, mutations and failed queries are excluded", async () => {
+test("messages, auth data, mutations and queries without successful data are excluded", async () => {
   const storage = disk();
   const saved = client();
   saved.setQueryData(friendsKey, [friend()]);
-  saved.setQueryData(profileKey, friend().discordProfile);
-  saved
-    .getQueryCache()
-    .find({ queryKey: profileKey })
-    ?.setState({ status: "error" });
+  await expect(
+    saved.fetchQuery({
+      queryKey: profileKey,
+      queryFn: async () => {
+        throw new Error("Offline without cached data");
+      },
+      retry: false,
+    }),
+  ).rejects.toThrow("Offline without cached data");
   saved.setQueryData(
     [["messages", "inbox"], { type: "query" }],
     "private-message",
