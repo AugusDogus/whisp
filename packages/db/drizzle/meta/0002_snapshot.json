@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "027beb85-422e-49c5-ac18-8c6f060a60d0",
+  "id": "cd6df2a2-9cdc-44d5-86a2-676d2b842d12",
   "prevId": "1644fd44-6f51-438f-92ed-dfc8e47d8e42",
   "tables": {
     "background_upload_test_file": {
@@ -508,6 +508,549 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
+    "mls_conversation": {
+      "name": "mls_conversation",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "groupId": {
+          "name": "groupId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "users": {
+          "name": "users",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "members": {
+          "name": "members",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "mls_conversation_scope_unique": {
+          "name": "mls_conversation_scope_unique",
+          "columns": ["scope"],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "mls_device": {
+      "name": "mls_device",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "userId": {
+          "name": "userId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "signatureKey": {
+          "name": "signatureKey",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "revokedAt": {
+          "name": "revokedAt",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "mls_device_userId_user_id_fk": {
+          "name": "mls_device_userId_user_id_fk",
+          "tableFrom": "mls_device",
+          "tableTo": "user",
+          "columnsFrom": ["userId"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "mls_draft": {
+      "name": "mls_draft",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "senderId": {
+          "name": "senderId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "senderDeviceId": {
+          "name": "senderDeviceId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "groupId": {
+          "name": "groupId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "recipients": {
+          "name": "recipients",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "conversationIds": {
+          "name": "conversationIds",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "expiresAt": {
+          "name": "expiresAt",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "completedAt": {
+          "name": "completedAt",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "failure": {
+          "name": "failure",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "mls_draft_senderDeviceId_mls_device_id_fk": {
+          "name": "mls_draft_senderDeviceId_mls_device_id_fk",
+          "tableFrom": "mls_draft",
+          "tableTo": "mls_device",
+          "columnsFrom": ["senderDeviceId"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "mls_draft_conversation": {
+      "name": "mls_draft_conversation",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "draftId": {
+          "name": "draftId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "conversationId": {
+          "name": "conversationId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "members": {
+          "name": "members",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "mls_draft_conversation_draftId_mls_draft_id_fk": {
+          "name": "mls_draft_conversation_draftId_mls_draft_id_fk",
+          "tableFrom": "mls_draft_conversation",
+          "tableTo": "mls_draft",
+          "columnsFrom": ["draftId"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "mls_draft_conversation_conversationId_mls_conversation_id_fk": {
+          "name": "mls_draft_conversation_conversationId_mls_conversation_id_fk",
+          "tableFrom": "mls_draft_conversation",
+          "tableTo": "mls_conversation",
+          "columnsFrom": ["conversationId"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "mls_event": {
+      "name": "mls_event",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "conversationId": {
+          "name": "conversationId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "sequence": {
+          "name": "sequence",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "entry": {
+          "name": "entry",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "mls_event_sequence_idx": {
+          "name": "mls_event_sequence_idx",
+          "columns": ["conversationId", "sequence"],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "mls_event_conversationId_mls_conversation_id_fk": {
+          "name": "mls_event_conversationId_mls_conversation_id_fk",
+          "tableFrom": "mls_event",
+          "tableTo": "mls_conversation",
+          "columnsFrom": ["conversationId"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "mls_key_package": {
+      "name": "mls_key_package",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "deviceId": {
+          "name": "deviceId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "data": {
+          "name": "data",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "expiresAt": {
+          "name": "expiresAt",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "operationId": {
+          "name": "operationId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "mls_key_package_device_idx": {
+          "name": "mls_key_package_device_idx",
+          "columns": ["deviceId", "operationId"],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "mls_key_package_deviceId_mls_device_id_fk": {
+          "name": "mls_key_package_deviceId_mls_device_id_fk",
+          "tableFrom": "mls_key_package",
+          "tableTo": "mls_device",
+          "columnsFrom": ["deviceId"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "mls_key_package_operationId_mls_operation_id_fk": {
+          "name": "mls_key_package_operationId_mls_operation_id_fk",
+          "tableFrom": "mls_key_package",
+          "tableTo": "mls_operation",
+          "columnsFrom": ["operationId"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "mls_operation": {
+      "name": "mls_operation",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "conversationId": {
+          "name": "conversationId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "deviceId": {
+          "name": "deviceId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "baseRevision": {
+          "name": "baseRevision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "members": {
+          "name": "members",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "expiresAt": {
+          "name": "expiresAt",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "mls_operation_conversationId_mls_conversation_id_fk": {
+          "name": "mls_operation_conversationId_mls_conversation_id_fk",
+          "tableFrom": "mls_operation",
+          "tableTo": "mls_conversation",
+          "columnsFrom": ["conversationId"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "mls_operation_deviceId_mls_device_id_fk": {
+          "name": "mls_operation_deviceId_mls_device_id_fk",
+          "tableFrom": "mls_operation",
+          "tableTo": "mls_device",
+          "columnsFrom": ["deviceId"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "mls_welcome": {
+      "name": "mls_welcome",
+      "columns": {
+        "keyPackageId": {
+          "name": "keyPackageId",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "conversationId": {
+          "name": "conversationId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "deviceId": {
+          "name": "deviceId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "sequence": {
+          "name": "sequence",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "data": {
+          "name": "data",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "members": {
+          "name": "members",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "acknowledgedAt": {
+          "name": "acknowledgedAt",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "mls_welcome_keyPackageId_mls_key_package_id_fk": {
+          "name": "mls_welcome_keyPackageId_mls_key_package_id_fk",
+          "tableFrom": "mls_welcome",
+          "tableTo": "mls_key_package",
+          "columnsFrom": ["keyPackageId"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "mls_welcome_conversationId_mls_conversation_id_fk": {
+          "name": "mls_welcome_conversationId_mls_conversation_id_fk",
+          "tableFrom": "mls_welcome",
+          "tableTo": "mls_conversation",
+          "columnsFrom": ["conversationId"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "mls_welcome_deviceId_mls_device_id_fk": {
+          "name": "mls_welcome_deviceId_mls_device_id_fk",
+          "tableFrom": "mls_welcome",
+          "tableTo": "mls_device",
+          "columnsFrom": ["deviceId"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
     "preview_push_token_reset": {
       "name": "preview_push_token_reset",
       "columns": {
@@ -590,13 +1133,6 @@
           "notNull": true,
           "autoincrement": false
         },
-        "sessionId": {
-          "name": "sessionId",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
         "token": {
           "name": "token",
           "type": "text",
@@ -636,24 +1172,9 @@
           "name": "push_token_userId_idx",
           "columns": ["userId"],
           "isUnique": false
-        },
-        "push_token_sessionId_idx": {
-          "name": "push_token_sessionId_idx",
-          "columns": ["sessionId"],
-          "isUnique": false
         }
       },
-      "foreignKeys": {
-        "push_token_sessionId_session_id_fk": {
-          "name": "push_token_sessionId_session_id_fk",
-          "tableFrom": "push_token",
-          "tableTo": "session",
-          "columnsFrom": ["sessionId"],
-          "columnsTo": ["id"],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
+      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}

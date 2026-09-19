@@ -39,7 +39,7 @@ CREATE TABLE message_delivery (id TEXT PRIMARY KEY, messageId TEXT, recipientId 
 `);
 await client.executeMultiple(
   await Bun.file(
-    new URL("../../../db/migrations/20260918_mls.sql", import.meta.url),
+    new URL("../../../db/drizzle/0002_mls.sql", import.meta.url),
   ).text(),
 );
 beforeEach(async () => {
