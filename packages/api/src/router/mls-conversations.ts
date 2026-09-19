@@ -2,7 +2,7 @@
 import { TRPCError, type TRPCRouterRecord } from "@trpc/server";
 import { z } from "zod/v4";
 
-import { and, asc, desc, eq, gt, isNull } from "@acme/db";
+import { and, asc, desc, eq, gt, inArray, isNull } from "@acme/db";
 import {
   MessageDelivery,
   MlsConversation,
@@ -38,6 +38,10 @@ const memberSchema = z.object({
 });
 const members = z.array(memberSchema).min(1).max(200);
 const commit = z.object({ data: wire, members, welcome: wire.optional() });
+
+function directScope(senderId: string, recipientId: string) {
+  return JSON.stringify(["direct", ...[senderId, recipientId].sort()]);
+}
 
 async function authorizedConversation(
   database: MlsDatabase,
@@ -101,7 +105,7 @@ export const mlsConversationsRouter = {
               },
             ]
           : recipients.map((recipient) => ({
-              scope: JSON.stringify(["direct", ...[me, recipient].sort()]),
+              scope: directScope(me, recipient),
               users: [...new Set([me, recipient])].sort(),
             }));
         const conversations = [];
@@ -616,21 +620,24 @@ export const mlsConversationsRouter = {
         .from(MlsDraft)
         .where(eq(MlsDraft.id, delivery.messageId));
       if (!draft) return { kind: "legacy" } as const;
-      for (const conversationId of draft.conversationIds) {
-        const [conversation] = await ctx.db
-          .select()
-          .from(MlsConversation)
-          .where(eq(MlsConversation.id, conversationId));
-        if (
-          conversation &&
-          (draft.groupId || conversation.users.includes(ctx.session.user.id))
-        )
-          return {
-            kind: "mls" as const,
-            conversationId,
-            groupId: draft.groupId,
-          };
-      }
+      const scope = draft.groupId
+        ? JSON.stringify(["group", draft.groupId])
+        : directScope(draft.senderId, ctx.session.user.id);
+      const [conversation] = await ctx.db
+        .select({ id: MlsConversation.id })
+        .from(MlsConversation)
+        .where(
+          and(
+            inArray(MlsConversation.id, draft.conversationIds),
+            eq(MlsConversation.scope, scope),
+          ),
+        );
+      if (conversation)
+        return {
+          kind: "mls" as const,
+          conversationId: conversation.id,
+          groupId: draft.groupId,
+        };
       mlsConflict(
         "The encrypted delivery is missing its conversation. It has not been marked read.",
       );
