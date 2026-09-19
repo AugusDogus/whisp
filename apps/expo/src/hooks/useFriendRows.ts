@@ -1,7 +1,10 @@
 import { useMemo } from "react";
 
-import type { FriendRow, InboxMessage } from "~/components/friends/types";
-import type { FriendsListOutput } from "~/utils/api";
+import type {
+  FriendRow,
+  FriendRowInput,
+  InboxMessage,
+} from "~/components/friends/types";
 import type { MediaKind } from "~/utils/media-kind";
 import { mimeToMediaKind } from "~/utils/media-kind";
 import type { OutboxState, OutboxStatus } from "~/utils/outbox-status";
@@ -9,7 +12,7 @@ import type { OutboxState, OutboxStatus } from "~/utils/outbox-status";
 const MS_PER_HOUR = 60 * 60 * 1000;
 
 interface UseFriendRowsParams {
-  friends: FriendsListOutput;
+  friends: FriendRowInput[];
   inbox: (InboxMessage | null)[];
   hasMedia: boolean;
   defaultRecipientId: string | undefined;

@@ -182,8 +182,19 @@ export default function FriendsScreen() {
     return () => backHandler.remove();
   }, [hasMedia, mediaParams, navigation]);
 
+  const visibleFriends = useMemo(
+    () =>
+      SelfMessages.friends(
+        friends,
+        session?.user ?? null,
+        inbox,
+        allowSelfMessages,
+        hasMedia,
+      ),
+    [friends, session?.user, inbox, allowSelfMessages, hasMedia],
+  );
   const rowsWithTimeRemaining = useFriendRows({
-    friends,
+    friends: visibleFriends,
     inbox,
     hasMedia,
     defaultRecipientId: mediaParams?.defaultRecipientId,
@@ -231,27 +242,12 @@ export default function FriendsScreen() {
   });
 
   const filteredRows = useMemo(() => {
-    const rows = SelfMessages.rows(
-      rowsWithTimeRemaining,
-      session?.user ?? null,
-      inbox,
-      allowSelfMessages,
-      hasMedia,
-      selfUserId ? outboxStatus[selfUserId] : undefined,
-    );
     const q = searchQuery.trim().toLowerCase();
-    if (q.length === 0) return rows;
-    return rows.filter((f) => f.name.toLowerCase().includes(q));
-  }, [
-    rowsWithTimeRemaining,
-    searchQuery,
-    session?.user,
-    inbox,
-    allowSelfMessages,
-    hasMedia,
-    selfUserId,
-    outboxStatus,
-  ]);
+    if (q.length === 0) return rowsWithTimeRemaining;
+    return rowsWithTimeRemaining.filter((f) =>
+      f.name.toLowerCase().includes(q),
+    );
+  }, [rowsWithTimeRemaining, searchQuery]);
 
   const filteredGroupRows = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
