@@ -47,7 +47,7 @@ async function addMigration(directory: string, sql: string) {
     JSON.stringify({
       ...journal,
       entries: [
-        ...journal.entries,
+        previous,
         { ...previous, idx: previous.idx + 1, when: previous.when + 1, tag },
       ],
     }),
