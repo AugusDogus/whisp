@@ -165,8 +165,6 @@ jobs:
 
       - name: Prepare mobile preview comment
         if: ${{ !cancelled() && steps.mobile.outcome != 'skipped' }}
-        env:
-          PREVIEW_COMMIT: ${{ github.event.pull_request.head.sha }}
         run: bun tooling/github/preview-mobile.ts "$RUNNER_TEMP/mobile-preview.json" "$RUNNER_TEMP/mobile-preview.md"
 
       - name: Update mobile preview comment
