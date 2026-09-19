@@ -64,3 +64,12 @@ jobs:
 
       - name: Preview lifecycle tests
         run: bun test tooling/github
+
+      - name: Verify schema migrations are committed
+        working-directory: packages/db
+        run: |
+          bunx --no-install drizzle-kit generate
+          if [[ -n "$(git status --porcelain -- drizzle)" ]]; then
+            echo "Schema changes need a migration. Run bun db:generate and commit packages/db/drizzle."
+            exit 1
+          fi

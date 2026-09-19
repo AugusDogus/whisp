@@ -75,7 +75,7 @@ jobs:
           TURSO_SOURCE_DATABASE: ${{ vars.TURSO_SOURCE_DATABASE }}
         run: bash tooling/github/preview-database.sh ensure
 
-      - name: Wait for database and apply preview schema
+      - name: Wait for database and apply preview migrations
         if: steps.pr.outputs.state == 'open'
         working-directory: packages/db
         run: |
@@ -92,8 +92,7 @@ jobs:
               }
             } finally { client.close(); }
           '
-          # Only disposable PR data is affected by destructive schema changes.
-          bunx --no-install drizzle-kit push --force < /dev/null
+          bun scripts/migrate.ts
 
       - name: Clear inherited push registrations and enable preview uploads
         if: steps.pr.outputs.state == 'open'
