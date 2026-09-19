@@ -206,14 +206,39 @@ Other services still use the Vercel Preview environment configuration.
 
 #### Mobile preview builds
 
+Every same-repository PR automatically gets a mobile preview. The
+[preview workflow](.github/workflows/preview.yml) deploys the PR backend first,
+then starts the [EAS workflow](apps/expo/.eas/workflows/preview.yml). Subsequent
+pushes redeploy both. Fork and Dependabot PRs are excluded, just like backend
+previews. The GitHub repository needs an
+`EXPO_TOKEN` secret; GitHub supplies its own token for posting the PR comment.
+
+EAS fingerprints the native app for each platform, reuses a compatible
+`preview:dev` build or creates one, and publishes the JavaScript and assets to the
+`pr-<number>` update branch. Fingerprinting runs on EAS so it can read the same
+Google Services file secret as native builds. The PR backend URL is passed into
+each job, overriding the shared preview environment's URL without changing it.
+
+The workflow updates one PR comment with Android/iOS install links and QR codes.
+Install the linked development build once, then scan the PR's QR code. Native
+changes require installing the newly linked build. These previews use the Expo
+development client, not Expo Go. iOS devices must be included in the provisioning
+profile. The initial build for each platform requires signing credentials to be
+configured in EAS. Build minutes and update usage count toward the Expo plan.
+
+The workflow runs after backend deployment and shares its per-PR concurrency
+lock, so closing the PR waits for mobile deployment before backend cleanup.
+Builds and update branches remain in EAS after closure, but the PR backend is
+removed and those previews are no longer usable.
+
 The EAS `preview` profile sets `APP_VARIANT=preview`. Preview builds use the name
 **Whisp Preview**, Android application ID (and iOS bundle ID) `whisp.chat.preview`,
 and deep-link scheme `whisp-preview://`. They install alongside production with
 separate app data. All PRs share this preview app identity; installing another
 preview build replaces the previous preview app, not production.
 
-Set `EXPO_PUBLIC_API_URL` in the EAS **preview** environment to the selected PR's
-backend before running `eas build --profile preview --platform android`. The
+For a manual standalone build, set `EXPO_PUBLIC_API_URL` in the EAS **preview**
+environment before running `eas build --profile preview --platform android`. The
 profile produces an APK. Local builds need `APP_VARIANT=preview` and the same URL
 when generating native files and bundling JavaScript. Preview configuration
 rejects a missing URL or the production `whisp.chat` URL instead of silently

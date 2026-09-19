@@ -27,6 +27,8 @@ jobs:
       github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    outputs:
+      url: ${{ steps.deploy.outputs.url }}
     environment:
       name: preview
       url: ${{ steps.deploy.outputs.url }}
@@ -124,6 +126,70 @@ jobs:
           url=$(jq -er '(.deployment // .).url | strings | select(startswith("https://"))' <<< "$deployment")
           echo "url=$url" >> "$GITHUB_OUTPUT"
           echo "Preview: $url (database: whisp-pr-$PR_NUMBER)" >> "$GITHUB_STEP_SUMMARY"
+
+  mobile:
+    needs: deploy
+    if: needs.deploy.outputs.url != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      APP_VARIANT: preview
+      EXPO_PUBLIC_API_URL: ${{ needs.deploy.outputs.url }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Setup
+        uses: ./tooling/github/setup
+
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: 24.7.0
+          token: ${{ secrets.EXPO_TOKEN }}
+          packager: npm
+
+      - name: Build or update mobile preview
+        id: mobile
+        working-directory: apps/expo
+        run: |
+          eas workflow:run .eas/workflows/preview.yml \
+            --non-interactive --wait --json \
+            -F "api_url=$EXPO_PUBLIC_API_URL" \
+            -F "branch=pr-$PR_NUMBER" > "$RUNNER_TEMP/mobile-preview.json"
+
+      - name: Prepare mobile preview comment
+        if: ${{ !cancelled() && steps.mobile.outcome != 'skipped' }}
+        env:
+          PREVIEW_COMMIT: ${{ github.event.pull_request.head.sha }}
+        run: bun tooling/github/preview-mobile.ts "$RUNNER_TEMP/mobile-preview.json" "$RUNNER_TEMP/mobile-preview.md"
+
+      - name: Update mobile preview comment
+        if: ${{ !cancelled() && steps.mobile.outcome != 'skipped' }}
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require('node:fs');
+            const path = require('node:path');
+            const file = path.join(process.env.RUNNER_TEMP, 'mobile-preview.md');
+            if (!fs.existsSync(file)) return;
+            const body = fs.readFileSync(file, 'utf8');
+            const issue = { ...context.repo, issue_number: context.issue.number };
+            const comments = await github.paginate(github.rest.issues.listComments, issue);
+            const existing = comments.find(comment =>
+              comment.user?.login === 'github-actions[bot]' &&
+              comment.body?.startsWith('<!-- whisp-mobile-preview -->')
+            );
+            if (existing) {
+              await github.rest.issues.updateComment({ ...context.repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ ...issue, body });
+            }
 
   cleanup:
     if: >-

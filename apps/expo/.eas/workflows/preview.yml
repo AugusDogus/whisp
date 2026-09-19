@@ -1,0 +1,72 @@
+name: PR mobile preview
+
+on:
+  workflow_dispatch:
+    inputs:
+      api_url:
+        type: string
+        required: true
+      branch:
+        type: string
+        required: true
+
+jobs:
+  fingerprint:
+    type: fingerprint
+    environment: preview
+    env:
+      APP_VARIANT: preview
+      EXPO_PUBLIC_API_URL: ${{ inputs.api_url }}
+
+  android_existing:
+    needs: [fingerprint]
+    type: get-build
+    params:
+      platform: android
+      profile: preview:dev
+      distribution: internal
+      fingerprint_hash: ${{ needs.fingerprint.outputs.android_fingerprint_hash }}
+      wait_for_in_progress: true
+
+  ios_existing:
+    needs: [fingerprint]
+    type: get-build
+    params:
+      platform: ios
+      profile: preview:dev
+      distribution: internal
+      fingerprint_hash: ${{ needs.fingerprint.outputs.ios_fingerprint_hash }}
+      wait_for_in_progress: true
+
+  android_build:
+    needs: [android_existing]
+    if: ${{ !needs.android_existing.outputs.build_id }}
+    type: build
+    env:
+      APP_VARIANT: preview
+      EXPO_PUBLIC_API_URL: ${{ inputs.api_url }}
+    params:
+      platform: android
+      profile: preview:dev
+
+  ios_build:
+    needs: [ios_existing]
+    if: ${{ !needs.ios_existing.outputs.build_id }}
+    type: build
+    env:
+      APP_VARIANT: preview
+      EXPO_PUBLIC_API_URL: ${{ inputs.api_url }}
+    params:
+      platform: ios
+      profile: preview:dev
+
+  update:
+    needs: [fingerprint]
+    type: update
+    environment: preview
+    env:
+      APP_VARIANT: preview
+      EXPO_PUBLIC_API_URL: ${{ inputs.api_url }}
+    params:
+      branch: ${{ inputs.branch }}
+      platform: all

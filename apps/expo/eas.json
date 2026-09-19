@@ -30,6 +30,13 @@
         "simulator": false
       }
     },
+    "preview:dev": {
+      "extends": "preview",
+      "node": "22.19.0",
+      "bun": "1.2.23",
+      "channel": "preview",
+      "developmentClient": true
+    },
     "production": {
       "extends": "base",
       "env": {

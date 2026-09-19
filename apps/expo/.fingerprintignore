@@ -1,0 +1,3 @@
+# setup_permissions rewrites this during pod install. The package version,
+# native sources, setup script, and app.config.ts permission choices remain hashed.
+**/node_modules/react-native-permissions/RNPermissions.podspec
