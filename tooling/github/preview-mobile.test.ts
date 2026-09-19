@@ -44,11 +44,38 @@ test("comments link reused and new builds and open the PR update in Whisp Previe
   expect(comment).toContain(context.commit.slice(0, 7));
 });
 
-test("failed runs do not advertise usable QR previews", () => {
-  const comment = MobilePreview.comment({ ...run, status: "FAILURE" }, context);
+test("failed updates do not advertise usable QR previews", () => {
+  const comment = MobilePreview.comment(
+    {
+      ...run,
+      status: "FAILURE",
+      jobs: run.jobs.map((job) =>
+        job.key === "update" ? { ...job, status: "FAILURE" } : job,
+      ),
+    },
+    context,
+  );
   expect(comment).toContain("failed");
   expect(comment).toContain(run.url);
   expect(comment).not.toContain("qr.expo.dev");
+});
+
+test("an iOS build failure preserves the working Android preview", () => {
+  const comment = MobilePreview.comment(
+    {
+      ...run,
+      status: "FAILURE",
+      jobs: run.jobs.map((job) =>
+        job.key === "ios_build" ? { ...job, status: "FAILURE" } : job,
+      ),
+    },
+    context,
+  );
+  expect(comment).toContain(`/builds/${androidBuild}`);
+  expect(comment).not.toContain(`/builds/${iosBuild}`);
+  expect(comment).toContain("| iOS | Unavailable |");
+  expect(comment.match(/appScheme=whisp-preview/g)).toHaveLength(2);
+  expect(comment).toContain("failed");
 });
 
 test("successful runs must contain a build and update for both platforms", () => {
