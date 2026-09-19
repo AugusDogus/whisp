@@ -65,6 +65,10 @@ export function useFriendRows({
       const rawOutboxState = outbox?.state ?? null;
       const outboxState: OutboxState | null =
         isSelf && rawOutboxState === "sent" ? null : rawOutboxState;
+      const isPendingSend =
+        outboxState === "uploading" ||
+        outboxState === "retrying" ||
+        outboxState === "blocked";
       const outboxUpdatedAt =
         outboxState && outbox?.updatedAtMs
           ? new Date(outbox.updatedAtMs)
@@ -77,7 +81,7 @@ export function useFriendRows({
         ? new Date(partnerLastActivity).getTime()
         : 0;
       const outboxMs =
-        outboxState === "uploading" || outboxState === "sent"
+        isPendingSend || outboxState === "sent"
           ? (outboxUpdatedAt?.getTime() ?? 0)
           : 0;
 
@@ -88,7 +92,7 @@ export function useFriendRows({
       const incomingIsLatest = incomingMs > 0 && incomingMs === latestMs;
 
       let lastMessageStatus: FriendRow["lastMessageStatus"] = null;
-      if (outboxState === "uploading" || outboxState === "failed") {
+      if (isPendingSend || outboxState === "failed") {
         lastMessageStatus = null;
       } else if (outgoingIsLatest) {
         if (isSelf) lastMessageStatus = "opened";
@@ -103,7 +107,7 @@ export function useFriendRows({
       const lastMessageAt = latestMs > 0 ? new Date(latestMs) : null;
 
       let lastMediaKind: MediaKind | null = null;
-      if (outboxState === "uploading" || outboxState === "sent") {
+      if (isPendingSend || outboxState === "sent") {
         lastMediaKind = outbox?.mediaKind ?? null;
       } else if (incomingIsLatest && hasUnread) {
         lastMediaKind = mimeToMediaKind(senderToLatestMime.get(f.id));
