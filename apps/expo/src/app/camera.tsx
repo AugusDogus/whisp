@@ -52,6 +52,7 @@ import { useIsForeground } from "~/hooks/useIsForeground";
 import { usePinchZoom } from "~/hooks/usePinchZoom";
 import { usePreferredCameraDevice } from "~/hooks/usePreferredCameraDevice";
 import { usePreferredCameraPosition } from "~/hooks/usePreferredCameraPosition";
+import { usePreviewSettings } from "~/hooks/usePreviewSettings";
 import { useVolumeKeyShutter } from "~/hooks/useVolumeKeyShutter";
 import type { MainTabParamList, RootStackParamList } from "~/navigation/types";
 import { useCookieStore } from "~/stores/cookie-store";
@@ -85,17 +86,23 @@ export default function CameraPage(): React.ReactElement {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const cameraRoute = useRoute<RouteProp<MainTabParamList, "Camera">>();
-  const defaultRecipientId = cameraRoute.params?.defaultRecipientId;
   const groupId = cameraRoute.params?.groupId;
   const { data: session, isPending, refetch } = authClient.useSession();
+  const { allowSelfMessages } = usePreviewSettings();
+  const requestedRecipientId = cameraRoute.params?.defaultRecipientId;
+  const defaultRecipientId =
+    !allowSelfMessages && requestedRecipientId === session?.user.id
+      ? undefined
+      : requestedRecipientId;
 
   // Query friend info if we have a pre-selected recipient
   const { data: friends = [] } = trpc.friends.list.useQuery(undefined, {
     enabled: !!defaultRecipientId,
   });
-  const selectedFriend = defaultRecipientId
-    ? friends.find((f) => f.id === defaultRecipientId)
-    : null;
+  const selectedFriend =
+    defaultRecipientId && defaultRecipientId === session?.user.id
+      ? { ...session.user, name: "Me (testing)" }
+      : friends.find((f) => f.id === defaultRecipientId);
   const { checkCookie: _checkCookie } = useCookieStore();
   const camera = useRef<Camera>(null);
   const captureButtonRef = useRef<CaptureButtonRef>(null);
@@ -379,9 +386,7 @@ export default function CameraPage(): React.ReactElement {
           <View className="flex-row items-center gap-3 rounded-full bg-black/70 py-2 pl-2 pr-2">
             <Avatar
               userId={selectedFriend.id}
-              image={
-                (selectedFriend as { image?: string | null }).image ?? null
-              }
+              image={selectedFriend.image ?? null}
               name={selectedFriend.name}
               size={32}
             />

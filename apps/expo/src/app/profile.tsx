@@ -18,6 +18,7 @@ import { Dialog } from "heroui-native/dialog";
 import { Switch } from "heroui-native/switch";
 
 import { DiscordProfileCard } from "~/components/discord-profile-card";
+import { PreviewSettings } from "~/components/preview-settings";
 import { SafeAreaView } from "~/components/styled";
 import { Text } from "~/components/ui/text";
 import type { RootStackParamList } from "~/navigation/types";
@@ -184,6 +185,8 @@ export default function ProfileScreen() {
                 </View>
               </View>
             </View>
+
+            <PreviewSettings />
 
             {/* About */}
             <View className="bg-surface rounded-xl p-4">
