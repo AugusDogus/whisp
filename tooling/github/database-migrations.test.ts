@@ -95,6 +95,38 @@ test("forward schema and data changes run once after the baseline", async () => 
   ).toHaveLength(2);
 });
 
+test("registered MLS migration upgrades an existing database and runs once", async () => {
+  const { client, db, migrationsFolder } = await fixture();
+  await migrate(db, { migrationsFolder });
+  await client.execute(
+    "INSERT INTO user (id, name, email, emailVerified, createdAt, updatedAt) VALUES ('existing', 'Existing', 'test@example.com', 1, 1, 1)",
+  );
+  await migrate(db, { migrationsFolder: source });
+  await migrate(db, { migrationsFolder: source });
+  expect((await client.execute("SELECT name FROM user")).rows).toEqual([
+    { name: "Existing" },
+  ]);
+  expect(
+    (
+      await client.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'mls_%' ORDER BY name",
+      )
+    ).rows.map((row) => row.name),
+  ).toEqual([
+    "mls_conversation",
+    "mls_device",
+    "mls_draft",
+    "mls_draft_conversation",
+    "mls_event",
+    "mls_key_package",
+    "mls_operation",
+    "mls_welcome",
+  ]);
+  expect(
+    (await client.execute("SELECT * FROM __drizzle_migrations")).rows,
+  ).toHaveLength(journal.entries.length);
+});
+
 test("a failed migration rolls back both schema changes and its receipt", async () => {
   const { client, db, migrationsFolder } = await fixture();
   await migrate(db, { migrationsFolder });
