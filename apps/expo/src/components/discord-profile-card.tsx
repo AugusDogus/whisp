@@ -6,6 +6,7 @@ import { useCosmeticMotion } from "~/hooks/useCosmeticMotion";
 import { useDiscordProfile } from "~/hooks/useDiscordProfile";
 import { cn } from "~/lib/utils";
 
+import { DiscordBadge } from "./discord-badge";
 import { DiscordNameplate } from "./discord-nameplate";
 import { AnimatedImage } from "./ui/animated-image";
 import { Avatar } from "./ui/avatar";
@@ -123,11 +124,9 @@ export function DiscordProfileCard({
         )}
 
         {cosmetics && cosmetics.badges.length > 0 && (
-          <View className="flex-row flex-wrap gap-1.5">
+          <View className="flex-row flex-wrap items-center gap-1.5">
             {cosmetics.badges.map((badge) => (
-              <View key={badge} className="bg-default rounded-lg px-2 py-1">
-                <Text className="text-xs">{badge}</Text>
-              </View>
+              <DiscordBadge key={badge} label={badge} />
             ))}
           </View>
         )}
