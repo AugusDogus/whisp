@@ -127,6 +127,29 @@ test("registered MLS migration upgrades an existing database and runs once", asy
   ).toHaveLength(journal.entries.length);
 });
 
+test("MLS migration adopts tables created by earlier preview schema pushes without losing messages", async () => {
+  const { client, db, migrationsFolder } = await fixture();
+  await migrate(db, { migrationsFolder });
+  // The old preview workflow applied the schema without a migration receipt.
+  await client.executeMultiple(
+    await readFile(join(source, "0002_mls.sql"), "utf8"),
+  );
+  await client.executeMultiple(`
+    INSERT INTO mls_conversation (id, scope, users, members) VALUES ('conversation', 'direct', '[]', '[]');
+    INSERT INTO mls_event (id, conversationId, sequence, entry) VALUES ('event', 'conversation', 1, 'encrypted whisp');
+  `);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await migrate(db, { migrationsFolder: source });
+  }
+  expect((await client.execute("SELECT entry FROM mls_event")).rows).toEqual([
+    { entry: "encrypted whisp" },
+  ]);
+  expect((await client.execute("PRAGMA foreign_key_check")).rows).toEqual([]);
+  expect(
+    (await client.execute("SELECT * FROM __drizzle_migrations")).rows,
+  ).toHaveLength(journal.entries.length);
+});
+
 test("a failed migration rolls back both schema changes and its receipt", async () => {
   const { client, db, migrationsFolder } = await fixture();
   await migrate(db, { migrationsFolder });

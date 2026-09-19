@@ -1,4 +1,6 @@
-CREATE TABLE `mls_conversation` (
+-- Earlier PR previews already received these tables through drizzle-kit push.
+-- Adopt that schema without replacing encrypted conversations or delivery state.
+CREATE TABLE IF NOT EXISTS `mls_conversation` (
 	`id` text PRIMARY KEY NOT NULL,
 	`scope` text NOT NULL,
 	`groupId` text,
@@ -7,8 +9,8 @@ CREATE TABLE `mls_conversation` (
 	`members` text NOT NULL
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX `mls_conversation_scope_unique` ON `mls_conversation` (`scope`);--> statement-breakpoint
-CREATE TABLE `mls_device` (
+CREATE UNIQUE INDEX IF NOT EXISTS `mls_conversation_scope_unique` ON `mls_conversation` (`scope`);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `mls_device` (
 	`id` text PRIMARY KEY NOT NULL,
 	`userId` text NOT NULL,
 	`signatureKey` text NOT NULL,
@@ -17,7 +19,7 @@ CREATE TABLE `mls_device` (
 	FOREIGN KEY (`userId`) REFERENCES `user`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
-CREATE TABLE `mls_draft` (
+CREATE TABLE IF NOT EXISTS `mls_draft` (
 	`id` text PRIMARY KEY NOT NULL,
 	`senderId` text NOT NULL,
 	`senderDeviceId` text NOT NULL,
@@ -30,7 +32,7 @@ CREATE TABLE `mls_draft` (
 	FOREIGN KEY (`senderDeviceId`) REFERENCES `mls_device`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
-CREATE TABLE `mls_draft_conversation` (
+CREATE TABLE IF NOT EXISTS `mls_draft_conversation` (
 	`id` text PRIMARY KEY NOT NULL,
 	`draftId` text NOT NULL,
 	`conversationId` text NOT NULL,
@@ -39,7 +41,7 @@ CREATE TABLE `mls_draft_conversation` (
 	FOREIGN KEY (`conversationId`) REFERENCES `mls_conversation`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
-CREATE TABLE `mls_event` (
+CREATE TABLE IF NOT EXISTS `mls_event` (
 	`id` text PRIMARY KEY NOT NULL,
 	`conversationId` text NOT NULL,
 	`sequence` integer NOT NULL,
@@ -47,8 +49,8 @@ CREATE TABLE `mls_event` (
 	FOREIGN KEY (`conversationId`) REFERENCES `mls_conversation`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX `mls_event_sequence_idx` ON `mls_event` (`conversationId`,`sequence`);--> statement-breakpoint
-CREATE TABLE `mls_key_package` (
+CREATE UNIQUE INDEX IF NOT EXISTS `mls_event_sequence_idx` ON `mls_event` (`conversationId`,`sequence`);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `mls_key_package` (
 	`id` text PRIMARY KEY NOT NULL,
 	`deviceId` text NOT NULL,
 	`data` text NOT NULL,
@@ -58,8 +60,8 @@ CREATE TABLE `mls_key_package` (
 	FOREIGN KEY (`operationId`) REFERENCES `mls_operation`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
-CREATE INDEX `mls_key_package_device_idx` ON `mls_key_package` (`deviceId`,`operationId`);--> statement-breakpoint
-CREATE TABLE `mls_operation` (
+CREATE INDEX IF NOT EXISTS `mls_key_package_device_idx` ON `mls_key_package` (`deviceId`,`operationId`);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `mls_operation` (
 	`id` text PRIMARY KEY NOT NULL,
 	`conversationId` text NOT NULL,
 	`deviceId` text NOT NULL,
@@ -71,7 +73,7 @@ CREATE TABLE `mls_operation` (
 	FOREIGN KEY (`deviceId`) REFERENCES `mls_device`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
-CREATE TABLE `mls_welcome` (
+CREATE TABLE IF NOT EXISTS `mls_welcome` (
 	`keyPackageId` text PRIMARY KEY NOT NULL,
 	`conversationId` text NOT NULL,
 	`deviceId` text NOT NULL,
