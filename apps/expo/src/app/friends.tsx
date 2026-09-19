@@ -28,7 +28,6 @@ import { SendModePanel } from "~/components/friends/SendModePanel";
 import type { FriendRow, GroupRow } from "~/components/friends/types";
 import { useRecording } from "~/contexts/RecordingContext";
 import { useFriendRows } from "~/hooks/useFriendRows";
-import { useMarkReadMutation } from "~/hooks/useMarkReadMutation";
 import { useMessageFromNotification } from "~/hooks/useMessageFromNotification";
 import { useMessageViewerState } from "~/hooks/useMessageViewerState";
 import { useRemoveFriend } from "~/hooks/useRemoveFriend";
@@ -88,7 +87,7 @@ export default function FriendsScreen() {
   const isShowingDialogRef = useRef(false);
   const bottomSheetRef = useRef<BottomSheetModal>(null);
   const groupSheetRef = useRef<BottomSheetModal>(null);
-  const { markRead, cleanupMessage, utils } = useMarkReadMutation();
+  const utils = trpc.useUtils();
   const removeFriend = useRemoveFriend(() => {
     setShowRemoveDialog(false);
     setTimeout(() => {
@@ -149,8 +148,6 @@ export default function FriendsScreen() {
   } = useMessageViewerState({
     inboxRaw,
     utils,
-    markAsRead: (deliveryId) => markRead.mutate({ deliveryId }),
-    cleanupMessage,
   });
 
   // Handle hardware back button when in send mode (has media)
@@ -207,11 +204,8 @@ export default function FriendsScreen() {
    */
   useMessageFromNotification({
     senderId: mediaParams?.openMessageFromSender,
-    instantMessage: mediaParams?.instantMessage,
-    inbox,
     inboxLoading,
     viewerOpen: !!viewer,
-    utils,
     clearParams: () => {
       navigation.setParams({
         openMessageFromSender: undefined,
@@ -219,7 +213,6 @@ export default function FriendsScreen() {
       });
     },
     openViewer: openViewerWithQueue,
-    markAsRead: (deliveryId) => markRead.mutate({ deliveryId }),
     refetchInbox: () =>
       refetchInbox().then((result) => ({ data: result.data })),
   });

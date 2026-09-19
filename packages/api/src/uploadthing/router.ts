@@ -1,21 +1,24 @@
 import type { FileRouter } from "uploadthing/types";
 
+import { TRPCError } from "@trpc/server";
 import {
   createUploadthing,
   UploadThingError,
+  UTApi,
   UTFiles,
 } from "uploadthing/server";
 import { z } from "zod/v4";
 
-import { and, eq } from "@acme/db";
+import { and, eq, isNull } from "@acme/db";
 import { db } from "@acme/db/client";
 import {
   BackgroundUploadTestFile,
-  GroupMember,
+  MlsDraft,
   Message,
   MessageDelivery,
 } from "@acme/db/schema";
 
+import { validateDraft } from "../services/mls";
 import { notifyNewMessage } from "../utils/send-notification";
 import { updateStreak } from "../utils/update-streak";
 import { PreviewScope } from "./preview-scope";
@@ -33,60 +36,18 @@ export function createUploadRouter({ getSession }: CreateDeps) {
   const f = createUploadthing();
 
   const uploadRouter = {
-    imageUploader: f({
-      image: {
-        maxFileSize: "4MB",
-        maxFileCount: 1,
-      },
-      video: {
-        maxFileSize: "1GB",
-        maxFileCount: 1,
-      },
-    })
-      .input(
-        z.object({
-          recipients: z.array(z.string().min(1)).optional(),
-          groupId: z.string().min(1).optional(),
-          mimeType: z.string().optional(),
-          thumbhash: z.string().optional(),
-        }),
-      )
+    // Keep the route name so existing background-task reconciliation still works.
+    // Old clients are rejected by the required encrypted draft input.
+    imageUploader: f({ blob: { maxFileSize: "1GB", maxFileCount: 1 } })
+      .input(z.object({ draftId: z.uuid() }).strict())
       .middleware(async ({ input, files }) => {
         const session = await getSession();
-        // eslint-disable-next-line @typescript-eslint/only-throw-error -- UploadThingError maps to proper HTTP status in UploadThing
         if (!session) throw new UploadThingError("Unauthorized");
         const scope = PreviewScope.fromEnvironment(process.env);
         await PreviewUploads.assertOpen(db, scope);
-        const hasRecipients = input.recipients && input.recipients.length > 0;
-        const hasGroupId = Boolean(input.groupId);
-        if (!hasRecipients && !hasGroupId) {
-          // eslint-disable-next-line @typescript-eslint/only-throw-error -- UploadThingError
-          throw new UploadThingError(
-            "Either recipients or groupId is required",
-          );
-        }
-        if (hasRecipients && hasGroupId) {
-          // eslint-disable-next-line @typescript-eslint/only-throw-error -- UploadThingError
-          throw new UploadThingError(
-            "Cannot specify both recipients and groupId",
-          );
-        }
-        if (hasGroupId && input.groupId) {
-          const [membership] = await db
-            .select()
-            .from(GroupMember)
-            .where(
-              and(
-                eq(GroupMember.groupId, input.groupId),
-                eq(GroupMember.userId, session.user.id),
-              ),
-            )
-            .limit(1);
-          if (!membership) {
-            // eslint-disable-next-line @typescript-eslint/only-throw-error -- UploadThingError
-            throw new UploadThingError("Not a member of this group");
-          }
-        }
+        const draft = await validateDraft(db, session.user.id, input.draftId);
+        if (draft.completedAt)
+          throw new UploadThingError("This whisp has already been uploaded.");
         return {
           [UTFiles]: files.map((file) => ({
             ...file,
@@ -95,10 +56,7 @@ export function createUploadRouter({ getSession }: CreateDeps) {
               : {}),
           })),
           userId: session.user.id,
-          recipients: input.recipients ?? [],
-          groupId: input.groupId,
-          mimeType: input.mimeType,
-          thumbhash: input.thumbhash,
+          draftId: draft.id,
         };
       })
       .onUploadComplete(async ({ metadata, file }) => {
@@ -107,97 +65,87 @@ export function createUploadRouter({ getSession }: CreateDeps) {
           PreviewScope.fromEnvironment(process.env),
           { key: getFileKey(file), customId: file.customId },
         );
-        const messageId = crypto.randomUUID();
-        const isGroupMessage = Boolean(metadata.groupId);
-
-        await db.insert(Message).values({
-          id: messageId,
-          senderId: metadata.userId,
-          groupId: metadata.groupId ?? undefined,
-          fileUrl: file.ufsUrl,
-          fileKey: getFileKey(file),
-          mimeType: metadata.mimeType,
-          thumbhash: metadata.thumbhash,
-        });
-
-        let deliveries: {
-          id: string;
-          messageId: string;
-          recipientId: string;
-          groupId?: string;
-        }[];
-
-        if (isGroupMessage && metadata.groupId) {
-          const groupId = metadata.groupId;
-          const members = await db
-            .select({ userId: GroupMember.userId })
-            .from(GroupMember)
-            .where(eq(GroupMember.groupId, groupId));
-          const recipientIds = members
-            .map((m) => m.userId)
-            .filter((id) => id !== metadata.userId);
-          deliveries = recipientIds.map((rid) => ({
-            id: crypto.randomUUID(),
-            messageId,
-            recipientId: rid,
-            groupId,
-          }));
-        } else if (metadata.recipients.length > 0) {
-          deliveries = metadata.recipients.map((rid) => ({
-            id: crypto.randomUUID(),
-            messageId,
-            recipientId: rid,
-          }));
-        } else {
-          deliveries = [];
+        const result = await db
+          .transaction(async (tx) => {
+            // Callback retries are idempotent. A second file cannot replace the first.
+            const [existing] = await tx
+              .select()
+              .from(Message)
+              .where(eq(Message.id, metadata.draftId));
+            if (existing)
+              return { kind: "duplicate" as const, fileKey: existing.fileKey };
+            const draft = await validateDraft(
+              tx,
+              metadata.userId,
+              metadata.draftId,
+            );
+            await tx.insert(Message).values({
+              id: draft.id,
+              senderId: draft.senderId,
+              groupId: draft.groupId,
+              fileUrl: file.ufsUrl,
+              fileKey: getFileKey(file),
+              // Explicit protocol marker. Media kind and previews stay inside MLS.
+              mimeType: "application/vnd.whisp.mls.v1",
+            });
+            const deliveries = draft.recipients.map((recipientId) => ({
+              id: crypto.randomUUID(),
+              messageId: draft.id,
+              recipientId,
+              groupId: draft.groupId,
+            }));
+            await tx.insert(MessageDelivery).values(deliveries);
+            await tx
+              .update(MlsDraft)
+              .set({ completedAt: new Date() })
+              .where(eq(MlsDraft.id, draft.id));
+            return { kind: "created" as const, draft, deliveries };
+          })
+          .catch(async (error: unknown) => {
+            // A DB/network error can have an ambiguous commit outcome. Never
+            // delete ciphertext that may already be referenced by a delivery.
+            if (error instanceof TRPCError) {
+              await db
+                .update(MlsDraft)
+                .set({ failure: error.message })
+                .where(
+                  and(
+                    eq(MlsDraft.id, metadata.draftId),
+                    isNull(MlsDraft.completedAt),
+                  ),
+                );
+              await new UTApi().deleteFiles(getFileKey(file));
+            }
+            throw error;
+          });
+        if (result.kind === "duplicate") {
+          if (result.fileKey !== getFileKey(file))
+            await new UTApi().deleteFiles(getFileKey(file));
+          return { uploadedBy: metadata.userId };
         }
-
-        await db.insert(MessageDelivery).values(deliveries);
-
-        if (!isGroupMessage) {
-          for (const recipientId of metadata.recipients) {
-            await updateStreak(db, metadata.userId, recipientId);
-          }
-        }
-
         const sender = await db.query.user.findFirst({
-          where: (users, { eq: colEq }) => colEq(users.id, metadata.userId),
+          where: (u, { eq: columnEq }) => columnEq(u.id, metadata.userId),
           columns: { name: true },
         });
-
-        const groupIdForQuery = metadata.groupId;
-        const groupQuery =
-          groupIdForQuery &&
-          db.query.Group.findFirst({
-            where: (g, { eq: colEq }) => colEq(g.id, groupIdForQuery),
-            columns: { name: true },
-          });
-        const groupResult: { name: string } | null = groupQuery
-          ? ((await groupQuery) ?? null)
-          : null;
-
-        if (sender) {
-          for (const delivery of deliveries) {
+        for (const delivery of result.deliveries) {
+          if (!result.draft.groupId)
+            await updateStreak(db, metadata.userId, delivery.recipientId);
+          if (sender)
             void notifyNewMessage(
               db,
               delivery.recipientId,
               metadata.userId,
               sender.name,
-              messageId,
-              file.ufsUrl,
-              metadata.mimeType,
+              result.draft.id,
+              undefined,
+              undefined,
               delivery.id,
-              metadata.thumbhash,
-              delivery.groupId
-                ? {
-                    groupId: delivery.groupId,
-                    groupName: groupResult?.name ?? "Group",
-                  }
+              undefined,
+              result.draft.groupId
+                ? { groupId: result.draft.groupId, groupName: "your group" }
                 : undefined,
             );
-          }
         }
-
         return { uploadedBy: metadata.userId };
       }),
     backgroundUploadTestUploader: f({

@@ -1,0 +1,44 @@
+{
+  "name": "react-native-whisp-mls",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Native OpenMLS and streaming media encryption for Whisp.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "react-native": "./src/index.ts",
+  "license": "MIT",
+  "author": "Whisp",
+  "homepage": "https://github.com/AugusDogus/whisp",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AugusDogus/whisp.git"
+  },
+  "scripts": {
+    "test": "cargo test --manifest-path rust/Cargo.toml --locked",
+    "bindings": "node scripts/generate-bindings.mjs",
+    "build:android": "ubrn build android --config ubrn.config.yaml --release --and-generate && node scripts/native-bindings.mjs --android",
+    "build:ios": "ubrn build ios --config ubrn.config.yaml --release --and-generate && node scripts/native-bindings.mjs",
+    "typecheck": "bun run bindings && tsc --noEmit"
+  },
+  "dependencies": {
+    "@ubjs/core": "0.31.0-5",
+    "uniffi-bindgen-react-native": "0.31.0-5"
+  },
+  "peerDependencies": {
+    "expo-modules-core": "*",
+    "react": ">=19.0.0",
+    "react-native": ">=0.81.0"
+  },
+  "devDependencies": {
+    "@acme/tsconfig": "workspace:*",
+    "typescript": "catalog:"
+  },
+  "codegenConfig": {
+    "name": "WhispMlsSpec",
+    "type": "modules",
+    "jsSrcsDir": "src",
+    "android": {
+      "javaPackageName": "chat.whisp.mls"
+    }
+  }
+}

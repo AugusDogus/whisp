@@ -1,5 +1,6 @@
 import type { TRPCRouterRecord } from "@trpc/server";
 
+import { TRPCError } from "@trpc/server";
 import { UTApi } from "uploadthing/server";
 import { z } from "zod/v4";
 
@@ -79,7 +80,12 @@ export const messagesRouter = {
         await ctx.db
           .select()
           .from(MessageDelivery)
-          .where(eq(MessageDelivery.id, input.deliveryId))
+          .where(
+            and(
+              eq(MessageDelivery.id, input.deliveryId),
+              eq(MessageDelivery.recipientId, me),
+            ),
+          )
       )[0];
       if (!delivery) return { ok: true };
 
@@ -114,10 +120,24 @@ export const messagesRouter = {
     .input(
       z.object({
         messageId: z.string().min(1),
-        fileKey: z.string().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      const [owned] = await ctx.db
+        .select()
+        .from(MessageDelivery)
+        .where(
+          and(
+            eq(MessageDelivery.messageId, input.messageId),
+            eq(MessageDelivery.recipientId, ctx.session.user.id),
+          ),
+        )
+        .limit(1);
+      if (!owned)
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Only a recipient can clean up this whisp.",
+        });
       // Verify all deliveries read
       const unread = await ctx.db
         .select()

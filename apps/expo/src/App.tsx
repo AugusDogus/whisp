@@ -18,6 +18,9 @@ import { QueryProvider } from "~/components/query-provider";
 import { usePushNotifications } from "~/hooks/usePushNotifications";
 import { authClient } from "~/utils/auth";
 import { POSTHOG_API_KEY, POSTHOG_HOST } from "~/utils/constants";
+import { reconcileNativeSends } from "~/utils/media-upload";
+import { prepareEncryptionDevice } from "~/utils/mls-device";
+import { configureNativeSends, resumeNativeSends } from "~/utils/native-send";
 import {
   listBackgroundUploadTasks,
   markBackgroundUploadTaskObserved,
@@ -52,6 +55,82 @@ Sentry.init({
 function AppContent() {
   const { data: session } = authClient.useSession();
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (!session?.user.id) return;
+    let stopped = false;
+    let provisioning = false;
+    async function replenish() {
+      if (stopped || provisioning || AppState.currentState !== "active") return;
+      provisioning = true;
+      try {
+        await prepareEncryptionDevice();
+      } catch {
+        console.warn(
+          "Encryption key provisioning failed. It will retry while Whisp is open.",
+        );
+      } finally {
+        provisioning = false;
+      }
+    }
+    void replenish();
+    // Retry failed offline provisioning and refill keys consumed by other
+    // devices without requiring a session change or a process restart.
+    const timer = setInterval(() => {
+      void replenish();
+    }, 60_000);
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") void replenish();
+    });
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+      subscription.remove();
+    };
+  }, [session?.user.id]);
+
+  useEffect(() => {
+    let stopped = false;
+    let polling = false;
+    async function refresh() {
+      if (stopped || polling || AppState.currentState !== "active") return;
+      polling = true;
+      try {
+        await reconcileNativeSends(queryClient);
+      } catch {
+        console.warn(
+          "Queued send status is unavailable. It will retry on the next refresh.",
+        );
+      } finally {
+        polling = false;
+      }
+    }
+    void configureNativeSends()
+      .then(resumeNativeSends)
+      .then(refresh)
+      .catch(() => {
+        console.warn("Native sends are paused. Sign in and retry to resume.");
+      });
+    const timer = setInterval(() => {
+      void refresh();
+    }, 2000);
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active")
+        void configureNativeSends()
+          .then(resumeNativeSends)
+          .then(refresh)
+          .catch(() => {
+            console.warn(
+              "Native sends could not resume. Queued media is preserved.",
+            );
+          });
+    });
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+      subscription.remove();
+    };
+  }, [queryClient, session?.user.id]);
 
   // Request notification permissions immediately (before auth)
   // but only register token after authentication
