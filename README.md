@@ -206,10 +206,11 @@ Other services still use the Vercel Preview environment configuration.
 
 #### Mobile preview builds
 
-Add the **`eas-build`** label to a same-repository PR to enable mobile previews.
-The [preview workflow](.github/workflows/preview.yml) deploys the PR backend first,
+Every same-repository PR automatically gets a mobile preview. The
+[preview workflow](.github/workflows/preview.yml) deploys the PR backend first,
 then starts the [EAS workflow](apps/expo/.eas/workflows/preview.yml). Subsequent
-pushes redeploy both while the label remains. The GitHub repository needs an
+pushes redeploy both. Fork and Dependabot PRs are excluded, just like backend
+previews. The GitHub repository needs an
 `EXPO_TOKEN` secret; GitHub supplies its own token for posting the PR comment.
 
 EAS fingerprints the native app for each platform, reuses a compatible
