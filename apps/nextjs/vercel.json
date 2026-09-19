@@ -1,4 +1,5 @@
 {
+  "buildCommand": "bash ../../tooling/vercel/build.sh",
   "git": {
     "deploymentEnabled": {
       "**": false,

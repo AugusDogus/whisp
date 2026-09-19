@@ -21,9 +21,10 @@
     "build": "tsc",
     "clean": "git clean -xdf .cache .turbo dist node_modules",
     "generate": "drizzle-kit generate",
+    "migrate": "bun with-env bun scripts/migrate.ts",
     "push": "bun with-env drizzle-kit push",
     "studio": "bun with-env drizzle-kit studio",
-    "typecheck": "tsc --noEmit --emitDeclarationOnly false",
+    "typecheck": "tsc --noEmit --emitDeclarationOnly false && tsc -p tsconfig.scripts.json",
     "with-env": "dotenv -e ../../.env --"
   },
   "dependencies": {

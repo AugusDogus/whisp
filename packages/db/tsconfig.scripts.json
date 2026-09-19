@@ -1,0 +1,5 @@
+{
+  "extends": "@acme/tsconfig/base.json",
+  "compilerOptions": { "tsBuildInfoFile": ".cache/scripts.tsbuildinfo" },
+  "include": ["scripts"]
+}

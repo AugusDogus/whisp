@@ -143,6 +143,24 @@ Add your local IP (e.g., `192.168.x.y:3000`) to your OAuth provider settings. No
 
 ## 📊 Database Maintenance
 
+### Automatic production migrations
+
+Vercel applies committed Drizzle migrations before every production build, outside
+Turbo's build cache. A migration failure stops the deployment. Already-applied
+migrations are skipped, so redeployments do not repeat them. No manual database
+command is needed after merging a PR.
+
+When changing the schema, run `bun db:generate` and commit the SQL and metadata in
+`packages/db/drizzle` with the code change. CI checks that the committed migrations
+match the schema. Use a custom Drizzle migration for data transformations. Do not
+edit applied migrations; add a forward migration instead.
+
+The initial baseline adopts the existing production tables without replacing
+them or their data. Keep future migrations compatible with the running app,
+because they run before the new deployment replaces it. `bun db:push` remains a
+development tool for disposable databases. Local application builds do not apply
+migrations automatically; `bun db:migrate` is available when needed.
+
 ### Pull request previews
 
 [The preview workflow](.github/workflows/preview.yml) deploys same-repository
@@ -152,17 +170,17 @@ Fork and Dependabot PRs do not receive preview deployments.
 Each branch copies the main database's schema and data using Turso's native
 branching API, equivalent to `turso db create whisp-pr-<number> --from-db <main-db>`.
 It uses the source database's existing group; no separate preview group is needed.
-The workflow then applies the PR's Drizzle schema with `drizzle-kit push --force`
+The workflow then applies the PR's committed Drizzle migrations
 and passes the branch's credentials to both the Vercel build and runtime.
 Before deploying, initialization clears inherited `push_token` rows in the branch.
 A transactional marker makes this a one-time operation per branch, including
 existing previews upgraded to this workflow. Later deployments retain tokens
 registered by preview devices. The source database is never changed.
-Later pushes reuse the branch without copying the source again, although
-destructive schema changes can remove preview data. Changes to the branch do not
+Later pushes reuse the branch without copying the source again. Changes to the branch do not
 affect the source database and are not merged back into it.
-Ambiguous schema changes, such as column renames, may require manual resolution
-if Drizzle needs an interactive answer.
+Previews exercise the same migrations that production will apply on merge.
+When adopting migrations, recreate older disposable preview databases that had
+already received untracked schema changes through `db:push`.
 
 Closing or merging the PR disables new uploads, deletes its completed UploadThing
 files, then deletes its database branch. Reopening branches from the current main

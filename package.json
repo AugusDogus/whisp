@@ -11,6 +11,7 @@
     "clean:workspaces": "turbo run clean",
     "auth:generate": "bun -F @acme/auth generate",
     "db:generate": "bun -F @acme/db generate",
+    "db:migrate": "bun -F @acme/db migrate",
     "db:push": "turbo -F @acme/db push",
     "db:studio": "turbo -F @acme/db studio",
     "dev": "turbo dev",
