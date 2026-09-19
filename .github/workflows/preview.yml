@@ -2,7 +2,7 @@ name: Preview
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, labeled, closed]
+    types: [opened, synchronize, reopened, closed]
 
 # Let provisioning/deployment finish before cleanup. Cancellation can orphan a
 # database when an API request completes after its runner has been stopped.
@@ -23,7 +23,6 @@ jobs:
   deploy:
     if: >-
       github.event.action != 'closed' &&
-      (github.event.action != 'labeled' || github.event.label.name == 'eas-build') &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
@@ -130,9 +129,7 @@ jobs:
 
   mobile:
     needs: deploy
-    if: >-
-      needs.deploy.outputs.url != '' &&
-      contains(github.event.pull_request.labels.*.name, 'eas-build')
+    if: needs.deploy.outputs.url != ''
     runs-on: ubuntu-latest
     timeout-minutes: 90
     permissions:
