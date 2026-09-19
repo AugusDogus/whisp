@@ -2,6 +2,15 @@
   "name": "@acme/expo",
   "private": true,
   "main": "index.ts",
+  "expo": {
+    "autolinking": {
+      "android": {
+        "buildFromSource": [
+          "expo-image"
+        ]
+      }
+    }
+  },
   "scripts": {
     "clean": "git clean -xdf .cache .expo .turbo android ios node_modules",
     "with-env": "dotenv -e ../../.env --",
