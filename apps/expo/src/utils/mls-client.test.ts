@@ -116,9 +116,18 @@ const api = createTRPCClient<AppRouter>({
         }),
   ],
 });
-mock.module("./api", () => ({ createExpoTRPCClient: () => api }));
+// Module mocks outlive mock.restore(). Preserve shared exports and restore these
+// boundaries so account-cache tests also work when they run after this file.
+const originalApi = { ...(await import("./api")) };
+const originalAuth = { ...(await import("./auth")) };
+const originalBaseUrl = { ...(await import("./base-url")) };
+mock.module("./api", () => ({
+  ...originalApi,
+  createExpoTRPCClient: () => api,
+}));
 mock.module("./auth", () => ({
   authClient: {
+    ...originalAuth.authClient,
     getCookie: () => (signedOut ? null : `session-${userId}`),
     getSession: async () => ({
       data: signedOut || sessionError ? null : { user: { id: userId } },
@@ -231,7 +240,12 @@ beforeEach(() => {
     "mls.retainedMessages": () => [messageId],
   };
 });
-afterAll(() => mock.restore());
+afterAll(() => {
+  mock.restore();
+  mock.module("./api", () => originalApi);
+  mock.module("./auth", () => originalAuth);
+  mock.module("./base-url", () => originalBaseUrl);
+});
 
 const descriptor = {
   version: 1,
