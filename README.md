@@ -352,16 +352,16 @@ disabled. No conversion endpoint, native server binary, or schema change is need
 Public badges are labels. Discord does not provide profile badge icon URLs in the
 User API. Private profile themes and effects are not included.
 
-Before deploying this change against an existing database, apply
-`packages/db/migrations/20260918_discord_cosmetics.sql` once, or use the existing
-`bun db:push` flow. Do not apply the SQL migration if `db:push` has already added
-the columns. The migration adds these columns together in a transaction and
-preserves existing users and avatar URLs.
+The generated forward migration is
+`packages/db/drizzle/0001_discord_cosmetics.sql`. Merge the deployment automation
+in PR #21 before this change so production applies it automatically before the
+new app builds. It preserves existing users and avatar URLs.
 
 For phone testing, use the PR preview workflow described above. It provisions
 the isolated database branch and applies these columns through Drizzle. Set
-`EXPO_PUBLIC_API_URL` to that deployment when building Whisp Preview. Do not also
-apply the SQL migration to a preview whose schema has already been pushed.
+`EXPO_PUBLIC_API_URL` to that deployment when building Whisp Preview. Recreate
+older disposable preview branches when switching them from schema push to
+migrations, since their existing cosmetic columns have no migration receipt.
 
 ### Scheduled message cleanup
 
