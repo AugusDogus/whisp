@@ -69,6 +69,7 @@
     "core-js-pure"
   ],
   "patchedDependencies": {
-    "react-native-vision-camera@4.7.3": "patches/react-native-vision-camera@4.7.3.patch"
+    "react-native-vision-camera@4.7.3": "patches/react-native-vision-camera@4.7.3.patch",
+    "expo-image@3.0.10": "patches/expo-image@3.0.10.patch"
   }
 }

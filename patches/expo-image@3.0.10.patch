@@ -1,0 +1,20 @@
+diff --git a/android/src/main/java/expo/modules/image/ExpoImageViewWrapper.kt b/android/src/main/java/expo/modules/image/ExpoImageViewWrapper.kt
+index 5de34df2a9e2b60d0947c45962e7c50a091713ab..55f414e917fb49f129b6a576a715ba5d632e3855 100644
+--- a/android/src/main/java/expo/modules/image/ExpoImageViewWrapper.kt
++++ b/android/src/main/java/expo/modules/image/ExpoImageViewWrapper.kt
+@@ -181,10 +181,12 @@ class ExpoImageViewWrapper(context: Context, appContext: AppContext) : ExpoView(
+ 
+   private fun setIsAnimating(resource: GifDrawable, setAnimating: Boolean) {
+     if (setAnimating) {
+-      if (resource.isPaused) {
+-        resource.resume()
+-      } else {
++      // autoplay=false can stop the decoder before stopAnimating pauses it.
++      // resume() alone cannot restart that decoder or restore its listeners.
++      if (!resource.isRunning) {
+         resource.start()
++      } else if (resource.isPaused) {
++        resource.resume()
+       }
+     } else {
+       resource.pause()
