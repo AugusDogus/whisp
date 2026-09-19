@@ -25,7 +25,9 @@
         "@rnrepo/expo-config-plugin": "^0.1.0-beta.0",
         "@sentry/react-native": "^8.0.0",
         "@shopify/react-native-skia": "2.2.12",
+        "@tanstack/query-async-storage-persister": "5.90.13",
         "@tanstack/react-query": "catalog:",
+        "@tanstack/react-query-persist-client": "5.90.13",
         "@trpc/client": "catalog:",
         "@trpc/react-query": "^11.5.1",
         "@trpc/server": "catalog:",
@@ -84,6 +86,7 @@
         "tailwind-variants": "^3.2.2",
         "uniwind": "^1.4.0",
         "uploadthing": "catalog:",
+        "zod": "catalog:",
         "zustand": "^5.0.11",
       },
       "devDependencies": {
@@ -1307,9 +1310,15 @@
 
     "@tailwindcss/oxide-win32-x64-msvc": ["@tailwindcss/oxide-win32-x64-msvc@4.1.17", "", { "os": "win32", "cpu": "x64" }, "sha512-SKWM4waLuqx0IH+FMDUw6R66Hu4OuTALFgnleKbqhgGU30DY20NORZMZUKgLRjQXNN2TLzKvh48QXTig4h4bGw=="],
 
+    "@tanstack/query-async-storage-persister": ["@tanstack/query-async-storage-persister@5.90.13", "", { "dependencies": { "@tanstack/query-core": "5.90.11", "@tanstack/query-persist-client-core": "5.91.10" } }, "sha512-72/rRDlfXVJvd1mTyjvsWSU/obj+SoeitKwm1AM5YDId8aIMxGYnJscK7ZDilBFXud2p9DyV6+mRYEzcpPK0VA=="],
+
     "@tanstack/query-core": ["@tanstack/query-core@5.90.11", "", {}, "sha512-f9z/nXhCgWDF4lHqgIE30jxLe4sYv15QodfdPDKYAk7nAEjNcndy4dHz3ezhdUaR23BpWa4I2EH4/DZ0//Uf8A=="],
 
+    "@tanstack/query-persist-client-core": ["@tanstack/query-persist-client-core@5.91.10", "", { "dependencies": { "@tanstack/query-core": "5.90.11" } }, "sha512-oZQk/kap5jHx2w+JcSI6CvDFXR5jmAldqJsH5IEQizVOEwaRlCyYEBZ3Df56HXNxW4spWX0cjhI/4o+mnCGtHw=="],
+
     "@tanstack/react-query": ["@tanstack/react-query@5.90.11", "", { "dependencies": { "@tanstack/query-core": "5.90.11" }, "peerDependencies": { "react": "^18 || ^19" } }, "sha512-3uyzz01D1fkTLXuxF3JfoJoHQMU2fxsfJwE+6N5hHy0dVNoZOvwKP8Z2k7k1KDeD54N20apcJnG75TBAStIrBA=="],
+
+    "@tanstack/react-query-persist-client": ["@tanstack/react-query-persist-client@5.90.13", "", { "dependencies": { "@tanstack/query-persist-client-core": "5.91.10" }, "peerDependencies": { "@tanstack/react-query": "^5.90.11", "react": "^18 || ^19" } }, "sha512-04R+o/su8wuqlEvUl6dJLLI8auUCFCCJ2qGfELPSJSE4mF0HOh+ZtmsDRuLXA/jBMyV6X2RZLrZTMRWNgWM4gw=="],
 
     "@trpc/client": ["@trpc/client@11.7.2", "", { "peerDependencies": { "@trpc/server": "11.7.2", "typescript": ">=5.7.2" } }, "sha512-OQxqUMfpDvjcszo9dbnqWQXnW2L5IbrKSz2H7l8s+mVM3EvYw7ztQ/gjFIN3iy0NcamiQfd4eE6qjcb9Lm+63A=="],
 

@@ -13,6 +13,7 @@ import * as Haptics from "expo-haptics";
 
 import { BottomSheetBackdrop } from "@gorhom/bottom-sheet";
 import { useNavigation, useRoute } from "@react-navigation/native";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { AddFriendsPanel } from "~/components/add-friends-panel";
 import { FriendsListSkeletonVaried } from "~/components/friends-skeleton";
@@ -47,6 +48,7 @@ import WhispLogoDark from "../../assets/splash-icon-dark.png";
 import WhispLogoLight from "../../assets/splash-icon.png";
 
 export default function FriendsScreen() {
+  const queryClient = useQueryClient();
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute<RouteProp<MainTabParamList, "Friends">>();
@@ -294,6 +296,7 @@ export default function FriendsScreen() {
           }
 
           void uploadMedia({
+            queryClient,
             uri: finalUri,
             type: mediaParams.type,
             recipients: opts.recipients ?? [],

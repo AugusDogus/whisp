@@ -46,6 +46,7 @@ export function usePushNotifications(isAuthenticated: boolean) {
       if (data.type === "message") {
         console.log("Invalidating inbox query before navigation");
         void utils.messages.inbox.invalidate();
+        void utils.friends.list.invalidate();
         if (data.groupId) {
           void utils.groups.list.invalidate();
         }
@@ -190,6 +191,7 @@ export function usePushNotifications(isAuthenticated: boolean) {
           console.log("Invalidating inbox query for new message notification");
           // This will cause the inbox to refetch in the background
           void utils.messages.inbox.invalidate();
+          void utils.friends.list.invalidate();
         } else if (
           data.type === "friend_request" ||
           data.type === "friend_accept"
