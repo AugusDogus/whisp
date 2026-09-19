@@ -13,69 +13,99 @@ const runSchema = z.object({
     }),
   ),
 });
-const updatesSchema = z.array(
-  z.object({ platform: z.enum(["android", "ios"]), group: z.uuid() }),
-);
-const contextSchema = z.object({
-  backend: z.url().refine((value) => {
-    const url = new URL(value);
-    return url.protocol === "https:" && url.hostname.endsWith(".vercel.app");
-  }),
-  commit: z.string().regex(/^[a-f0-9]{40}$/),
+const hashSchema = z.string().regex(/^[a-f0-9]{40}$/);
+const detailSchema = z.string().regex(/^[\w.+:/-]+$/);
+const buildSchema = z.object({
+  build_id: z.uuid(),
+  distribution: detailSchema,
+  profile: detailSchema,
+  runtime_version: hashSchema,
+  app_version: detailSchema,
+  git_commit_hash: hashSchema,
+});
+const updateSchema = z.object({
+  platform: z.enum(["android", "ios"]),
+  group: z.uuid(),
+  branch: detailSchema,
+  runtimeVersion: hashSchema,
+  gitCommitHash: hashSchema,
 });
 
-function comment(input: unknown, context: unknown): string {
-  const run = runSchema.parse(input);
-  const { backend, commit } = contextSchema.parse(context);
-  const header = `<!-- whisp-mobile-preview -->
-## Whisp Preview
+function details(link: string, lines: string[]): string {
+  return `${link}<br /><details><summary>Details</summary>${lines.join("<br />")}</details>`;
+}
 
-Commit: \`${commit.slice(0, 7)}\` · [PR backend](${backend}) · [EAS workflow](${run.url})`;
+function comment(input: unknown): string {
+  const run = runSchema.parse(input);
   const status =
     run.status === "SUCCESS"
-      ? "Both mobile previews are ready."
-      : `Mobile deployment ${run.status === "FAILURE" ? "failed" : "was canceled"} for one or more jobs. Available previews are linked below. The backend is still deployed. Check the EAS workflow logs, fix the reported error, and rerun the GitHub Actions workflow.`;
+      ? "🚀 Expo continuous deployment is ready!"
+      : `Mobile deployment ${run.status === "FAILURE" ? "failed" : "was canceled"} for one or more jobs. Available previews are linked below. Check the [EAS workflow logs](${run.url}), fix the reported error, and rerun the GitHub Actions workflow.`;
 
   const outputs = (key: string) =>
     run.jobs.find((job) => job.key === key && job.status === "SUCCESS")
       ?.outputs;
   const updateOutput = outputs("update");
   const updates = updateOutput
-    ? updatesSchema.parse(
-        JSON.parse(z.string().parse(updateOutput.updates_json)),
-      )
+    ? z
+        .array(updateSchema)
+        .parse(JSON.parse(z.string().parse(updateOutput.updates_json)))
     : [];
-  const rows = ["android", "ios"].map((platform) => {
-    const name = platform === "ios" ? "iOS" : "Android";
+  const platformDetails = (platform: "android" | "ios") => {
     const buildOutput =
-      outputs(`${platform}_build`)?.build_id ??
-      outputs(`${platform}_existing`)?.build_id;
+      outputs(`${platform}_build`) ?? outputs(`${platform}_existing`);
     const update = updates.find((candidate) => candidate.platform === platform);
-    if (run.status !== "SUCCESS" && (buildOutput === undefined || !update)) {
-      return `| ${name} | Unavailable | [Check workflow logs](${run.url}) | Unavailable |`;
+    if (run.status !== "SUCCESS" && (!buildOutput?.build_id || !update)) {
+      return { fingerprint: "n/a", build: "n/a", update: "n/a", qr: "n/a" };
     }
-    const buildId = z.uuid().parse(buildOutput);
-    const group = z.uuid().parse(update?.group);
+    const build = buildSchema.parse(buildOutput);
+    const published = updateSchema.parse(update);
     const qr = new URL("https://qr.expo.dev/eas-update");
     qr.search = new URLSearchParams({
       projectId,
-      groupId: group,
+      groupId: published.group,
       appScheme: "whisp-preview",
     }).toString();
-    return `| ${name} | [Install development build](${projectUrl}/builds/${buildId}) | [Open update](https://expo.dev/projects/${projectId}/updates/${group}) | [![Preview QR](${qr})](${qr}) |`;
-  });
+    return {
+      fingerprint: build.runtime_version,
+      build: details(
+        `[Build Permalink](${projectUrl}/builds/${build.build_id})`,
+        [
+          `Distribution: \`${build.distribution}\``,
+          `Build profile: \`${build.profile}\``,
+          `Runtime version: \`${build.runtime_version}\``,
+          `App version: \`${build.app_version}\``,
+          `Git commit: \`${build.git_commit_hash}\``,
+        ],
+      ),
+      update: details(
+        `[Update Permalink](https://expo.dev/projects/${projectId}/updates/${published.group})`,
+        [
+          `Branch: \`${published.branch}\``,
+          `Runtime version: \`${published.runtimeVersion}\``,
+          `Git commit: \`${published.gitCommitHash}\``,
+        ],
+      ),
+      qr: `<a href="${qr}"><img src="${qr}" width="250px" height="250px" /></a>`,
+    };
+  };
+  const android = platformDetails("android");
+  const ios = platformDetails("ios");
 
-  return `${header}
-
+  // Match expo-github-action's continuous-deploy-fingerprint comment template.
+  return `<!-- whisp-mobile-preview -->
 ${status}
 
-Install the development build once, then scan the QR code to open this PR's update. Install the linked build again when native dependencies change. iOS requires a device registered in the build's provisioning profile.
+- Project → **whisp**
+- Platforms → **android**, **ios**
+- Scheme → **whisp-preview**
 
-| Platform | Build | Update | QR code |
-| --- | --- | --- | --- |
-${rows.join("\n")}
-
-All PRs share the Whisp Preview app. Use this PR's QR code to select its backend and code.
+&nbsp; | 🤖 Android | 🍎 iOS
+--- | --- | ---
+Fingerprint | ${android.fingerprint} | ${ios.fingerprint}
+Build Details | ${android.build} | ${ios.build}
+Update Details | ${android.update} | ${ios.update}
+Update QR   | ${android.qr} | ${ios.qr}
 `;
 }
 
@@ -85,11 +115,5 @@ if (import.meta.main) {
   const [input, output] = z
     .tuple([z.string(), z.string()])
     .parse(Bun.argv.slice(2));
-  await Bun.write(
-    output,
-    comment(await Bun.file(input).json(), {
-      backend: process.env.EXPO_PUBLIC_API_URL,
-      commit: process.env.PREVIEW_COMMIT,
-    }),
-  );
+  await Bun.write(output, comment(await Bun.file(input).json()));
 }
