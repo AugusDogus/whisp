@@ -163,10 +163,10 @@ open MLS whisps. Android prebuild requires the project's `google-services.json`
 or `GOOGLE_SERVICES_JSON`. iOS builds produce the XCFramework referenced by
 the podspec. The development-only Profile bridge test remains a local diagnostic.
 
-Apply `packages/db/migrations/20260918_mls.sql` once to the existing database
-before deploying the API. It is an additive SQL migration, not a baseline for
-creating the rest of the application schema. No production migration is run
-by this change. Coordinate native-client and server releases: the upload route
+The deployment migration runner applies `packages/db/drizzle/0002_mls.sql`
+before building the API. It adds the MLS tables through the registered Drizzle
+history. Local databases use `bun db:migrate`. Coordinate native-client and
+server releases: the upload route
 rejects old plaintext clients, and recipients need to open the new app to
 register devices before anyone can send them an encrypted whisp.
 
