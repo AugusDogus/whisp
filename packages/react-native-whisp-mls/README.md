@@ -131,7 +131,9 @@ New sends never fall back to plaintext, including when a recipient has no keys.
 Requirements: Bun, Node, Rust 1.91+, and the platform's native tools.
 Generated TypeScript/C++/Kotlin/Swift bindings and native binaries are ignored build outputs.
 The root postinstall hook builds these on EAS before prebuild/pods (Rust 1.94.0,
-cargo-ndk 4.1.2 on Android). It does nothing during local installs. Local Expo
+cargo-ndk 4.1.2 on Android). Platformless EAS fingerprint and update jobs generate
+TypeScript/C++ bindings using a host Rust build, without mobile SDKs. The hook
+does nothing during local installs. Local Expo
 `android` and `ios` scripts also build the MLS library before invoking Expo.
 
 ```sh

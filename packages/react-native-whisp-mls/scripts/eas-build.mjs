@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 
 if (process.env.EAS_BUILD !== "true") process.exit(0);
 const platform = process.env.EAS_BUILD_PLATFORM;
-if (platform !== "android" && platform !== "ios") {
+if (platform !== undefined && platform !== "android" && platform !== "ios") {
   throw new Error(
     "EAS_BUILD_PLATFORM must be android or ios to build Whisp encryption.",
   );
@@ -60,6 +60,13 @@ if (spawnSync("rustup", ["--version"], { env, stdio: "ignore" }).status !== 0) {
   }
 }
 run("rustup", ["toolchain", "install", "1.94.0", "--profile", "minimal"]);
+// EAS fingerprint and update jobs set EAS_BUILD without a target platform.
+// Generate the JS bindings Metro needs using the host library; these jobs do
+// not have an Android NDK or an iOS SDK for cross-compilation.
+if (platform === undefined) {
+  run(process.execPath, ["scripts/generate-bindings.mjs"]);
+  process.exit(0);
+}
 if (platform === "android") {
   const sdk = env.ANDROID_HOME ?? env.ANDROID_SDK_ROOT;
   const ndk =
