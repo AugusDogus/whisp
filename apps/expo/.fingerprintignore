@@ -13,3 +13,5 @@
 **/react-native-whisp-mls/android/src/main/generated/**/*
 **/react-native-whisp-mls/ios/generated-core/**/*
 **/react-native-whisp-mls/*.xcframework/**/*
+# The binding generator compiles itself inside node_modules on first use.
+**/node_modules/uniffi-bindgen-react-native/target/**/*
