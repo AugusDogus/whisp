@@ -46,7 +46,12 @@ cmake_path(
   NORMALIZE
 )
 add_library(my_rust_lib SHARED IMPORTED)
-set_target_properties(my_rust_lib PROPERTIES IMPORTED_LOCATION ${MY_RUST_LIB})
+# Rust's cdylib has no SONAME. Link by library name so Android resolves the
+# packaged .so instead of recording the build-machine path in DT_NEEDED.
+set_target_properties(my_rust_lib PROPERTIES
+  IMPORTED_LOCATION ${MY_RUST_LIB}
+  IMPORTED_NO_SONAME TRUE
+)
 
 # Add ReactAndroid libraries, being careful to account for different versions.
 find_package(ReactAndroid REQUIRED CONFIG)
