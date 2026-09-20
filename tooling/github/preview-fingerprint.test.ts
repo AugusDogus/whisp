@@ -45,13 +45,16 @@ test("pod install preserves the fingerprint while native source changes invalida
   }
 });
 
-test("MLS build outputs preserve the fingerprint while Rust changes invalidate it", async () => {
+test("MLS and generator build outputs preserve the fingerprint while Rust changes invalidate it", async () => {
   const root = await mkdtemp(join(tmpdir(), "whisp-mls-fingerprint-"));
   try {
     const app = join(root, "apps/expo");
     const mls = join(root, "packages/react-native-whisp-mls");
+    const generator = join(root, "node_modules/uniffi-bindgen-react-native");
     await mkdir(app, { recursive: true });
     await mkdir(join(mls, "rust/src"), { recursive: true });
+    await mkdir(join(generator, "cpp"), { recursive: true });
+    await writeFile(join(generator, "cpp/runtime.cpp"), "// Native runtime");
     await writeFile(join(app, "package.json"), "{}");
     await writeFile(
       join(app, ".fingerprintignore"),
@@ -66,6 +69,11 @@ test("MLS build outputs preserve the fingerprint while Rust changes invalidate i
           {
             type: "dir",
             filePath: "../../packages/react-native-whisp-mls",
+            reasons: ["rncoreAutolinkingIos"],
+          },
+          {
+            type: "dir",
+            filePath: "../../node_modules/uniffi-bindgen-react-native",
             reasons: ["rncoreAutolinkingIos"],
           },
         ],
@@ -90,9 +98,14 @@ test("MLS build outputs preserve the fingerprint while Rust changes invalidate i
         "Platform-dependent output",
       );
     }
+    await mkdir(join(generator, "target/debug"), { recursive: true });
+    await writeFile(join(generator, "target/debug/bindgen"), "Host binary");
     expect((await fingerprint()).hash).toBe(before.hash);
     await writeFile(join(mls, "rust/src/lib.rs"), "// Changed implementation");
     expect((await fingerprint()).hash).not.toBe(before.hash);
+    const changedRust = await fingerprint();
+    await writeFile(join(generator, "cpp/runtime.cpp"), "// Changed runtime");
+    expect((await fingerprint()).hash).not.toBe(changedRust.hash);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
