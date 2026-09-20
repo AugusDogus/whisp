@@ -16,7 +16,8 @@ Pod::Spec.new do |s|
   s.source       = { :git => "https://github.com/AugusDogus/whisp.git", :tag => "#{s.version}" }
 
   s.source_files = "ios/**/*.{h,m,mm,swift}", "ios/generated/**/*.{h,m,mm}", "cpp/**/*.{hpp,cpp,c,h}", "cpp/generated/**/*.{hpp,cpp,c,h}"
-  s.private_header_files = "ios/generated-core/*.h"
+  # Swift imports the pod's umbrella header in Objective-C mode, without C++.
+  s.private_header_files = "ios/generated-core/*.h", "cpp/**/*.{h,hpp}"
   s.swift_version = "5.9"
   s.dependency "ExpoModulesCore"
   s.preserve_paths = "ios/generated-core/*.modulemap"
