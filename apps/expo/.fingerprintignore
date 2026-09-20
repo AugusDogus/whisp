@@ -1,3 +1,15 @@
 # setup_permissions rewrites this during pod install. The package version,
 # native sources, setup script, and app.config.ts permission choices remain hashed.
 **/node_modules/react-native-permissions/RNPermissions.podspec
+
+# MLS outputs differ between host-only fingerprint/update jobs and platform
+# builds. Hash their Rust/native sources, Cargo.lock, and build scripts instead.
+**/react-native-whisp-mls/rust/target/**/*
+**/react-native-whisp-mls/build/**/*
+**/react-native-whisp-mls/.cache/**/*
+**/react-native-whisp-mls/src/generated/**/*
+**/react-native-whisp-mls/cpp/generated/**/*
+**/react-native-whisp-mls/android/src/main/jniLibs/**/*
+**/react-native-whisp-mls/android/src/main/generated/**/*
+**/react-native-whisp-mls/ios/generated-core/**/*
+**/react-native-whisp-mls/*.xcframework/**/*

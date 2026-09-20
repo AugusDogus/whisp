@@ -44,3 +44,56 @@ test("pod install preserves the fingerprint while native source changes invalida
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("MLS build outputs preserve the fingerprint while Rust changes invalidate it", async () => {
+  const root = await mkdtemp(join(tmpdir(), "whisp-mls-fingerprint-"));
+  try {
+    const app = join(root, "apps/expo");
+    const mls = join(root, "packages/react-native-whisp-mls");
+    await mkdir(app, { recursive: true });
+    await mkdir(join(mls, "rust/src"), { recursive: true });
+    await writeFile(join(app, "package.json"), "{}");
+    await writeFile(
+      join(app, ".fingerprintignore"),
+      await readFile(
+        new URL("../../apps/expo/.fingerprintignore", import.meta.url),
+      ),
+    );
+    await writeFile(join(mls, "rust/src/lib.rs"), "// Original implementation");
+    const fingerprint = async () =>
+      createFingerprintFromSourcesAsync(
+        [
+          {
+            type: "dir",
+            filePath: "../../packages/react-native-whisp-mls",
+            reasons: ["rncoreAutolinkingIos"],
+          },
+        ],
+        app,
+        await normalizeOptionsAsync(app, { platforms: ["ios"], silent: true }),
+      );
+    const before = await fingerprint();
+    for (const output of [
+      "rust/target",
+      "src/generated",
+      "cpp/generated",
+      "build",
+      ".cache",
+      "android/src/main/jniLibs",
+      "android/src/main/generated",
+      "ios/generated-core",
+      "WhispMlsFramework.xcframework",
+    ]) {
+      await mkdir(join(mls, output), { recursive: true });
+      await writeFile(
+        join(mls, output, "artifact"),
+        "Platform-dependent output",
+      );
+    }
+    expect((await fingerprint()).hash).toBe(before.hash);
+    await writeFile(join(mls, "rust/src/lib.rs"), "// Changed implementation");
+    expect((await fingerprint()).hash).not.toBe(before.hash);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
