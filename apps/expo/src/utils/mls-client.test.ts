@@ -1148,3 +1148,89 @@ for (const kind of ["photo", "video"] as const) {
     });
   }
 }
+
+test("send completion waits for inbox refresh before clearing pending feedback", async () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const key = [["messages", "inbox"]];
+  const job = queuedSend("uploading", null);
+  nativeJobs = [job];
+  await reconcileNativeSends(client);
+  const entered = gate();
+  const release = gate();
+  let refreshing = false;
+  await client.fetchQuery({
+    queryKey: key,
+    queryFn: async () => {
+      if (!refreshing) return [];
+      entered.release();
+      await release.promise;
+      return [message];
+    },
+  });
+  refreshing = true;
+  nativeJobs = [{ ...job, status: "sent" }];
+  const completion = reconcileNativeSends(client);
+  try {
+    await Promise.race([entered.promise, delay(50)]);
+    expect(getOutboxStatusSnapshot()[job.recipients[0]]?.state).toBe(
+      "uploading",
+    );
+    expect(acknowledgedJobs).toEqual([]);
+  } finally {
+    release.release();
+    await completion;
+  }
+  expect(client.getQueryData<(typeof message)[]>(key)).toEqual([message]);
+  expect(getOutboxStatusSnapshot()[job.recipients[0]]?.state).toBe("sent");
+  expect(acknowledgedJobs).toEqual([job.id]);
+  client.clear();
+});
+
+for (const scenario of ["refresh failure", "account switch"] as const) {
+  test(`${scenario} does not acknowledge or clear pending sends`, async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const job = queuedSend("uploading", null);
+    nativeJobs = [job];
+    await reconcileNativeSends(client);
+    let refreshing = false;
+    let fail = true;
+    await client.fetchQuery({
+      queryKey: [["messages", "inbox"]],
+      queryFn: async () => {
+        if (refreshing) {
+          if (scenario === "account switch") userId = "bob";
+          else if (fail) throw new Error("Inbox unavailable");
+        }
+        return [];
+      },
+    });
+    refreshing = true;
+    nativeJobs = [{ ...job, status: "sent" }];
+    try {
+      if (scenario === "refresh failure")
+        await expect(reconcileNativeSends(client)).rejects.toThrow(
+          "Inbox unavailable",
+        );
+      else await reconcileNativeSends(client);
+      expect(acknowledgedJobs).toEqual([]);
+      expect(getOutboxStatusSnapshot()[job.recipients[0]]?.state).toBe(
+        "uploading",
+      );
+      expect(notices.success).toEqual([]);
+      if (scenario === "refresh failure") {
+        fail = false;
+        await reconcileNativeSends(client);
+        expect(acknowledgedJobs).toEqual([job.id]);
+        expect(getOutboxStatusSnapshot()[job.recipients[0]]?.state).toBe(
+          "sent",
+        );
+      }
+    } finally {
+      client.clear();
+    }
+  });
+}
