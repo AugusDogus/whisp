@@ -35,7 +35,7 @@ struct State {
 }
 
 /// A persistent MLS group, restored from authenticated encrypted storage.
-/// Callers stage mutations durably before compare-and-append to the delivery log.
+/// Callers durably checkpoint mutations before publishing to the delivery log.
 #[derive(uniffi::Object)]
 pub struct MlsClient {
     state: Mutex<State>,
@@ -155,8 +155,8 @@ impl MlsClient {
             .to_vec())
     }
 
-    /// Fresh update path before every send gives recovery after a compromise and
-    /// fresh encryption secrets if a staged send loses the server revision race.
+    /// Refresh post-compromise security on membership changes and the sender's
+    /// bounded refresh schedule. Ordinary applications use the MLS secret tree.
     pub fn update_keys(&self) -> Result<Vec<u8>, MlsError> {
         let mut state = self.lock()?;
         let State {
@@ -381,6 +381,16 @@ impl MlsClient {
 }
 
 impl MlsClient {
+    pub(crate) fn epoch(&self) -> Result<u64, MlsError> {
+        Ok(self
+            .lock()?
+            .group
+            .as_ref()
+            .ok_or(MlsError::NotJoined)?
+            .epoch()
+            .as_u64())
+    }
+
     fn lock(&self) -> Result<MutexGuard<'_, State>, MlsError> {
         self.state.lock().map_err(|_| MlsError::SessionUnavailable)
     }
