@@ -196,8 +196,7 @@ export function usePushNotifications(sessionId: string | null) {
     sessionId,
     handleNotificationResponse,
     utils.messages.inbox,
-    utils.friends.list,
-    utils.friends.incomingRequests,
+    utils.friends,
   ]);
 
   return {
