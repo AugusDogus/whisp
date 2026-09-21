@@ -312,13 +312,13 @@ export default function CameraPage(): React.ReactElement {
           onTouchEnd={onFocusTap}
           style={StyleSheet.absoluteFill}
         >
-          <GestureDetector
-            gesture={Gesture.Tap()
-              .numberOfTaps(2)
-              .runOnJS(true)
-              .onEnd(onDoubleTap)}
-          >
-            {device && (
+          {device && (
+            <GestureDetector
+              gesture={Gesture.Tap()
+                .numberOfTaps(2)
+                .runOnJS(true)
+                .onEnd(onDoubleTap)}
+            >
               <ReanimatedCamera
                 style={StyleSheet.absoluteFill}
                 device={device}
@@ -355,8 +355,8 @@ export default function CameraPage(): React.ReactElement {
                 audio={microphonePermission === RESULTS.GRANTED}
                 enableLocation={false}
               />
-            )}
-          </GestureDetector>
+            </GestureDetector>
+          )}
         </Reanimated.View>
       </GestureDetector>
 
