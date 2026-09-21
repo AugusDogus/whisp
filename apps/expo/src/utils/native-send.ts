@@ -3,7 +3,10 @@ import { nativeSend, newId } from "react-native-whisp-mls";
 import { z } from "zod/v4";
 
 import { authClient } from "./auth";
-import { withEncryptionDevice } from "./mls-device";
+import {
+  EncryptionSignInRequiredError,
+  withEncryptionDevice,
+} from "./mls-device";
 import { nativeDeviceConfig } from "./mls-native-config";
 
 const jobSchema = z.object({
@@ -19,20 +22,12 @@ export type SendJob = z.infer<typeof jobSchema>;
 
 export async function configureNativeSends() {
   const cookie = authClient.getCookie();
-  const session = await authClient.getSession();
-  if (cookie !== authClient.getCookie())
-    throw new Error(
-      "The account changed. Retry sending on the original account.",
-    );
-  if (cookie && session.error) {
-    throw new Error(
-      "Your sign-in could not be checked. Queued sends are preserved. Retry when connected.",
-    );
-  }
-  if (!cookie || !session.data?.user.id) {
+  if (!cookie) {
     await nativeSend.configure(null);
     return;
   }
+  // Loading the device checks the session and account once under the queue.
+  // A failed lookup preserves the existing native worker configuration.
   return withEncryptionDevice(async (device) => {
     if (cookie !== authClient.getCookie())
       throw new Error(
@@ -40,6 +35,10 @@ export async function configureNativeSends() {
       );
     await nativeSend.configure(nativeDeviceConfig(device));
     return device.deviceId;
+  }).catch(async (error: unknown) => {
+    if (!(error instanceof EncryptionSignInRequiredError)) throw error;
+    if (cookie !== authClient.getCookie()) throw error;
+    await nativeSend.configure(null);
   });
 }
 

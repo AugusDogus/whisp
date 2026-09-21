@@ -30,6 +30,7 @@ const messageId = crypto.randomUUID();
 const nativeState = z.object({ deviceId: z.string(), groupId: z.string() });
 let userId = "alice";
 let signedOut = false;
+let sessionMissing = false;
 let sessionError: { message: string } | null = null;
 let sessionReads = 0;
 let nativeSyncs = 0;
@@ -160,7 +161,10 @@ mock.module("./auth", () => ({
     getSession: async () => {
       sessionReads++;
       return {
-        data: signedOut || sessionError ? null : { user: { id: userId } },
+        data:
+          signedOut || sessionMissing || sessionError
+            ? null
+            : { user: { id: userId } },
         error: sessionError,
       };
     },
@@ -301,6 +305,7 @@ beforeEach(() => {
   secure.clear();
   userId = "alice";
   signedOut = false;
+  sessionMissing = false;
   sessionError = null;
   sessionReads = 0;
   nativeSyncs = 0;
@@ -1234,3 +1239,16 @@ for (const scenario of ["refresh failure", "account switch"] as const) {
     }
   });
 }
+
+test("configuring a native send checks the session only once", async () => {
+  await configureNativeSends();
+  expect(sessionReads).toBe(1);
+  expect(nativeConfigurations).toHaveLength(1);
+});
+
+test("an expired session clears native configuration without a second lookup", async () => {
+  sessionMissing = true;
+  await configureNativeSends();
+  expect(sessionReads).toBe(1);
+  expect(nativeConfigurations).toEqual([null]);
+});
