@@ -16,12 +16,11 @@ Pod::Spec.new do |s|
   s.source       = { :git => "https://github.com/AugusDogus/whisp.git", :tag => "#{s.version}" }
 
   s.source_files = "ios/**/*.{h,m,mm,swift}", "ios/generated/**/*.{h,m,mm}", "cpp/**/*.{hpp,cpp,c,h}", "cpp/generated/**/*.{hpp,cpp,c,h}"
-  # Swift imports the pod's umbrella header in Objective-C mode, without C++.
-  s.private_header_files = "ios/generated-core/*.h", "cpp/**/*.{h,hpp}"
+  # Publish the C FFI through this pod's umbrella header so Swift consumers do
+  # not need a separate, target-local WhispMlsCoreFFI module. Keep C++ private.
+  s.private_header_files = "cpp/**/*.{h,hpp}"
   s.swift_version = "5.9"
   s.dependency "ExpoModulesCore"
-  s.preserve_paths = "ios/generated-core/*.modulemap"
-  s.pod_target_xcconfig = { "OTHER_SWIFT_FLAGS" => '$(inherited) -Xcc -fmodule-map-file="$(PODS_TARGET_SRCROOT)/ios/generated-core/WhispMlsCoreFFI.modulemap"' }
   s.vendored_frameworks = "WhispMlsFramework.xcframework"
   s.dependency    "uniffi-bindgen-react-native", "0.31.0-5"
 
