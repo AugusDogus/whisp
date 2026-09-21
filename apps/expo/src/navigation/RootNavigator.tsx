@@ -111,6 +111,7 @@ export function RootNavigator() {
             component={EncryptionRecoveryScreen}
           />
           <Stack.Screen name="Media" component={MediaScreen} />
+          <Stack.Screen name="Send" component={FriendsScreen} />
           <Stack.Screen name="Group" component={GroupScreen} />
           <Stack.Screen name="GroupSettings" component={GroupSettingsScreen} />
           <Stack.Screen

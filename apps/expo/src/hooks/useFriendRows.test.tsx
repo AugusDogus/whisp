@@ -13,7 +13,7 @@ import { SelfMessages } from "~/utils/self-messages";
 import { useFriendRows } from "./useFriendRows";
 
 const self = { id: "me", image: null };
-const message: InboxMessage = {
+const message: NonNullable<InboxMessage> = {
   deliveryId: "delivery",
   messageId: "message",
   senderId: "me",
@@ -158,5 +158,94 @@ test("self-send shows upload feedback until the received message replaces it", a
     lastMediaKind: "photo",
     lastMessageStatus: "received",
     unreadCount: 1,
+  });
+});
+
+function PeerHarness({
+  outbox,
+  opened = false,
+  inbox = [],
+  sentKind = "photo",
+}: {
+  outbox?: OutboxStatus;
+  opened?: boolean;
+  inbox?: InboxMessage[];
+  sentKind?: MediaKind;
+}) {
+  rows = useFriendRows({
+    friends: SelfMessages.friends([], { id: "friend" }, [], true, false).map(
+      (friend) => ({
+        ...friend,
+        lastActivityTimestamp: message.createdAt,
+        lastSentOpened: opened,
+        lastMimeType: "application/vnd.whisp.mls.v1",
+        lastMessageId: "sent-message",
+      }),
+    ),
+    inbox,
+    hasMedia: false,
+    defaultRecipientId: undefined,
+    outboxStatus: { friend: outbox },
+    selfUserId: "me",
+    sentMediaKinds: new Map([["sent-message", sentKind]]),
+  });
+  return null;
+}
+
+test.each(["photo", "video"] as const)(
+  "sent %s keeps its color after the temporary outbox status expires",
+  async (kind) => {
+    await act(async () => {
+      renderer = create(createElement(PeerHarness, { sentKind: kind }));
+    });
+    expect(rows[0]).toMatchObject({
+      lastMessageStatus: "sent",
+      lastMediaKind: kind,
+    });
+    expect(mediaKindColor(rows[0]?.lastMediaKind ?? null)).toBe(
+      kind === "photo" ? PHOTO_COLOR : VIDEO_COLOR,
+    );
+  },
+);
+
+test("an older opened receipt does not mark a newly sent photo opened", async () => {
+  await act(async () => {
+    renderer = create(
+      createElement(PeerHarness, {
+        opened: true,
+        outbox: {
+          state: "sent",
+          mediaKind: "photo",
+          updatedAtMs: message.createdAt.getTime() + 1000,
+        },
+      }),
+    );
+  });
+  expect(rows[0]?.lastMessageStatus).toBe("sent");
+});
+
+test("a newer received video keeps its type while an older sent-photo status remains", async () => {
+  await act(async () => {
+    renderer = create(
+      createElement(PeerHarness, {
+        outbox: {
+          state: "sent",
+          mediaKind: "photo",
+          updatedAtMs: message.createdAt.getTime(),
+        },
+        inbox: [
+          {
+            ...message,
+            senderId: "friend",
+            mimeType: "video/mp4",
+            createdAt: new Date(message.createdAt.getTime() + 1000),
+          },
+        ],
+      }),
+    );
+  });
+  expect(rows[0]).toMatchObject({
+    lastMessageStatus: "received",
+    lastMediaKind: "video",
   });
 });

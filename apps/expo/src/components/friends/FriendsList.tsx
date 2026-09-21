@@ -116,10 +116,17 @@ export function FriendsList({
 }) {
   return (
     <FlatList
+      style={{ flex: 1 }}
+      contentContainerStyle={{ flexGrow: 1 }}
+      alwaysBounceVertical
       data={rows}
       keyExtractor={(item) => item.id}
       refreshControl={
-        <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
+        <RefreshControl
+          refreshing={isRefreshing}
+          onRefresh={onRefresh}
+          tintColor={colorScheme === "dark" ? "#ccc" : "#555"}
+        />
       }
       ListHeaderComponent={
         groupRows.length > 0 && onPressGroupRow ? (

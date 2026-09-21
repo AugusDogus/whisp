@@ -9,8 +9,8 @@ import { FRIEND_REQUEST_STATUS } from "../constants";
 import { getFriendsWithDiscordIds } from "../services/member";
 import {
   deriveLastSentOpened,
-  getLastReceivedMimeTypes,
-  getLastSentMimeTypes,
+  getLastReceivedMessages,
+  getLastSentMessages,
   getPendingSentDeliveries,
 } from "../services/message-status";
 import { protectedProcedure } from "../trpc";
@@ -172,11 +172,11 @@ export const friendsRouter = {
       (fid) => !friendIdsWhereSentLast.includes(fid),
     );
 
-    const [hasPendingSentTo, lastSentMimeMap, lastReceivedMimeMap] =
+    const [hasPendingSentTo, lastSentMessageMap, lastReceivedMessageMap] =
       await Promise.all([
         getPendingSentDeliveries(ctx.db, me, friendIdsWhereSentLast),
-        getLastSentMimeTypes(ctx.db, me, friendIdsWhereSentLast),
-        getLastReceivedMimeTypes(ctx.db, me, friendIdsWhereReceivedLast),
+        getLastSentMessages(ctx.db, me, friendIdsWhereSentLast),
+        getLastReceivedMessages(ctx.db, me, friendIdsWhereReceivedLast),
       ]);
 
     return friends.map((u) => {
@@ -186,9 +186,9 @@ export const friendsRouter = {
         friendIdsWhereSentLast,
         hasPendingSentTo,
       );
-      const lastMimeType = friendIdsWhereSentLast.includes(u.id)
-        ? (lastSentMimeMap.get(u.id) ?? null)
-        : (lastReceivedMimeMap.get(u.id) ?? null);
+      const lastMessage = friendIdsWhereSentLast.includes(u.id)
+        ? (lastSentMessageMap.get(u.id) ?? null)
+        : (lastReceivedMessageMap.get(u.id) ?? null);
 
       return {
         id: u.id,
@@ -204,7 +204,8 @@ export const friendsRouter = {
         lastActivityTimestamp: streakInfo?.myLastActivity ?? null,
         partnerLastActivityTimestamp: streakInfo?.partnerLastActivity ?? null,
         lastSentOpened,
-        lastMimeType,
+        lastMimeType: lastMessage?.mimeType ?? null,
+        lastMessageId: lastMessage?.messageId ?? null,
       };
     });
   }),
@@ -271,12 +272,16 @@ export const friendsRouter = {
 
       // Send notification (fire-and-forget, don't block response)
       if (friendRequest) {
-        void notifyFriendRequest(
-          ctx.db,
-          input.toUserId,
-          ctx.session.user.name,
-          friendRequest.id,
-        );
+        const notify = async () => {
+          await notifyFriendRequest(
+            ctx.db,
+            input.toUserId,
+            ctx.session.user.name,
+            friendRequest.id,
+          );
+        };
+        if (ctx.afterResponse) ctx.afterResponse(notify);
+        else await notify();
       }
 
       return { ok: true };
@@ -314,12 +319,16 @@ export const friendsRouter = {
         .delete(FriendRequest)
         .where(eq(FriendRequest.id, input.requestId));
 
-      // Send notification to the person who sent the request (fire-and-forget)
-      void notifyFriendAccept(
-        ctx.db,
-        request.fromUserId,
-        ctx.session.user.name,
-      );
+      // Keep notification delivery alive after the serverless response ends.
+      const notify = async () => {
+        await notifyFriendAccept(
+          ctx.db,
+          request.fromUserId,
+          ctx.session.user.name,
+        );
+      };
+      if (ctx.afterResponse) ctx.afterResponse(notify);
+      else await notify();
 
       return { ok: true };
     }),

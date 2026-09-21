@@ -25,7 +25,7 @@ export function useInboxMediaKinds(inbox: InboxMessage[], enabled: boolean) {
     // so background inbox work does not sit ahead of a requested media open.
     queries: (enabled ? messages : []).map((message) => ({
       // QueryProvider already isolates accounts and servers. Cache only the type,
-      // never descriptors or media keys; profile persistence excludes this key.
+      // never descriptors or media keys. The account cache preserves only the type.
       queryKey: whispMediaKindKey(message.messageId),
       queryFn: ({ signal }: { signal: AbortSignal }) =>
         readWhispMediaKind(message, signal),
