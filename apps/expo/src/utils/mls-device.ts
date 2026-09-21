@@ -19,6 +19,12 @@ import { z } from "zod/v4";
 import { createExpoTRPCClient } from "./api";
 import { authClient } from "./auth";
 
+export class EncryptionSignInRequiredError extends Error {
+  constructor() {
+    super("Sign in before opening or sending encrypted whisps.");
+  }
+}
+
 const manifestSchema = z.object({ deviceId: z.uuid() });
 export type EncryptionDevice = {
   cookie: string;
@@ -176,9 +182,12 @@ async function loadDevice<T>(
   const session = await authClient.getSession();
   if (cookie !== authClient.getCookie())
     throw new Error("The signed-in account changed. Retry this operation.");
+  if (session.error)
+    throw new Error(
+      "Your sign-in could not be checked. Queued sends are preserved. Retry when connected.",
+    );
   const userId = session.data?.user.id;
-  if (!userId)
-    throw new Error("Sign in before opening or sending encrypted whisps.");
+  if (!userId) throw new EncryptionSignInRequiredError();
   if (!FS.documentDirectory || !FS.cacheDirectory)
     throw new Error(
       "Private device storage is unavailable. Restart Whisp and retry.",
