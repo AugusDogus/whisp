@@ -121,7 +121,7 @@ async function read(
     return {
       success: false,
       code: "NOT_FOUND",
-      error: "This Whisp profile no longer exists.",
+      error: "This whisp profile no longer exists.",
     };
   }
 
@@ -173,7 +173,7 @@ async function refresh(
       success: false,
       code: "BAD_GATEWAY",
       error:
-        "Discord profile details could not be loaded. Your Whisp profile is unchanged. Try again shortly.",
+        "Discord profile details could not be loaded. Your whisp profile is unchanged. Try again shortly.",
     };
   }
 
@@ -183,7 +183,7 @@ async function refresh(
       success: false,
       code: "BAD_GATEWAY",
       error:
-        "Discord returned unexpected profile data. Your Whisp profile is unchanged. Try again later.",
+        "Discord returned unexpected profile data. Your whisp profile is unchanged. Try again later.",
     };
   }
   const profile = parsed.data;

@@ -65,7 +65,7 @@ export async function beginMlsOperation(
       .limit(1);
     if (!key)
       mlsConflict(
-        "A member device has no unused encryption keys. Ask them to open Whisp, then retry.",
+        "A member device has no unused encryption keys. Ask them to open whisp, then retry.",
       );
     const claimed = await tx
       .update(MlsKeyPackage)

@@ -229,7 +229,7 @@ describe("persistent MLS conversations", () => {
       ).rejects.toMatchObject({
         code: "PRECONDITION_FAILED",
         message:
-          "Sending to yourself is disabled on this server. Your whisp is still queued. Reopen Whisp after self-send is enabled to retry.",
+          "Sending to yourself is disabled on this server. Your whisp is still queued. Reopen whisp after self-send is enabled to retry.",
       });
       process.env.ALLOW_SELF_MESSAGES = "true";
       const draft = await sender.prepare({

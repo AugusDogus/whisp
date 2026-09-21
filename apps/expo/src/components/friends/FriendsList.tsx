@@ -53,7 +53,7 @@ function GroupListRow({
                 style={{ backgroundColor: color }}
               />
               <Text className="text-xs font-semibold" style={{ color }}>
-                New Whisp
+                New whisp
               </Text>
               {group.lastMessageAt && (
                 <Text className="text-xs text-muted">

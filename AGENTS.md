@@ -2,6 +2,10 @@
 
 Instructions for AI coding agents working with this codebase.
 
+## Branding
+
+Use lowercase **whisp** in user-facing text, app names, and brand references, including at the start of sentences. Preserve existing code identifiers and native module names.
+
 <!-- opensrc:start -->
 
 ## Source Code Reference

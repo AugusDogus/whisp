@@ -167,7 +167,7 @@ export const mlsConversationsRouter = {
       );
       if (!welcome && !isCreator && conversation.revision > 0)
         mlsConflict(
-          "This device has not joined the conversation yet. Ask an existing member to open Whisp and send a message to add it.",
+          "This device has not joined the conversation yet. Ask an existing member to open whisp and send a message to add it.",
         );
       const after = Math.max(input.after, welcome?.sequence ?? 0);
       const events = await ctx.db
