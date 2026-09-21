@@ -719,3 +719,73 @@ test("conversation sync includes current retention even when no new events exist
   expect(read.events).toEqual([]);
   expect(read.retainedMessageIds).toEqual([]);
 });
+
+test("prepare registers a new sender identity atomically and preserves existing names", async () => {
+  const deviceId = crypto.randomUUID();
+  const input = { deviceId, signatureKey, recipients: ["bob"] };
+  const prepared = await sender.prepare(input);
+  expect(prepared.deviceIdentityValidated).toBe(true);
+  expect(
+    (await sender.devices()).some((device) => device.id === deviceId),
+  ).toBe(true);
+  await sender.register({ deviceId, signatureKey, name: "Test phone" });
+  await sender.prepare({ ...input, draftId: prepared.draftId });
+  expect(
+    (await sender.devices()).find((device) => device.id === deviceId)?.name,
+  ).toBe("Test phone");
+  const rejectedId = crypto.randomUUID();
+  await expect(
+    sender.prepare({ ...input, deviceId: rejectedId, recipients: ["mallory"] }),
+  ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+  expect(
+    (await sender.devices()).some((device) => device.id === rejectedId),
+  ).toBe(false);
+});
+
+test("prepare registration rejects replaced, foreign, revoked and excess identities", async () => {
+  const input = { deviceId: senderDevice, signatureKey, recipients: ["bob"] };
+  await expect(
+    sender.prepare({
+      ...input,
+      signatureKey: Buffer.alloc(32, 2).toString("base64"),
+    }),
+  ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+  await expect(
+    sender.prepare({ ...input, deviceId: recipientDevice }),
+  ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+  await sender.revoke({ deviceId: senderDevice });
+  await expect(sender.prepare(input)).rejects.toMatchObject({
+    code: "PRECONDITION_FAILED",
+  });
+  for (let index = 0; index < 10; index++)
+    await sender.register({ deviceId: crypto.randomUUID(), signatureKey });
+  await expect(
+    sender.prepare({ ...input, deviceId: crypto.randomUUID() }),
+  ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+  expect(await db.select().from(schema.MlsDraft)).toHaveLength(0);
+});
+
+test("sync includes the requesting sender device's publication receipt", async () => {
+  const draft = await prepare();
+  const input = {
+    deviceId: senderDevice,
+    conversationId: draft.conversationId,
+    draftId: draft.draftId,
+    after: 0,
+  };
+  expect((await sender.sync(input)).descriptorPublished).toBe(false);
+  const { request } = await begin(draft.conversationId);
+  await sender.append({ ...request, draftId: draft.draftId });
+  expect((await sender.sync(input)).descriptorPublished).toBe(true);
+  expect(
+    (await receiver.sync({ ...input, deviceId: recipientDevice }))
+      .descriptorPublished,
+  ).toBe(false);
+  await expect(outsider.sync(input)).rejects.toMatchObject({
+    code: "PRECONDITION_FAILED",
+  });
+  await sender.revoke({ deviceId: senderDevice });
+  await expect(sender.sync(input)).rejects.toMatchObject({
+    code: "PRECONDITION_FAILED",
+  });
+});
