@@ -65,6 +65,11 @@ export async function resolveRecipients(
     return recipients;
   }
   const recipients = [...new Set(input.recipients ?? [])].sort();
+  const allowSelfMessages = process.env.ALLOW_SELF_MESSAGES === "true";
+  if (recipients.includes(senderId) && !allowSelfMessages)
+    mlsConflict(
+      "Sending to yourself is disabled on this server. Your whisp is still queued. Reopen Whisp after self-send is enabled to retry.",
+    );
   const friends = await database
     .select()
     .from(Friendship)
@@ -74,7 +79,7 @@ export async function resolveRecipients(
   const friendIds = new Set(
     friends.map((f) => (f.userIdA === senderId ? f.userIdB : f.userIdA)),
   );
-  if (process.env.ALLOW_SELF_MESSAGES === "true") friendIds.add(senderId);
+  if (allowSelfMessages) friendIds.add(senderId);
   if (
     !recipients.length ||
     recipients.length > 100 ||
