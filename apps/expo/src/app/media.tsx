@@ -37,6 +37,7 @@ import type { CaptionData } from "~/components/caption-editor";
 import { CaptionEditor } from "~/components/caption-editor";
 import type { RootStackParamList } from "~/navigation/types";
 import { uploadMedia } from "~/utils/media-upload";
+import { localMediaUri } from "~/utils/media-uri";
 import { markWhispFailed, markWhispUploading } from "~/utils/outbox-status";
 import {
   markVideoSaveAlertShown,
@@ -56,7 +57,7 @@ export default function MediaScreen() {
     captions: initialCaptions,
   } = route.params;
 
-  const source = useMemo(() => ({ uri: `file://${path}` }), [path]);
+  const source = useMemo(() => ({ uri: localMediaUri(path) }), [path]);
   const isFocused = useIsFocused();
   const videoRef = useRef<Video>(null);
 
@@ -91,7 +92,7 @@ export default function MediaScreen() {
   useEffect(() => {
     async function generateThumbhash() {
       try {
-        const hash = await Image.generateThumbhashAsync(`file://${path}`);
+        const hash = await Image.generateThumbhashAsync(localMediaUri(path));
         setThumbhash(hash);
       } catch (err) {
         console.warn("[Media] Failed to generate thumbhash:", err);
@@ -258,7 +259,7 @@ export default function MediaScreen() {
 
   async function composeMediaWithCaptions(): Promise<string> {
     if (captions.length === 0) {
-      return `file://${path}`;
+      return localMediaUri(path);
     }
     if (
       !containerLayout ||
@@ -272,13 +273,13 @@ export default function MediaScreen() {
       .filter((caption) => caption.text.trim().length > 0)
       .map(toOverlay);
     if (overlays.length === 0) {
-      return `file://${path}`;
+      return localMediaUri(path);
     }
 
     if (type === "video") {
       console.log("[Media] Starting video composition");
       const result = await composeVideo({
-        inputPath: `file://${path}`,
+        inputPath: localMediaUri(path),
         preserveAudio: true,
         preview: {
           width: containerLayout.width,
@@ -287,12 +288,12 @@ export default function MediaScreen() {
         overlays,
       });
       console.log("[Media] Video composition complete:", result.filePath);
-      return result.filePath;
+      return localMediaUri(result.filePath);
     }
 
     console.log("[Media] Starting image composition");
     const result = await composeImage({
-      inputPath: `file://${path}`,
+      inputPath: localMediaUri(path),
       outputFormat: "png",
       preview: {
         width: containerLayout.width,
@@ -301,7 +302,7 @@ export default function MediaScreen() {
       overlays,
     });
     console.log("[Media] Image composition complete:", result.filePath);
-    return result.filePath;
+    return localMediaUri(result.filePath);
   }
 
   async function handleSave() {
@@ -322,7 +323,7 @@ export default function MediaScreen() {
       const outputUri =
         captions.length > 0
           ? await composeMediaWithCaptions()
-          : `file://${path}`;
+          : localMediaUri(path);
       await MediaLibrary.saveToLibraryAsync(outputUri);
 
       if (type === "video" && captions.length > 0) {
@@ -406,7 +407,7 @@ export default function MediaScreen() {
       if (defaultRecipientId) {
         void uploadMedia({
           queryClient,
-          uri: `file://${path}`,
+          uri: localMediaUri(path),
           type,
           recipients: [defaultRecipientId],
           groupId,
@@ -415,7 +416,7 @@ export default function MediaScreen() {
       } else if (groupId) {
         void uploadMedia({
           queryClient,
-          uri: `file://${path}`,
+          uri: localMediaUri(path),
           type,
           recipients: [],
           groupId,
