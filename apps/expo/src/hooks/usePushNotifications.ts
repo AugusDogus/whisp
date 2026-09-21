@@ -221,8 +221,7 @@ export function usePushNotifications(isAuthenticated: boolean) {
     isAuthenticated,
     handleNotificationResponse,
     utils.messages.inbox,
-    utils.friends.list,
-    utils.friends.incomingRequests,
+    utils.friends,
   ]);
 
   // Register token only after authentication AND permissions are granted
