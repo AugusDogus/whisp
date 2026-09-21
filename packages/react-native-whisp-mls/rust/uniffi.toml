@@ -4,3 +4,5 @@ cdylib_name = "whisp_mls"
 [bindings.swift]
 module_name = "WhispMlsCore"
 ffi_module_name = "WhispMlsCoreFFI"
+# CocoaPods exposes the C declarations through the WhispMls umbrella header.
+generate_module_map = false
