@@ -18,12 +18,18 @@ function isEncryptionOperation(operation: object): boolean {
   );
 }
 
+// Never log report input, which can contain sensitive details.
+function isSafetyReport(operation: object): boolean {
+  return "path" in operation && operation.path === "safety.report";
+}
+
 export function createExpoTRPCClient(authCookie?: string) {
   return createTRPCClient<AppRouter>({
     links: [
       loggerLink({
         enabled: (opts) =>
           !isEncryptionOperation(opts) &&
+          !isSafetyReport(opts) &&
           (process.env.NODE_ENV === "development" ||
             (opts.direction === "down" && opts.result instanceof Error)),
         colorMode: "ansi",

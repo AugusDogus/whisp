@@ -13,7 +13,7 @@ export default function PrivacyPage() {
           <h1 className="mb-8 text-4xl font-bold">Privacy Policy</h1>
           <div className="space-y-6 font-mono text-sm leading-relaxed">
             <p className="text-muted-foreground">
-              Last Updated: October 20, 2025
+              Last Updated: September 21, 2026
             </p>
 
             <section>
@@ -91,6 +91,34 @@ export default function PrivacyPage() {
 
             <section>
               <h2 className="mb-3 text-xl font-semibold">
+                Safety reports and blocks
+              </h2>
+              <p>
+                When you report an account, we store your account ID, the
+                reported account ID, the reason, any explanation you provide,
+                and the time and outcome of review. Reports are available to
+                authorized whisp operators for abuse prevention and moderation.
+                They are not shown to the reported account. Reporting does not
+                copy or preserve any photos or videos from your messages.
+              </p>
+              <p className="mt-3">
+                We store the accounts you block to enforce your contact
+                preferences, records of conduct-policy acceptance, and any
+                sharing suspension. Reports are stored separately from
+                disappearing messages and are not deleted when a message is
+                viewed. Deleting an account clears its account references from
+                reports; the submitted explanation and review record remain for
+                safety review. For questions or a request about report data,
+                contact{" "}
+                <a className="underline" href="mailto:augie@luebbers.email">
+                  augie@luebbers.email
+                </a>
+                .
+              </p>
+            </section>
+
+            <section>
+              <h2 className="mb-3 text-xl font-semibold">
                 3. How We Use Your Information
               </h2>
               <p className="mb-3">We use the information we collect to:</p>
@@ -141,10 +169,10 @@ export default function PrivacyPage() {
                 Your account information (Discord username, user ID, email, and
                 profile picture) is stored for as long as your account is
                 active. You can delete your account at any time through the app
-                settings, which will permanently delete all information we have
-                stored about you, including your account data, friend
-                connections, and any associated metadata. This deletion is
-                immediate and irreversible.
+                settings. Account deletion removes your sign-in account and
+                associated sessions. Safety reports are handled separately as
+                described above. Contact us for requests about any remaining
+                data.
               </p>
 
               <h3 className="mb-2 mt-4 text-lg font-semibold">
@@ -223,10 +251,10 @@ export default function PrivacyPage() {
               </ul>
               <p className="mt-3">
                 You can exercise your right to deletion at any time by deleting
-                your account through the app settings, which will permanently
-                remove all your data from our servers. For other requests,
-                please contact us through our Discord server. We will respond to
-                your request within a reasonable timeframe.
+                your account through the app settings. See the account-data and
+                safety-report sections above for what this removes. For other
+                requests, please contact us through our Discord server. We will
+                respond to your request within a reasonable timeframe.
               </p>
             </section>
 

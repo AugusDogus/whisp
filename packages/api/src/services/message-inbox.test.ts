@@ -16,6 +16,8 @@ const database = drizzle({
 await client.executeMultiple(`
   CREATE TABLE message (id TEXT PRIMARY KEY, senderId TEXT, fileUrl TEXT, mimeType TEXT, thumbhash TEXT, createdAt INTEGER);
   CREATE TABLE message_delivery (id TEXT PRIMARY KEY, messageId TEXT, recipientId TEXT, groupId TEXT, readAt INTEGER);
+  CREATE TABLE user_block (blockerId TEXT, blockedId TEXT, createdAt INTEGER);
+  CREATE TABLE account_suspension (userId TEXT PRIMARY KEY, createdAt INTEGER, enforcementId TEXT, expiresAt INTEGER);
   CREATE TABLE mls_draft_conversation (draftId TEXT, conversationId TEXT);
   CREATE TABLE mls_conversation (id TEXT PRIMARY KEY, scope TEXT, groupId TEXT, users TEXT, revision INTEGER, epoch INTEGER, members TEXT);
   INSERT INTO message VALUES

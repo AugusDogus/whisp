@@ -5,6 +5,7 @@ import { groupsRouter } from "./router/groups";
 import { messagesRouter } from "./router/messages";
 import { mlsRouter } from "./router/mls";
 import { notificationsRouter } from "./router/notifications";
+import { safetyRouter } from "./router/safety";
 import { waitlistRouter } from "./router/waitlist";
 import { createTRPCRouter } from "./trpc";
 
@@ -17,6 +18,7 @@ export const appRouter = createTRPCRouter({
   mls: mlsRouter,
   notifications: notificationsRouter,
   waitlist: waitlistRouter,
+  safety: safetyRouter,
 });
 
 // export type definition of API

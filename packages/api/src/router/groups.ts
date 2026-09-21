@@ -6,62 +6,71 @@ import { z } from "zod/v4";
 import { and, desc, eq, inArray, isNull } from "@acme/db";
 import { Group, GroupMember, Message, MessageDelivery } from "@acme/db/schema";
 
+import { Blocking } from "../services/blocking";
+import { ContentAccess } from "../services/content-access";
 import { getFriendIds } from "../services/friendship";
 import {
   getGroupMemberAvatars,
   getGroupMembersWithDiscordIds,
 } from "../services/member";
-import { protectedProcedure } from "../trpc";
+import { protectedProcedure, sharingProcedure } from "../trpc";
 
 export const groupsRouter = {
-  create: protectedProcedure
+  create: sharingProcedure
     .input(
       z.object({
         name: z.string().min(1).max(64),
         memberIds: z.array(z.string().min(1)),
       }),
     )
-    .mutation(async ({ ctx, input }) => {
-      const me = ctx.session.user.id;
-
-      const friendIds = await getFriendIds(ctx.db, me);
-      const friendSet = new Set(friendIds);
-
-      for (const mid of input.memberIds) {
-        if (mid === me) continue;
-        if (!friendSet.has(mid)) {
+    .mutation(async ({ ctx, input }) =>
+      ctx.db.transaction(async (tx) => {
+        const me = ctx.session.user.id;
+        if ((await ContentAccess.status(tx, me)).status !== "allowed")
           throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: `User ${mid} is not a friend`,
+            code: "FORBIDDEN",
+            message: "Sharing is unavailable for this account.",
           });
+
+        const friendIds = await getFriendIds(tx, me);
+        const friendSet = new Set(friendIds);
+
+        for (const mid of input.memberIds) {
+          if (mid === me) continue;
+          if (!friendSet.has(mid)) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: `User ${mid} is not a friend`,
+            });
+          }
         }
-      }
 
-      const allMemberIds = [...new Set([me, ...input.memberIds])];
+        const allMemberIds = [...new Set([me, ...input.memberIds])];
 
-      const [group] = await ctx.db
-        .insert(Group)
-        .values({
-          name: input.name.trim(),
-          createdById: me,
-        })
-        .returning();
+        const [group] = await tx
+          .insert(Group)
+          .values({
+            name: input.name.trim(),
+            createdById: me,
+          })
+          .returning();
 
-      if (!group)
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to create group",
-        });
+        if (!group)
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Failed to create group",
+          });
 
-      await ctx.db.insert(GroupMember).values(
-        allMemberIds.map((userId) => ({
-          groupId: group.id,
-          userId,
-        })),
-      );
+        await tx.insert(GroupMember).values(
+          allMemberIds.map((userId) => ({
+            groupId: group.id,
+            userId,
+          })),
+        );
 
-      return { groupId: group.id };
-    }),
+        return { groupId: group.id };
+      }),
+    ),
 
   list: protectedProcedure.query(async ({ ctx }) => {
     const me = ctx.session.user.id;
@@ -98,11 +107,14 @@ export const groupsRouter = {
           groupId: MessageDelivery.groupId,
         })
         .from(MessageDelivery)
+        .innerJoin(Message, eq(Message.id, MessageDelivery.messageId))
         .where(
           and(
             eq(MessageDelivery.recipientId, me),
             isNull(MessageDelivery.readAt),
             inArray(MessageDelivery.groupId, groupIds),
+            Blocking.allowed(me, Message.senderId),
+            ContentAccess.notSuspended(Message.senderId),
           ),
         ),
       ctx.db
@@ -112,7 +124,12 @@ export const groupsRouter = {
         })
         .from(Message)
         .where(
-          and(inArray(Message.groupId, groupIds), isNull(Message.deletedAt)),
+          and(
+            inArray(Message.groupId, groupIds),
+            isNull(Message.deletedAt),
+            Blocking.allowed(me, Message.senderId),
+            ContentAccess.notSuspended(Message.senderId),
+          ),
         )
         .orderBy(desc(Message.createdAt)),
       ctx.db
@@ -214,64 +231,71 @@ export const groupsRouter = {
       };
     }),
 
-  addMembers: protectedProcedure
+  addMembers: sharingProcedure
     .input(
       z.object({
         groupId: z.string().min(1),
         userIds: z.array(z.string().min(1)),
       }),
     )
-    .mutation(async ({ ctx, input }) => {
-      const me = ctx.session.user.id;
-
-      const membership = (
-        await ctx.db
-          .select()
-          .from(GroupMember)
-          .where(
-            and(
-              eq(GroupMember.groupId, input.groupId),
-              eq(GroupMember.userId, me),
-            ),
-          )
-      )[0];
-      if (!membership)
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "Not a member of this group",
-        });
-
-      const friendIds = await getFriendIds(ctx.db, me);
-      const friendSet = new Set(friendIds);
-
-      const existing = await ctx.db
-        .select({ userId: GroupMember.userId })
-        .from(GroupMember)
-        .where(eq(GroupMember.groupId, input.groupId));
-      const existingSet = new Set(existing.map((e) => e.userId));
-
-      const toAdd: string[] = [];
-      for (const uid of input.userIds) {
-        if (uid === me) continue;
-        if (!friendSet.has(uid))
+    .mutation(async ({ ctx, input }) =>
+      ctx.db.transaction(async (tx) => {
+        const me = ctx.session.user.id;
+        if ((await ContentAccess.status(tx, me)).status !== "allowed")
           throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: `User ${uid} is not a friend`,
+            code: "FORBIDDEN",
+            message: "Sharing is unavailable for this account.",
           });
-        if (!existingSet.has(uid)) toAdd.push(uid);
-      }
 
-      if (toAdd.length > 0) {
-        await ctx.db.insert(GroupMember).values(
-          toAdd.map((userId) => ({
-            groupId: input.groupId,
-            userId,
-          })),
-        );
-      }
+        const membership = (
+          await tx
+            .select()
+            .from(GroupMember)
+            .where(
+              and(
+                eq(GroupMember.groupId, input.groupId),
+                eq(GroupMember.userId, me),
+              ),
+            )
+        )[0];
+        if (!membership)
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Not a member of this group",
+          });
 
-      return { ok: true };
-    }),
+        const friendIds = await getFriendIds(tx, me);
+        const friendSet = new Set(friendIds);
+
+        const existing = await tx
+          .select({ userId: GroupMember.userId })
+          .from(GroupMember)
+          .where(eq(GroupMember.groupId, input.groupId));
+        const existingSet = new Set(existing.map((e) => e.userId));
+
+        const toAdd: string[] = [];
+        for (const uid of input.userIds) {
+          if (uid === me) continue;
+          if (!friendSet.has(uid))
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: `User ${uid} is not a friend`,
+            });
+          if (!existingSet.has(uid)) toAdd.push(uid);
+        }
+
+        if (toAdd.length > 0) {
+          await tx.insert(GroupMember).values(
+            toAdd.map((userId) => ({
+              groupId: input.groupId,
+              userId,
+            })),
+          );
+        }
+
+        return { ok: true };
+      }),
+    ),
 
   leave: protectedProcedure
     .input(z.object({ groupId: z.string().min(1) }))
@@ -299,7 +323,7 @@ export const groupsRouter = {
       return { ok: true };
     }),
 
-  rename: protectedProcedure
+  rename: sharingProcedure
     .input(
       z.object({
         groupId: z.string().min(1),
@@ -378,6 +402,8 @@ export const groupsRouter = {
             eq(MessageDelivery.recipientId, me),
             eq(MessageDelivery.groupId, input.groupId),
             isNull(MessageDelivery.readAt),
+            Blocking.allowed(me, Message.senderId),
+            ContentAccess.notSuspended(Message.senderId),
           ),
         );
 

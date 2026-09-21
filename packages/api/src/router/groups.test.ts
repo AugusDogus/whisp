@@ -11,7 +11,10 @@ const db = drizzle({ client, schema, logger: { logQuery: () => queries++ } });
 const t = initTRPC
   .context<{ db: typeof db; session: { user: { id: string } } }>()
   .create();
-mock.module("../trpc", () => ({ protectedProcedure: t.procedure }));
+mock.module("../trpc", () => ({
+  protectedProcedure: t.procedure,
+  sharingProcedure: t.procedure,
+}));
 const { groupsRouter } = await import("./groups");
 const caller = t.router(groupsRouter).createCaller({
   db,
@@ -24,6 +27,8 @@ await client.executeMultiple(`
   CREATE TABLE group_member (id TEXT, groupId TEXT, userId TEXT, joinedAt INTEGER);
   CREATE TABLE message (id TEXT PRIMARY KEY, senderId TEXT, groupId TEXT, fileUrl TEXT, mimeType TEXT, thumbhash TEXT, createdAt INTEGER, deletedAt INTEGER);
   CREATE TABLE message_delivery (id TEXT PRIMARY KEY, messageId TEXT, recipientId TEXT, groupId TEXT, readAt INTEGER);
+  CREATE TABLE user_block (blockerId TEXT, blockedId TEXT, createdAt INTEGER);
+  CREATE TABLE account_suspension (userId TEXT PRIMARY KEY, createdAt INTEGER, enforcementId TEXT, expiresAt INTEGER);
   INSERT INTO user VALUES ('me', NULL), ('friend', 'avatar');
   INSERT INTO "group" VALUES ('ours', 'Our group', 'me', 1), ('other', 'Other group', 'friend', 1);
   INSERT INTO group_member VALUES ('a', 'ours', 'me', 1), ('b', 'ours', 'friend', 1);
