@@ -34,9 +34,6 @@ function invalidateUploadRelatedQueries(
   void queryClient.invalidateQueries({
     queryKey: [["friends", "list"]] as const,
   });
-  void queryClient.invalidateQueries({
-    queryKey: [["messages", "inbox"]] as const,
-  });
   if (isGroupSend && groupId) {
     void queryClient.invalidateQueries({
       queryKey: [["groups", "list"]] as const,
@@ -118,6 +115,16 @@ export async function reconcileNativeSends(queryClient: QueryClient) {
       queryClient.setQueryData(whispMediaKindKey(job.id), job.kind);
     const status = `${job.status}:${job.error ?? ""}`;
     if (observed.get(job.id) !== status) {
+      if (job.status === "sent") {
+        // Keep the pending row until the inbox includes the delivery. Clearing
+        // it first briefly renders the empty "Tap to send" state for self-sends.
+        // Refresh cached inactive inboxes too, so returning from camera is ready.
+        await queryClient.invalidateQueries(
+          { queryKey: [["messages", "inbox"]], refetchType: "all" },
+          { throwOnError: true },
+        );
+        if (cookie !== authClient.getCookie()) return;
+      }
       observed.set(job.id, status);
       const isGroupSend = Boolean(job.groupId);
       if (job.status === "sent")
