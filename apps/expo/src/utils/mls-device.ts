@@ -198,7 +198,7 @@ async function loadDevice<T>(
   if (!userId) throw new EncryptionSignInRequiredError();
   if (!FS.documentDirectory || !FS.cacheDirectory)
     throw new Error(
-      "Private device storage is unavailable. Restart Whisp and retry.",
+      "Private device storage is unavailable. Restart whisp and retry.",
     );
   const { root, keyName } = accountStorage(userId);
   await FS.makeDirectoryAsync(root, { intermediates: true });

@@ -7,14 +7,14 @@ export function Logo({ className }: { className?: string }) {
     <>
       <Image
         src="/icon-dark.png"
-        alt="Whisp Logo"
+        alt="whisp Logo"
         className={`w-auto dark:hidden ${className ?? ""}`}
         width={32}
         height={32}
       />
       <Image
         src="/icon-light.png"
-        alt="Whisp Logo"
+        alt="whisp Logo"
         className={`hidden w-auto dark:block ${className ?? ""}`}
         width={32}
         height={32}

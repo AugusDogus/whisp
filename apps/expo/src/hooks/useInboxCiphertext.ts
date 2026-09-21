@@ -60,7 +60,7 @@ export function useInboxCiphertext(
     }
     void prepare().catch(() =>
       console.warn(
-        "Encrypted prefetch cleanup failed. Files will be cleared when Whisp restarts.",
+        "Encrypted prefetch cleanup failed. Files will be cleared when whisp restarts.",
       ),
     );
     return () => {

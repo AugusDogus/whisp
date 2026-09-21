@@ -22,7 +22,7 @@ export function getStatusText(
     case "opened":
       return "Opened";
     case "received":
-      return mediaKind === "video" ? "New Video" : "New Whisp";
+      return mediaKind === "video" ? "New Video" : "New whisp";
     case "received_opened":
       return "Received";
     default:

@@ -32,7 +32,7 @@ function AccountQueries({
       if (scope)
         void clearWhispCiphertexts(scope).catch(() => {
           console.warn(
-            "Encrypted prefetch cleanup failed. Files will be cleared when Whisp restarts.",
+            "Encrypted prefetch cleanup failed. Files will be cleared when whisp restarts.",
           );
         });
     };

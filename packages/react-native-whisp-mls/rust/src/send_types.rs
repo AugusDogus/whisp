@@ -28,7 +28,7 @@ impl SendFailure {
         match error {
             MlsError::Transport => Self {
                 disposition: SendDisposition::Retry,
-                message: "The send could not reach the server. Whisp will retry when connected; the queued whisp is preserved.".into(),
+                message: "The send could not reach the server. whisp will retry when connected; the queued whisp is preserved.".into(),
             },
             MlsError::Request { status, recovery, .. } => Self {
                 disposition: match status {
@@ -40,7 +40,7 @@ impl SendFailure {
             },
             other => Self {
                 disposition: SendDisposition::Blocked,
-                message: format!("{other} The queued whisp is preserved. Reopen Whisp to retry."),
+                message: format!("{other} The queued whisp is preserved. Reopen whisp to retry."),
             },
         }
     }
@@ -59,15 +59,15 @@ impl From<SendInterruption> for SendFailure {
         match reason {
             SendInterruption::Compression => Self {
                 disposition: SendDisposition::Blocked,
-                message: "This photo or video could not be compressed. The original capture is preserved. Reopen Whisp to retry, or capture it again.".into(),
+                message: "This photo or video could not be compressed. The original capture is preserved. Reopen whisp to retry, or capture it again.".into(),
             },
             SendInterruption::Transfer => Self {
                 disposition: SendDisposition::Retry,
-                message: "The encrypted upload was interrupted. Whisp will retry when connected.".into(),
+                message: "The encrypted upload was interrupted. whisp will retry when connected.".into(),
             },
             SendInterruption::Storage => Self {
                 disposition: SendDisposition::Blocked,
-                message: "The queued send could not be processed on this device. Check available storage, then reopen Whisp to retry.".into(),
+                message: "The queued send could not be processed on this device. Check available storage, then reopen whisp to retry.".into(),
             },
         }
     }

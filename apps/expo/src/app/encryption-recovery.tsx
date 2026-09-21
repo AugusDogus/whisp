@@ -44,7 +44,7 @@ export default function EncryptionRecoveryScreen() {
           Reset this device's encryption
         </Text>
         <Text className="text-sm text-muted">
-          Only use this if Whisp reports missing or damaged encryption keys.
+          Only use this if whisp reports missing or damaged encryption keys.
           Resetting creates new keys for this device. It does not recover old
           whisps or fix sign-in problems.
         </Text>
