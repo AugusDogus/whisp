@@ -135,6 +135,10 @@ mock.module("./auth", () => ({
     }),
   },
 }));
+mock.module("expo-device", () => ({
+  modelName: "Pixel 8 Pro",
+  osName: "Android",
+}));
 mock.module("expo-secure-store", () => ({
   getItemAsync: async (key: string) => secure.get(key) ?? null,
   setItemAsync: async (key: string, value: string) => {
@@ -245,6 +249,17 @@ afterAll(() => {
   mock.module("./api", () => originalApi);
   mock.module("./auth", () => originalAuth);
   mock.module("./base-url", () => originalBaseUrl);
+});
+
+test("device provisioning registers the phone model without personal device names", async () => {
+  const registrations: unknown[] = [];
+  handlers["mls.register"] = (input) => {
+    registrations.push(input);
+    return { ok: true };
+  };
+  await prepareEncryptionDevice();
+  expect(registrations).toHaveLength(1);
+  expect(registrations[0]).toMatchObject({ name: "Pixel 8 Pro", signatureKey });
 });
 
 const descriptor = {

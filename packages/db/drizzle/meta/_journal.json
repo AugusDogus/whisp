@@ -22,6 +22,13 @@
       "when": 1789803323810,
       "tag": "0002_mls",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1789957550912,
+      "tag": "0003_mls_device_names",
+      "breakpoints": true
     }
   ]
 }

@@ -1,0 +1,1 @@
+ALTER TABLE `mls_device` ADD `name` text;

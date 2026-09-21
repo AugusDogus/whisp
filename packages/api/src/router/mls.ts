@@ -27,7 +27,13 @@ const signatureKey = bytes.refine(
 
 export const mlsRouter = {
   register: protectedProcedure
-    .input(z.object({ deviceId: id, signatureKey }))
+    .input(
+      z.object({
+        deviceId: id,
+        signatureKey,
+        name: z.string().trim().min(1).max(100).optional(),
+      }),
+    )
     .mutation(async ({ ctx, input }) => {
       await ctx.db.transaction(async (tx) => {
         const [existing] = await tx
@@ -43,6 +49,12 @@ export const mlsRouter = {
             mlsConflict(
               "This device identity cannot be replaced. Register a new encryption device.",
             );
+          if (input.name !== undefined && input.name !== existing.name) {
+            await tx
+              .update(MlsDevice)
+              .set({ name: input.name })
+              .where(eq(MlsDevice.id, input.deviceId));
+          }
           return;
         }
         const devices = await tx
@@ -62,6 +74,7 @@ export const mlsRouter = {
           id: input.deviceId,
           userId: ctx.session.user.id,
           signatureKey: input.signatureKey,
+          name: input.name,
           createdAt: new Date(),
         });
       });
