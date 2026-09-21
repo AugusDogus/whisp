@@ -8,6 +8,10 @@ use std::{
     path::Path,
 };
 
+// age authenticates 64 KiB chunks. Match IO buffers to avoid eight small reads
+// or writes per chunk without holding an entire photo/video in memory.
+const ATTACHMENT_BUFFER_SIZE: usize = 64 * 1024;
+
 #[uniffi::export]
 pub fn generate_storage_key() -> String {
     x25519::Identity::generate()
@@ -73,7 +77,10 @@ pub fn encrypt_attachment_sync(
     let key = generate_storage_key();
     let identity = identity(&key)?;
     let recipient = identity.to_public();
-    let mut input = File::open(input_path).map_err(|_| MlsError::protocol("attachment read"))?;
+    let mut input = io::BufReader::with_capacity(
+        ATTACHMENT_BUFFER_SIZE,
+        File::open(input_path).map_err(|_| MlsError::protocol("attachment read"))?,
+    );
     let mut out =
         output(&output_path).map_err(|_| MlsError::protocol("attachment output creation"))?;
     let result = (|| {
@@ -111,19 +118,25 @@ pub fn decrypt_attachment_sync(
         ));
     }
     let input = File::open(input_path).map_err(|_| MlsError::protocol("attachment read"))?;
-    let decryptor = age::Decryptor::new(io::BufReader::new(input))
-        .map_err(|_| MlsError::protocol("attachment decoding"))?;
+    let decryptor =
+        age::Decryptor::new(io::BufReader::with_capacity(ATTACHMENT_BUFFER_SIZE, input))
+            .map_err(|_| MlsError::protocol("attachment decoding"))?;
     let mut reader = decryptor
         .decrypt(std::iter::once(&identity as &dyn age::Identity))
         .map_err(|_| MlsError::protocol("attachment authentication"))?;
     let temporary = format!("{output_path}.partial");
-    let mut out =
-        output(&temporary).map_err(|_| MlsError::protocol("temporary attachment creation"))?;
+    let mut out = io::BufWriter::with_capacity(
+        ATTACHMENT_BUFFER_SIZE,
+        output(&temporary).map_err(|_| MlsError::protocol("temporary attachment creation"))?,
+    );
     let result = (|| {
         // age rejects modified chunks, reordered chunks, and a missing final chunk.
         io::copy(&mut reader, &mut out)
             .map_err(|_| MlsError::protocol("attachment authentication"))?;
-        out.sync_all()
+        out.flush()
+            .map_err(|_| MlsError::protocol("decrypted attachment flush"))?;
+        out.get_ref()
+            .sync_all()
             .map_err(|_| MlsError::protocol("decrypted attachment flush"))?;
         fs::rename(&temporary, output_path)
             .map_err(|_| MlsError::protocol("decrypted attachment publication"))?;

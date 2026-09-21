@@ -27,7 +27,10 @@ internal class WhispSendWorker(context: Context, params: WorkerParameters) : Cor
       // call. Serialize only this job, including its compression and transfer.
       val lease = acquireDeviceLease("${settings.root}/sends/$id.worker")
       try {
-        if (runAttemptCount == 0 && inputData.getBoolean("retryBlocked", false)) retrySendJob(config, id)
+        if (runAttemptCount == 0 && inputData.getBoolean("retryBlocked", false)) {
+          retrySendJob(config, id)
+          WhispSendEvents.changed()
+        }
         setForeground(foreground())
         runJob(config, id, settings.uploadthingVersion)
       } finally { lease.release() }
@@ -67,7 +70,7 @@ internal class WhispSendWorker(context: Context, params: WorkerParameters) : Cor
     catch (_: Exception) {
       pauseSendJob(config, id, SendInterruption.STORAGE)
       return Result.success()
-    }
+    } finally { WhispSendEvents.changed() }
   }
   private fun foreground(): ForegroundInfo {
     val manager = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager

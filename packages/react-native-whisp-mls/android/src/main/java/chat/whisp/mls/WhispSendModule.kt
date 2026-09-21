@@ -13,8 +13,14 @@ import chat.whisp.mls.core.acknowledgeSendJob
 
 class WhispSendModule : Module() {
   private val configurations = Mutex()
+  private val statusChanged: () -> Unit = { sendEvent("onSendStatusChanged", emptyMap<String, String>()) }
   override fun definition() = ModuleDefinition {
     Name("WhispSend")
+    Constant("statusEventsSupported") { true }
+    Events("onSendStatusChanged")
+    OnStartObserving { WhispSendEvents.add(statusChanged) }
+    OnStopObserving { WhispSendEvents.remove(statusChanged) }
+    OnDestroy { WhispSendEvents.remove(statusChanged) }
     AsyncFunction("configure") Coroutine { config: String? ->
       // Acquire in Expo invocation order before switching dispatchers. Enqueue
       // uses a separate executor and can never block account changes.
@@ -33,6 +39,7 @@ class WhispSendModule : Module() {
       val config = checkNotNull(SendVault.get(context)) { "Sign in before sending a whisp." }
       val id = enqueueSendJob(config, input)
       WhispSendWorker.schedule(context, id)
+      WhispSendEvents.changed()
       id
     } }
     AsyncFunction("list") Coroutine { -> withContext(Dispatchers.IO) {

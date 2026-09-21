@@ -7,7 +7,10 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::{collections::BTreeMap, fs};
+use std::{
+    collections::{BTreeMap, HashSet},
+    fs,
+};
 
 #[derive(Clone, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -167,15 +170,9 @@ fn retire(api: &Api, id: &str, current: &mut State) -> Result<(), MlsError> {
     Ok(())
 }
 fn recover(api: &Api, id: &str) -> Result<Option<State>, MlsError> {
-    let path = path(api.config, id)?;
-    if !std::path::Path::new(&path).exists() {
+    let Some(mut record) = load(api.config, id)? else {
         return Ok(None);
-    }
-    let mut record: Record = serde_json::from_str(&open_local(
-        decode_base64(read(&path)?)?,
-        api.config.storage_key.clone(),
-    )?)
-    .map_err(|_| MlsError::protocol("conversation state decoding"))?;
+    };
     if let Some(pending) = record.pending.take() {
         let result: Revision = api.call(
             "settle",
@@ -194,6 +191,59 @@ fn recover(api: &Api, id: &str) -> Result<Option<State>, MlsError> {
         retire(api, id, current)?;
     }
     Ok(record.current)
+}
+
+fn load(c: &SendConfig, id: &str) -> Result<Option<Record>, MlsError> {
+    let encoded = match fs::read_to_string(path(c, id)?) {
+        Ok(encoded) => encoded,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(_) => return Err(MlsError::protocol("conversation state read")),
+    };
+    serde_json::from_str(&open_local(decode_base64(encoded)?, c.storage_key.clone())?)
+        .map(Some)
+        .map_err(|_| MlsError::protocol("conversation state decoding"))
+}
+
+fn cached_descriptor(
+    c: &SendConfig,
+    id: &str,
+    message_id: &str,
+) -> Result<Option<String>, MlsError> {
+    uuid::Uuid::parse_str(message_id).map_err(|_| MlsError::protocol("message ID validation"))?;
+    let Some(record) = load(c, id)? else {
+        return Ok(None);
+    };
+    // A send interrupted after append or a Welcome awaiting acknowledgement must
+    // finish crash recovery before its current state can be used as a shortcut.
+    if record.pending.is_some() {
+        return Ok(None);
+    }
+    let Some(current) = record.current else {
+        return Ok(None);
+    };
+    if current.welcome_key_package_id.is_some() {
+        return Ok(None);
+    }
+    if !current
+        .members
+        .iter()
+        .any(|member| member.device_id == c.device_id && member.user_id == c.user_id)
+    {
+        return Err(MlsError::protocol(
+            "cached descriptor device membership verification",
+        ));
+    }
+    current
+        .descriptors
+        .get(message_id)
+        .map(|descriptor| {
+            if !descriptor.valid() || descriptor.message_id != message_id {
+                return Err(MlsError::protocol("cached descriptor validation"));
+            }
+            serde_json::to_string(descriptor)
+                .map_err(|_| MlsError::protocol("cached descriptor encoding"))
+        })
+        .transpose()
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -233,6 +283,8 @@ struct Sync {
     conversation: ConversationRevision,
     welcome: Option<Welcome>,
     events: Vec<Event>,
+    #[serde(default, rename = "retainedMessageIds")]
+    retained_message_ids: Option<Vec<String>>,
 }
 fn sync(api: &Api, id: &str) -> Result<Option<State>, MlsError> {
     let c = api.config;
@@ -282,72 +334,58 @@ fn sync(api: &Api, id: &str) -> Result<Option<State>, MlsError> {
         }
         let mut current =
             state.ok_or_else(|| MlsError::protocol("missing private conversation state"))?;
-        let client = restore(c, &current.snapshot)?;
         let empty = result.events.is_empty();
-        for event in result.events {
-            if event.sequence != current.cursor + 1 {
-                return Err(MlsError::protocol("MLS event sequence verification"));
-            }
-            match event.entry {
-                Entry::Commit { data, members } => {
-                    if !matches!(
-                        client.process(decode_base64(data)?)?,
-                        ReceivedMessage::GroupUpdated { .. }
-                    ) {
-                        return Err(MlsError::protocol("active MLS commit verification"));
-                    }
-                    pin(c, &members)?;
-                    verify(&client, id, &members)?;
-                    current.members = members;
+        if !empty {
+            let client = restore(c, &current.snapshot)?;
+            for event in result.events {
+                if event.sequence != current.cursor + 1 {
+                    return Err(MlsError::protocol("MLS event sequence verification"));
                 }
-                Entry::Application {
-                    data,
-                    sender_device_id,
-                    sender_id,
-                    message_id,
-                    group_id,
-                } => {
-                    let ReceivedMessage::Application { sender, plaintext } =
-                        client.process(decode_base64(data)?)?
-                    else {
-                        return Err(MlsError::protocol("MLS application verification"));
-                    };
-                    if sender != sender_device_id
-                        || !current
-                            .members
-                            .iter()
-                            .any(|m| m.device_id == sender && m.user_id == sender_id)
-                    {
-                        return Err(MlsError::protocol("MLS sender authentication"));
+                match event.entry {
+                    Entry::Commit { data, members } => {
+                        if !matches!(
+                            client.process(decode_base64(data)?)?,
+                            ReceivedMessage::GroupUpdated { .. }
+                        ) {
+                            return Err(MlsError::protocol("active MLS commit verification"));
+                        }
+                        pin(c, &members)?;
+                        verify(&client, id, &members)?;
+                        current.members = members;
                     }
-                    if let Ok(d) = serde_json::from_slice::<Descriptor>(&plaintext)
-                        && d.valid()
-                        && d.sender_id == sender_id
-                        && d.message_id == message_id
-                        && d.group_id == group_id
-                    {
-                        current.descriptors.insert(message_id, d);
+                    Entry::Application {
+                        data,
+                        sender_device_id,
+                        sender_id,
+                        message_id,
+                        group_id,
+                    } => {
+                        let ReceivedMessage::Application { sender, plaintext } =
+                            client.process(decode_base64(data)?)?
+                        else {
+                            return Err(MlsError::protocol("MLS application verification"));
+                        };
+                        if sender != sender_device_id
+                            || !current
+                                .members
+                                .iter()
+                                .any(|m| m.device_id == sender && m.user_id == sender_id)
+                        {
+                            return Err(MlsError::protocol("MLS sender authentication"));
+                        }
+                        if let Ok(d) = serde_json::from_slice::<Descriptor>(&plaintext)
+                            && d.valid()
+                            && d.sender_id == sender_id
+                            && d.message_id == message_id
+                            && d.group_id == group_id
+                        {
+                            current.descriptors.insert(message_id, d);
+                        }
                     }
                 }
+                current.cursor = event.sequence;
             }
-            current.cursor = event.sequence;
-        }
-        current.snapshot = encode_base64(client.export_state(c.storage_key.clone())?);
-        save(
-            c,
-            id,
-            &Record {
-                current: Some(current.clone()),
-                pending: None,
-            },
-        )?;
-        if current.cursor >= result.conversation.revision {
-            let retained: Vec<String> = api.call(
-                "retainedMessages",
-                false,
-                json!({"deviceId":c.device_id,"conversationId":id}),
-            )?;
-            current.descriptors.retain(|key, _| retained.contains(key));
+            current.snapshot = encode_base64(client.export_state(c.storage_key.clone())?);
             save(
                 c,
                 id,
@@ -356,6 +394,30 @@ fn sync(api: &Api, id: &str) -> Result<Option<State>, MlsError> {
                     pending: None,
                 },
             )?;
+        }
+        if current.cursor >= result.conversation.revision {
+            let retained = match result.retained_message_ids {
+                Some(retained) => retained,
+                // Older backends return retention in a separate endpoint.
+                None => api.call::<Vec<String>>(
+                    "retainedMessages",
+                    false,
+                    json!({"deviceId":c.device_id,"conversationId":id}),
+                )?,
+            };
+            let retained: HashSet<_> = retained.into_iter().collect();
+            let previous_count = current.descriptors.len();
+            current.descriptors.retain(|key, _| retained.contains(key));
+            if current.descriptors.len() != previous_count {
+                save(
+                    c,
+                    id,
+                    &Record {
+                        current: Some(current.clone()),
+                        pending: None,
+                    },
+                )?;
+            }
             return Ok(Some(current));
         }
         if empty {
@@ -507,6 +569,22 @@ pub async fn sync_native_conversation(
     .await
     .map_err(|_| MlsError::protocol("conversation synchronization worker"))?
 }
+
+/// Reads only previously authenticated, durably stored application data. The
+/// caller holds its device lease and must freshly authorize the delivery (device,
+/// account, current conversation access and unread status) before using the key.
+#[uniffi::export(async_runtime = "tokio")]
+pub async fn read_native_descriptor(
+    config: String,
+    conversation_id: String,
+    message_id: String,
+) -> Result<Option<String>, MlsError> {
+    tokio::task::spawn_blocking(move || {
+        cached_descriptor(&SendConfig::parse(&config)?, &conversation_id, &message_id)
+    })
+    .await
+    .map_err(|_| MlsError::protocol("cached descriptor worker"))?
+}
 /// The caller holds its device lease, including when a receipt races a native send.
 #[uniffi::export(async_runtime = "tokio")]
 pub async fn forget_native_descriptor(
@@ -518,7 +596,9 @@ pub async fn forget_native_descriptor(
         let config = SendConfig::parse(&config)?;
         let api = Api::new(&config)?;
         if let Some(mut current) = recover(&api, &conversation_id)? {
-            current.descriptors.remove(&message_id);
+            if current.descriptors.remove(&message_id).is_none() {
+                return Ok(());
+            }
             save(
                 &config,
                 &conversation_id,
@@ -533,3 +613,7 @@ pub async fn forget_native_descriptor(
     .await
     .map_err(|_| MlsError::protocol("descriptor retirement worker"))?
 }
+
+#[cfg(test)]
+#[path = "conversation_tests.rs"]
+mod tests;

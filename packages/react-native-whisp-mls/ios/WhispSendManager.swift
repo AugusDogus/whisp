@@ -80,8 +80,12 @@ final class WhispSendManager: NSObject, URLSessionTaskDelegate {
       let jobs = try sendJobStatuses(config: config)
       var complete = true
       for job in jobs where job.status == .uploading || job.status == .blocked {
+        defer { WhispSendEvents.notify() }
         do {
-          if retryBlocked { try retrySendJob(config: config, id: job.id) }
+          if retryBlocked {
+            try retrySendJob(config: config, id: job.id)
+            WhispSendEvents.notify()
+          }
           let receiptURL = try receiptDirectory().appendingPathComponent(settings.deviceId + ":" + job.id)
           if FileManager.default.fileExists(atPath: receiptURL.path) {
             let receipt = try JSONDecoder().decode(TransferReceipt.self, from: Data(contentsOf: receiptURL))

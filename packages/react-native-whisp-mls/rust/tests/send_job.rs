@@ -206,9 +206,22 @@ fn recovered_send(self_send: bool) {
                 "/api/trpc/mls.register" => json!({"ok":true}),
                 "/api/trpc/mls.prepare" => json!({"conversations":[{"id":conversation}]}),
                 "/api/trpc/mls.sync" => {
-                    json!({"conversation":{"revision":revision},"welcome":null,"events":[]})
+                    let mut response =
+                        json!({"conversation":{"revision":revision},"welcome":null,"events":[]});
+                    if self_send {
+                        response["retainedMessageIds"] = if server_delivered.load(Ordering::SeqCst)
+                        {
+                            json!([])
+                        } else {
+                            json!([retained_id])
+                        };
+                    }
+                    response
                 }
-                "/api/trpc/mls.retainedMessages" => json!([retained_id]),
+                "/api/trpc/mls.retainedMessages" => {
+                    assert!(!self_send, "Inline retention must not make another request");
+                    json!([retained_id])
+                }
                 "/api/trpc/mls.descriptorPublished" => json!(revision != 0),
                 "/api/trpc/mls.begin" => {
                     json!({"operationId":operation,"members":roster,"packages":if self_send { json!([]) } else { json!([{
@@ -255,6 +268,11 @@ fn recovered_send(self_send: bool) {
     assert_eq!(f.advance()["stage"], "continue");
     if self_send {
         let runtime = tokio::runtime::Runtime::new().unwrap();
+        let state_path = f
+            .root
+            .join("conversations")
+            .join(format!("{conversation_for_receive}.age"));
+        let durable_before = fs::read(&state_path).unwrap();
         let descriptors: Value = serde_json::from_str(
             &runtime
                 .block_on(sync_native_conversation(
@@ -265,6 +283,20 @@ fn recovered_send(self_send: bool) {
         )
         .unwrap();
         assert_eq!(descriptors[&f.id]["messageId"], f.id);
+        // Syncing an unchanged revision must not re-encrypt and fsync the state.
+        assert_eq!(fs::read(&state_path).unwrap(), durable_before);
+        let cached: Value = serde_json::from_str(
+            &runtime
+                .block_on(read_native_descriptor(
+                    f.config.clone(),
+                    conversation_for_receive.clone(),
+                    f.id.clone(),
+                ))
+                .unwrap()
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(cached, descriptors[&f.id]);
     }
     fs::copy(
         f.dir().join("ciphertext.age"),
@@ -282,6 +314,29 @@ fn recovered_send(self_send: bool) {
     assert!(!f.dir().join("ciphertext.age").exists());
     acknowledge_send_job(f.config.clone(), f.id.clone()).unwrap();
     assert_eq!(list_send_jobs(f.config.clone()).unwrap(), "[]");
+    if self_send {
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        // An unchanged MLS revision can still retire a viewed descriptor.
+        assert_eq!(
+            runtime
+                .block_on(sync_native_conversation(
+                    f.config.clone(),
+                    conversation_for_receive.clone()
+                ))
+                .unwrap(),
+            "{}"
+        );
+        assert!(
+            runtime
+                .block_on(read_native_descriptor(
+                    f.config.clone(),
+                    conversation_for_receive,
+                    f.id.clone()
+                ))
+                .unwrap()
+                .is_none()
+        );
+    }
     stop.store(true, Ordering::SeqCst);
     server.join().unwrap();
     let appended = appended.lock().unwrap();
