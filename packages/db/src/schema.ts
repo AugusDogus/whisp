@@ -314,6 +314,9 @@ export const MlsConversation = sqliteTable("mls_conversation", (t) => ({
   groupId: t.text(),
   users: t.text({ mode: "json" }).$type<string[]>().notNull(),
   revision: t.integer().notNull().default(0),
+  // Maintained by the mls_event_epoch trigger (migration 0004), including writes
+  // from older servers. Distinct from the complete event-log cursor.
+  epoch: t.integer().notNull().default(0),
   members: t.text({ mode: "json" }).$type<MlsMember[]>().notNull(),
 }));
 export const MlsOperation = sqliteTable("mls_operation", (t) => ({
@@ -407,5 +410,28 @@ export const MlsDraftConversation = sqliteTable(
       .notNull()
       .references(() => MlsConversation.id, { onDelete: "cascade" }),
     members: t.text({ mode: "json" }).$type<MlsMember[]>().notNull(),
+  }),
+);
+
+// Rows are immutable decisions: null revision means cancelled, otherwise the
+// exact ciphertext was published at that event-log revision. Tombstones prevent
+// delayed requests from resurrecting an envelope the sender has discarded.
+export const MlsApplicationAttempt = sqliteTable(
+  "mls_application_attempt",
+  (t) => ({
+    id: t.text().primaryKey(),
+    // Receipt lifetime follows the conversation log, not expiring upload drafts.
+    draftId: t.text().notNull(),
+    conversationId: t
+      .text()
+      .notNull()
+      .references(() => MlsConversation.id, { onDelete: "cascade" }),
+    deviceId: t
+      .text()
+      .notNull()
+      .references(() => MlsDevice.id, { onDelete: "cascade" }),
+    epoch: t.integer().notNull(),
+    ciphertextHash: t.text().notNull(),
+    revision: t.integer(),
   }),
 );

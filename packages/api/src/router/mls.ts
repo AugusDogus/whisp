@@ -13,6 +13,7 @@ import {
 import { mlsConflict, requireDevice } from "../services/mls";
 import { registerMlsDevice, signatureKey } from "../services/mls-device";
 import { protectedProcedure } from "../trpc";
+import { mlsApplicationsRouter } from "./mls-applications";
 import { mlsConversationsRouter } from "./mls-conversations";
 
 const id = z.uuid();
@@ -142,4 +143,5 @@ export const mlsRouter = {
       return { ok: true };
     }),
   ...mlsConversationsRouter,
+  ...mlsApplicationsRouter,
 } satisfies TRPCRouterRecord;
