@@ -20,9 +20,13 @@ import {
   conversationUsers,
   mlsConflict,
   requireDevice,
-  resolveRecipients,
   type MlsDatabase,
 } from "../services/mls";
+import {
+  directScope,
+  hasConversationScope,
+  prepareMlsDraft,
+} from "../services/mls-preparation";
 import { protectedProcedure } from "../trpc";
 
 const id = z.uuid();
@@ -38,10 +42,6 @@ const memberSchema = z.object({
 });
 const members = z.array(memberSchema).min(1).max(200);
 const commit = z.object({ data: wire, members, welcome: wire.optional() });
-
-function directScope(senderId: string, recipientId: string) {
-  return JSON.stringify(["direct", ...[senderId, recipientId].sort()]);
-}
 
 async function authorizedConversation(
   database: MlsDatabase,
@@ -93,79 +93,9 @@ export const mlsConversationsRouter = {
         ),
     )
     .mutation(async ({ ctx, input }) =>
-      ctx.db.transaction(async (tx) => {
-        const me = ctx.session.user.id;
-        await requireDevice(tx, me, input.deviceId);
-        const recipients = await resolveRecipients(tx, me, input);
-        const scopes = input.groupId
-          ? [
-              {
-                scope: JSON.stringify(["group", input.groupId]),
-                users: [me, ...recipients].sort(),
-              },
-            ]
-          : recipients.map((recipient) => ({
-              scope: directScope(me, recipient),
-              users: [...new Set([me, recipient])].sort(),
-            }));
-        const conversations = [];
-        for (const scope of scopes) {
-          await tx
-            .insert(MlsConversation)
-            .values({
-              id: crypto.randomUUID(),
-              scope: scope.scope,
-              users: scope.users,
-              groupId: input.groupId,
-              members: [],
-            })
-            .onConflictDoNothing();
-          const [conversation] = await tx
-            .select()
-            .from(MlsConversation)
-            .where(eq(MlsConversation.scope, scope.scope));
-          if (!conversation)
-            mlsConflict(
-              "The encrypted conversation could not be created. Retry the send.",
-            );
-          conversations.push({ id: conversation.id });
-        }
-        const draftId = input.draftId ?? crypto.randomUUID();
-        await tx
-          .insert(MlsDraft)
-          .values({
-            id: draftId,
-            senderId: me,
-            senderDeviceId: input.deviceId,
-            recipients,
-            groupId: input.groupId,
-            conversationIds: conversations.map((c) => c.id),
-            expiresAt: new Date(Date.now() + 86400_000),
-          })
-          .onConflictDoNothing();
-        const [draft] = await tx
-          .select()
-          .from(MlsDraft)
-          .where(eq(MlsDraft.id, draftId));
-        if (
-          !draft ||
-          draft.senderId !== me ||
-          draft.senderDeviceId !== input.deviceId ||
-          draft.groupId !== (input.groupId ?? null) ||
-          JSON.stringify([...draft.recipients].sort()) !==
-            JSON.stringify([...recipients].sort()) ||
-          draft.expiresAt <= new Date()
-        )
-          mlsConflict(
-            "This send ID belongs to another or expired draft. Send the whisp again.",
-          );
-        return {
-          draftId,
-          conversations: draft.conversationIds.map((conversationId) => ({
-            id: conversationId,
-          })),
-        };
-      }),
+      ctx.db.transaction((tx) =>
+        prepareMlsDraft(tx, ctx.session.user.id, input),
+      ),
     ),
   sync: protectedProcedure
     .input(
@@ -623,15 +553,13 @@ export const mlsConversationsRouter = {
       const scope = draft.groupId
         ? JSON.stringify(["group", draft.groupId])
         : directScope(draft.senderId, ctx.session.user.id);
-      const [conversation] = await ctx.db
-        .select({ id: MlsConversation.id })
+      const conversations = await ctx.db
+        .select()
         .from(MlsConversation)
-        .where(
-          and(
-            inArray(MlsConversation.id, draft.conversationIds),
-            eq(MlsConversation.scope, scope),
-          ),
-        );
+        .where(inArray(MlsConversation.id, draft.conversationIds));
+      const conversation = conversations.find((c) =>
+        hasConversationScope(c, scope),
+      );
       if (conversation)
         return {
           kind: "mls" as const,

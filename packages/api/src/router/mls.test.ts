@@ -248,6 +248,181 @@ describe("persistent MLS conversations", () => {
       else process.env.ALLOW_SELF_MESSAGES = previous;
     }
   });
+  test("a new device can send without an old device, preserving old deliveries", async () => {
+    const original = await prepare();
+    const first = await begin(original.conversationId);
+    await sender.append({ ...first.request, draftId: original.draftId });
+    const deliveryId = crypto.randomUUID();
+    await db.insert(schema.MessageDelivery).values({
+      id: deliveryId,
+      messageId: original.draftId,
+      recipientId: "bob",
+    });
+    const newDevice = crypto.randomUUID();
+    await sender.register({ deviceId: newDevice, signatureKey });
+    await sender.publish({
+      deviceId: senderDevice,
+      packages: [{ id: crypto.randomUUID(), data: wire }],
+    });
+    const input = {
+      deviceId: newDevice,
+      recipients: ["bob"],
+      draftId: crypto.randomUUID(),
+    };
+    const next = await sender.prepare(input);
+    const replacement = next.conversations[0];
+    if (!replacement) throw new Error("Missing replacement conversation");
+    expect(replacement.id).not.toBe(original.conversationId);
+    expect(await sender.prepare(input)).toEqual(next);
+    expect(
+      await sender.sync({
+        deviceId: newDevice,
+        conversationId: replacement.id,
+        after: 0,
+      }),
+    ).toMatchObject({ conversation: { revision: 0 } });
+    const operation = await sender.begin({
+      deviceId: newDevice,
+      conversationId: replacement.id,
+      revision: 0,
+    });
+    expect(new Set(operation.members.map((m) => m.deviceId))).toEqual(
+      new Set([senderDevice, recipientDevice, newDevice]),
+    );
+    expect(new Set(operation.packages.map((p) => p.deviceId))).toEqual(
+      new Set([senderDevice, recipientDevice]),
+    );
+    await sender.append({
+      operationId: operation.operationId,
+      deviceId: newDevice,
+      draftId: next.draftId,
+      commits: [{ data: wire, members: operation.members, welcome: wire }],
+      welcomes: operation.packages.map((p) => ({
+        keyPackageId: p.keyPackageId,
+        commitIndex: 0,
+      })),
+      ciphertext: wire,
+    });
+    const subsequent = await prepare();
+    expect(subsequent.conversationId).toBe(replacement.id);
+    expect(
+      await receiver.delivery({ deviceId: recipientDevice, deliveryId }),
+    ).toMatchObject({ conversationId: original.conversationId });
+    expect(
+      await sender.prepare({
+        deviceId: senderDevice,
+        recipients: ["bob"],
+        draftId: original.draftId,
+      }),
+    ).toMatchObject({ conversations: [{ id: original.conversationId }] });
+    expect(
+      await sender.sync({
+        deviceId: senderDevice,
+        conversationId: replacement.id,
+        after: 0,
+      }),
+    ).toMatchObject({ welcome: { deviceId: senderDevice } });
+    await expect(
+      sender.sync({
+        deviceId: newDevice,
+        conversationId: original.conversationId,
+        after: 0,
+      }),
+    ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+  });
+  for (const kind of ["self", "group"] as const) {
+    test(`a paused ${kind} send recovers on a new device and reuses the replacement`, async () => {
+      const previous = process.env.ALLOW_SELF_MESSAGES;
+      process.env.ALLOW_SELF_MESSAGES = "true";
+      try {
+        if (kind === "group")
+          await db.insert(schema.GroupMember).values([
+            { groupId: "group", userId: "alice" },
+            { groupId: "group", userId: "bob" },
+          ]);
+        const target =
+          kind === "self" ? { recipients: ["alice"] } : { groupId: "group" };
+        const initial = await sender.prepare({
+          deviceId: senderDevice,
+          ...target,
+        });
+        const original = initial.conversations[0];
+        if (!original) throw new Error("Missing initial conversation");
+        const first = await begin(original.id);
+        await sender.append({ ...first.request, draftId: initial.draftId });
+        const deviceId = crypto.randomUUID();
+        await sender.register({ deviceId, signatureKey });
+        await sender.publish({
+          deviceId: senderDevice,
+          packages: [{ id: crypto.randomUUID(), data: wire }],
+        });
+        // Reproduce a durable job already prepared by the old server.
+        const draftId = crypto.randomUUID();
+        await db.insert(schema.MlsDraft).values({
+          id: draftId,
+          senderId: "alice",
+          senderDeviceId: deviceId,
+          recipients: kind === "self" ? ["alice"] : ["bob"],
+          groupId: kind === "group" ? "group" : null,
+          conversationIds: [original.id],
+          expiresAt: new Date(Date.now() + 60_000),
+        });
+        const recovered = await sender.prepare({
+          deviceId,
+          draftId,
+          ...target,
+        });
+        const next = recovered.conversations[0];
+        if (!next) throw new Error("Missing recovered conversation");
+        expect(next.id).not.toBe(original.id);
+        expect(await sender.prepare({ deviceId, draftId, ...target })).toEqual(
+          recovered,
+        );
+        const operation = await sender.begin({
+          deviceId,
+          conversationId: next.id,
+          revision: 0,
+        });
+        await sender.append({
+          operationId: operation.operationId,
+          deviceId,
+          draftId,
+          commits: [{ data: wire, members: operation.members, welcome: wire }],
+          welcomes: operation.packages.map((p) => ({
+            keyPackageId: p.keyPackageId,
+            commitIndex: 0,
+          })),
+          ciphertext: wire,
+        });
+        expect(
+          (await validateDraft(db, "alice", draftId)).conversationIds,
+        ).toEqual([next.id]);
+        expect(
+          (await sender.prepare({ deviceId, ...target })).conversations,
+        ).toEqual([{ id: next.id }]);
+        const deliveryId = crypto.randomUUID();
+        await db.insert(schema.MessageDelivery).values({
+          id: deliveryId,
+          messageId: initial.draftId,
+          recipientId: kind === "self" ? "alice" : "bob",
+          groupId: kind === "group" ? "group" : null,
+        });
+        const recipient = kind === "self" ? sender : receiver;
+        expect(
+          await recipient.delivery({
+            deviceId: kind === "self" ? senderDevice : recipientDevice,
+            deliveryId,
+          }),
+        ).toMatchObject({ conversationId: original.id });
+        await expect(
+          outsider.prepare({ deviceId, ...target }),
+        ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+      } finally {
+        if (previous === undefined) delete process.env.ALLOW_SELF_MESSAGES;
+        else process.env.ALLOW_SELF_MESSAGES = previous;
+      }
+    });
+  }
   test("binds immutable device identities to authenticated accounts", async () => {
     await expect(
       outsider.register({ deviceId: senderDevice, signatureKey }),

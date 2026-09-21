@@ -35,10 +35,13 @@ encryption, downloads, and decryption run outside it; resuming state work and
 displaying downloaded media verify that the account and device still match.
 
 Group membership and device changes are enforced before the next encrypted
-send. New members cannot decrypt old epochs. A new device joining an existing
-conversation needs an existing member to send a message that adds it. Losing
-all members' local group state is unrecoverable; there is no server-held recovery
-key or automatic insecure group reset.
+send. New members cannot decrypt old epochs. A new device without a Welcome can send without an existing device online:
+preparation retires the active session and creates a replacement for future
+whisps. The sender invites the registered devices using their published
+KeyPackages. Subsequent sends reuse that session. Existing drafts that have
+already joined keep their original session, and old deliveries still resolve
+to their original ciphertext log. Recovery does not grant access to past epochs.
+Losing all private device state still prevents decrypting past whisps.
 
 ## Native send jobs
 
