@@ -125,6 +125,7 @@ export default function MediaScreen() {
 
   // Android back button handler
   useEffect(() => {
+    if (!isFocused) return;
     const handler = BackHandler.addEventListener("hardwareBackPress", () => {
       if (editingCaptionId) {
         Keyboard.dismiss();
@@ -136,7 +137,7 @@ export default function MediaScreen() {
       return true; // Handled
     });
     return () => handler.remove();
-  }, [editingCaptionId, exitMedia]);
+  }, [editingCaptionId, exitMedia, isFocused]);
 
   // Handle container layout
   function handleLayout(event: LayoutChangeEvent) {
@@ -389,19 +390,16 @@ export default function MediaScreen() {
             toast.error("Failed to prepare media");
           });
       } else {
-        navigation.navigate("Main", {
-          screen: "Friends",
-          params: {
-            path,
-            type,
-            defaultRecipientId,
-            groupId,
-            rasterizationPromise,
-            thumbhash,
-            captions,
-            originalWidth: containerLayout?.width,
-            originalHeight: containerLayout?.height,
-          },
+        navigation.navigate("Send", {
+          path,
+          type,
+          defaultRecipientId,
+          groupId,
+          rasterizationPromise,
+          thumbhash,
+          captions,
+          originalWidth: containerLayout?.width,
+          originalHeight: containerLayout?.height,
         });
       }
     } else {
@@ -424,14 +422,11 @@ export default function MediaScreen() {
         });
         navigation.reset({ index: 0, routes: [{ name: "Main" }] });
       } else {
-        navigation.navigate("Main", {
-          screen: "Friends",
-          params: {
-            path,
-            type,
-            defaultRecipientId,
-            groupId,
-          },
+        navigation.navigate("Send", {
+          path,
+          type,
+          defaultRecipientId,
+          groupId,
         });
       }
     }

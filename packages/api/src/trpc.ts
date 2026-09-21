@@ -69,6 +69,7 @@ function getIp(headers: Headers): string | null {
 export const createTRPCContext = async (opts: {
   headers: Headers;
   auth: Auth;
+  afterResponse?: (task: () => Promise<void>) => void;
 }) => {
   const authApi = opts.auth.api;
   const session = await authApi.getSession({
@@ -79,6 +80,7 @@ export const createTRPCContext = async (opts: {
     session,
     db,
     headers: opts.headers,
+    ...(opts.afterResponse ? { afterResponse: opts.afterResponse } : {}),
   };
 };
 /**

@@ -52,8 +52,7 @@ export function usePushNotifications(sessionId: string | null) {
         data.type === "friend_accept"
       ) {
         console.log("Invalidating friends queries before navigation");
-        void utils.friends.list.invalidate();
-        void utils.friends.incomingRequests.invalidate();
+        void utils.friends.invalidate();
       }
 
       // Handle navigation based on notification type
@@ -174,8 +173,7 @@ export function usePushNotifications(sessionId: string | null) {
           console.log(
             "Invalidating friends queries for friend activity notification",
           );
-          void utils.friends.list.invalidate();
-          void utils.friends.incomingRequests.invalidate();
+          void utils.friends.invalidate();
         }
       });
 

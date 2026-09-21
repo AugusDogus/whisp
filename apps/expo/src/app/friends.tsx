@@ -6,7 +6,7 @@ import type { RouteProp } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BackHandler, Linking, useColorScheme, View } from "react-native";
+import { Linking, useColorScheme, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import * as Haptics from "expo-haptics";
@@ -14,6 +14,7 @@ import * as Haptics from "expo-haptics";
 import { BottomSheetBackdrop } from "@gorhom/bottom-sheet";
 import {
   useIsFocused,
+  useFocusEffect,
   useNavigation,
   useRoute,
 } from "@react-navigation/native";
@@ -31,7 +32,6 @@ import { RemoveFriendDialog } from "~/components/friends/RemoveFriendDialog";
 import { SendModePanel } from "~/components/friends/SendModePanel";
 import type { FriendRow, GroupRow } from "~/components/friends/types";
 import { Text } from "~/components/ui/text";
-import { useRecording } from "~/contexts/RecordingContext";
 import { useFriendRows } from "~/hooks/useFriendRows";
 import { useInboxCiphertext } from "~/hooks/useInboxCiphertext";
 import { useInboxMediaKinds } from "~/hooks/useInboxMediaKinds";
@@ -40,6 +40,7 @@ import { useMessageViewerState } from "~/hooks/useMessageViewerState";
 import { usePreviewSettings } from "~/hooks/usePreviewSettings";
 import { useRemoveFriend } from "~/hooks/useRemoveFriend";
 import { useSendModeSelection } from "~/hooks/useSendModeSelection";
+import { useSentMediaKinds } from "~/hooks/useSentMediaKinds";
 import type { MainTabParamList, RootStackParamList } from "~/navigation/types";
 import { trpc } from "~/utils/api";
 import { authClient } from "~/utils/auth";
@@ -60,11 +61,13 @@ export default function FriendsScreen() {
   const queryClient = useQueryClient();
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const route = useRoute<RouteProp<MainTabParamList, "Friends">>();
+  const route = useRoute<
+    | RouteProp<MainTabParamList, "Friends">
+    | RouteProp<RootStackParamList, "Send">
+  >();
   const mediaParams = route.params;
-  const hasMedia = Boolean(mediaParams?.path);
+  const hasMedia = route.name === "Send";
   const insets = useSafeAreaInsets();
-  const { setIsSendMode } = useRecording();
   const colorScheme = useColorScheme();
   const { data: session } = authClient.useSession();
   const selfUserId = session?.user.id ?? null;
@@ -77,7 +80,11 @@ export default function FriendsScreen() {
     data: friends = [],
     refetch: refetchFriends,
     isLoading: friendsLoading,
-  } = trpc.friends.list.useQuery();
+  } = trpc.friends.list.useQuery(undefined, {
+    refetchOnWindowFocus: "always",
+    // Recover missed/disabled push notifications only while this list is visible.
+    refetchInterval: isFocused && !hasMedia ? 15_000 : false,
+  });
   const { data: groups = [], refetch: refetchGroups } =
     trpc.groups.list.useQuery();
   const {
@@ -116,14 +123,25 @@ export default function FriendsScreen() {
 
   const onRefresh = async () => {
     setIsRefreshing(true);
-    await Promise.all([
-      refetchFriends(),
-      refetchInbox(),
-      refetchGroups(),
-      queryClient.invalidateQueries({ queryKey: ["whisp-media-kind"] }),
-    ]);
-    setIsRefreshing(false);
+    try {
+      await Promise.all([
+        refetchFriends(),
+        refetchInbox(),
+        refetchGroups(),
+        utils.friends.incomingRequests.invalidate(),
+        utils.friends.searchUsers.invalidate(),
+        queryClient.invalidateQueries({ queryKey: ["whisp-media-kind"] }),
+      ]);
+    } finally {
+      setIsRefreshing(false);
+    }
   };
+
+  useFocusEffect(
+    useCallback(() => {
+      void refetchFriends();
+    }, [refetchFriends]),
+  );
 
   // Track background uploads so the list can show per-friend pending state.
   useEffect(() => {
@@ -147,13 +165,6 @@ export default function FriendsScreen() {
     [],
   );
 
-  // Update send mode when hasMedia changes
-  useEffect(() => {
-    setIsSendMode(hasMedia);
-    // Clean up when component unmounts
-    return () => setIsSendMode(false);
-  }, [hasMedia, setIsSendMode]);
-
   const {
     viewer,
     inbox,
@@ -170,32 +181,6 @@ export default function FriendsScreen() {
     inbox,
     isFocused && !!selfUserId && !viewer && !hasMedia,
   );
-
-  // Handle hardware back button when in send mode (has media)
-  useEffect(() => {
-    if (!hasMedia) return;
-
-    const onBackPress = () => {
-      if (mediaParams?.path && mediaParams.type) {
-        navigation.navigate("Media", {
-          path: mediaParams.path,
-          type: mediaParams.type,
-          defaultRecipientId: mediaParams.defaultRecipientId,
-          groupId: mediaParams.groupId,
-          captions: mediaParams.captions,
-        });
-        return true;
-      }
-      return false;
-    };
-
-    const backHandler = BackHandler.addEventListener(
-      "hardwareBackPress",
-      onBackPress,
-    );
-
-    return () => backHandler.remove();
-  }, [hasMedia, mediaParams, navigation]);
 
   const visibleFriends = useMemo(
     () =>
@@ -216,6 +201,7 @@ export default function FriendsScreen() {
     outboxStatus,
     selfUserId,
     mediaKinds: mediaTypes.mediaKinds,
+    sentMediaKinds: useSentMediaKinds(visibleFriends),
   });
 
   const {
@@ -287,20 +273,7 @@ export default function FriendsScreen() {
         selectedGroupId={selectedGroupId}
         toggleFriend={toggleFriend}
         toggleGroup={toggleGroup}
-        onBack={() => {
-          // If we came from the Media screen with media params, go back to Media
-          if (mediaParams?.path && mediaParams.type) {
-            navigation.navigate("Media", {
-              path: mediaParams.path,
-              type: mediaParams.type,
-              defaultRecipientId: mediaParams.defaultRecipientId,
-              groupId: mediaParams.groupId,
-              captions: mediaParams.captions,
-            });
-          } else {
-            navigation.goBack();
-          }
-        }}
+        onBack={() => navigation.goBack()}
         onSend={async (opts) => {
           if (!mediaParams?.type || !mediaParams.path) return;
           const recipients = SelfMessages.recipients(
@@ -353,11 +326,13 @@ export default function FriendsScreen() {
           paddingRight: insets.right,
         }}
       >
-        <View className="h-full w-full">
+        <View className="flex-1">
           <FriendsHeader
             showAddFriends={showAddFriends}
             onToggleAddFriends={() => setShowAddFriends(!showAddFriends)}
             onNewGroup={() => navigation.navigate("CreateGroup")}
+            onRefresh={onRefresh}
+            isRefreshing={isRefreshing}
           />
 
           {mediaTypes.hasError && !isLoading && !showAddFriends && (

@@ -19,6 +19,7 @@ export interface RootStackParamList extends ParamListBase {
       color: string;
     }[];
   };
+  Send: RootStackParamList["Media"] & NonNullable<MainTabParamList["Friends"]>;
   Group: { groupId: string; autoOpenUnread?: boolean };
   GroupSettings: { groupId: string };
   GroupAddMembers: { groupId: string };
