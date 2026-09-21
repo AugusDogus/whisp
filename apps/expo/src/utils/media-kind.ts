@@ -8,6 +8,10 @@
 /** The two media types a whisp can be. */
 export type MediaKind = "photo" | "video";
 
+/** Message IDs are also native send job IDs. QueryProvider isolates accounts. */
+export const whispMediaKindKey = (messageId: string) =>
+  ["whisp-media-kind", messageId] as const;
+
 /** Encrypted descriptors do not expose a media kind to the server. */
 export function mimeToMediaKind(
   mime: string | null | undefined,

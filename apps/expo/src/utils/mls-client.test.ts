@@ -294,7 +294,7 @@ const { useInboxMediaKinds } = await import("~/hooks/useInboxMediaKinds");
 
 const { enqueueNativeSend, configureNativeSends } =
   await import("./native-send");
-const { reconcileNativeSends } = await import("./media-upload");
+const { reconcileNativeSends, uploadMedia } = await import("./media-upload");
 
 beforeEach(() => {
   files.clear();
@@ -1076,3 +1076,75 @@ test("changing accounts during native acknowledgement stops remaining job side e
   expect(getOutboxStatusSnapshot()[pending.recipients[0]]).toBeUndefined();
   client.clear();
 });
+
+for (const kind of ["photo", "video"] as const) {
+  for (const source of ["enqueue", "recovery"] as const) {
+    test(`${source} self-${kind} has its correct type on the first inbox render`, async () => {
+      const client = new QueryClient();
+      let renderer: ReactTestRenderer | undefined;
+      const renders: (string | undefined)[] = [];
+      function Harness() {
+        const { mediaKinds } = useInboxMediaKinds(
+          [
+            {
+              ...message,
+              groupId: undefined,
+              thumbhash: undefined,
+              createdAt: new Date(),
+            },
+          ],
+          true,
+        );
+        renders.push(mediaKinds.get(message.deliveryId));
+        return null;
+      }
+      try {
+        if (source === "enqueue") {
+          await uploadMedia({
+            queryClient: client,
+            uri: "file:///source",
+            type: kind,
+            recipients: ["alice"],
+          });
+        } else {
+          nativeJobs = [
+            {
+              ...queuedSend("sent", null),
+              id: messageId,
+              kind,
+              recipients: ["alice"],
+            },
+          ];
+          await reconcileNativeSends(client);
+        }
+        apiCalls = [];
+        await act(async () => {
+          renderer = create(
+            createElement(
+              QueryClientProvider,
+              { client },
+              createElement(Harness),
+            ),
+          );
+        });
+        expect(renders.length).toBeGreaterThan(0);
+        expect(renders.every((value) => value === kind)).toBe(true);
+        expect(apiCalls).toEqual([]);
+        // Knowing a sent type must not authorize opening or acknowledge a view.
+        handlers["mls.delivery"] = () => {
+          throw new Error("Delivery already read");
+        };
+        await expect(openWhisp(message)).rejects.toThrow(
+          "Delivery already read",
+        );
+        expect(apiCalls).not.toContain("messages.markRead");
+        expect(
+          new QueryClient().getQueryData(["whisp-media-kind", messageId]),
+        ).toBeUndefined();
+      } finally {
+        await act(async () => renderer?.unmount());
+        client.clear();
+      }
+    });
+  }
+}

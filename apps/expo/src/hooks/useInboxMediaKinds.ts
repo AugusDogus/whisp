@@ -3,7 +3,7 @@ import { useMemo } from "react";
 import { useQueries } from "@tanstack/react-query";
 
 import type { InboxMessage } from "~/components/friends/types";
-import type { MediaKind } from "~/utils/media-kind";
+import { whispMediaKindKey, type MediaKind } from "~/utils/media-kind";
 import { readWhispMediaKind, retryWhispMediaKind } from "~/utils/mls-media";
 
 /** Resolve only the latest direct whisp per sender, which determines the row's color. */
@@ -26,12 +26,7 @@ export function useInboxMediaKinds(inbox: InboxMessage[], enabled: boolean) {
     queries: (enabled ? messages : []).map((message) => ({
       // QueryProvider already isolates accounts and servers. Cache only the type,
       // never descriptors or media keys; profile persistence excludes this key.
-      queryKey: [
-        "whisp-media-kind",
-        message.deliveryId,
-        message.messageId,
-        message.senderId,
-      ],
+      queryKey: whispMediaKindKey(message.messageId),
       queryFn: ({ signal }: { signal: AbortSignal }) =>
         readWhispMediaKind(message, signal),
       staleTime: Infinity,
