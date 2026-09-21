@@ -25,6 +25,9 @@ export interface RootStackParamList extends ParamListBase {
   CreateGroup: undefined;
   BackgroundUploadTest: undefined;
   MlsTest: undefined;
+  Settings: undefined;
+  Devices: undefined;
+  EncryptionRecovery: undefined;
 }
 
 export type AppScreenName = keyof RootStackParamList;
