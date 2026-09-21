@@ -60,11 +60,12 @@ function comment(input: unknown): string {
     }
     const build = buildSchema.parse(buildOutput);
     const published = updateSchema.parse(update);
-    const qr = new URL("https://qr.expo.dev/eas-update");
+    // /eas-update treats appScheme as a slug and prepends exp+.
+    // Our installed preview uses the explicit whisp-preview scheme.
+    const qr = new URL("https://qr.expo.dev/development-client");
     qr.search = new URLSearchParams({
-      projectId,
-      groupId: published.group,
       appScheme: "whisp-preview",
+      url: `https://u.expo.dev/${projectId}/group/${published.group}`,
     }).toString();
     return {
       fingerprint: build.runtime_version,
