@@ -33,6 +33,7 @@ import type { FriendRow, GroupRow } from "~/components/friends/types";
 import { Text } from "~/components/ui/text";
 import { useRecording } from "~/contexts/RecordingContext";
 import { useFriendRows } from "~/hooks/useFriendRows";
+import { useInboxCiphertext } from "~/hooks/useInboxCiphertext";
 import { useInboxMediaKinds } from "~/hooks/useInboxMediaKinds";
 import { useMessageFromNotification } from "~/hooks/useMessageFromNotification";
 import { useMessageViewerState } from "~/hooks/useMessageViewerState";
@@ -164,6 +165,7 @@ export default function FriendsScreen() {
     inboxRaw,
     utils,
   });
+  useInboxCiphertext(inboxRaw, selfUserId, isFocused && !hasMedia && !viewer);
   const mediaTypes = useInboxMediaKinds(
     inbox,
     isFocused && !!selfUserId && !viewer && !hasMedia,

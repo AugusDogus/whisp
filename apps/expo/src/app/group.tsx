@@ -14,7 +14,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Image } from "expo-image";
 
 import { Ionicons } from "@expo/vector-icons";
-import { useNavigation, useRoute } from "@react-navigation/native";
+import {
+  useIsFocused,
+  useNavigation,
+  useRoute,
+} from "@react-navigation/native";
 import { Button } from "heroui-native/button";
 
 import { MessageViewerModal } from "~/components/friends/MessageViewerModal";
@@ -22,13 +26,17 @@ import { Avatar } from "~/components/ui/avatar";
 import { GroupAvatar } from "~/components/ui/group-avatar";
 import { Text } from "~/components/ui/text";
 import { useGroupMessageViewer } from "~/hooks/useGroupMessageViewer";
+import { useInboxCiphertext } from "~/hooks/useInboxCiphertext";
 import type { RootStackParamList } from "~/navigation/types";
 import { trpc } from "~/utils/api";
+import { authClient } from "~/utils/auth";
 
 import WhispLogoDark from "../../assets/splash-icon-dark.png";
 import WhispLogoLight from "../../assets/splash-icon.png";
 
 export default function GroupScreen() {
+  const isFocused = useIsFocused();
+  const { data: session } = authClient.useSession();
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute<RouteProp<RootStackParamList, "Group">>();
@@ -58,6 +66,7 @@ export default function GroupScreen() {
 
   const { viewer, openViewer, closeViewer, onViewerTap } =
     useGroupMessageViewer(groupId);
+  useInboxCiphertext(inboxRaw, session?.user.id ?? null, isFocused && !viewer);
   const hasAutoOpenedRef = useRef(false);
 
   const isLoading = groupLoading || inboxLoading;

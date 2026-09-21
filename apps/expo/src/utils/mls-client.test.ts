@@ -31,9 +31,14 @@ const nativeState = z.object({ deviceId: z.string(), groupId: z.string() });
 let userId = "alice";
 let signedOut = false;
 let sessionError: { message: string } | null = null;
+let sessionReads = 0;
+let nativeSyncs = 0;
+let cachedDescriptors: Record<string, unknown> = {};
+let apiCalls: string[] = [];
 let nativeConfigurations: (string | null)[] = [];
 let nativeJobs: SendJob[] = [];
 let acknowledgedJobs: string[] = [];
+let onAcknowledge = () => {};
 const notices: { error: string[]; info: string[]; success: string[] } = {
   error: [],
   info: [],
@@ -50,6 +55,7 @@ let descriptors: Record<string, unknown> = {};
 let syncDescriptors = async () => JSON.stringify(descriptors);
 let nativeEnqueue: () => Promise<string> = async () => messageId;
 let download: () => Promise<void> = async () => {};
+let disposedDownloads = 0;
 let handlers: Record<string, (input: unknown) => unknown> = {};
 
 class NativeTransportError extends Error {
@@ -119,6 +125,7 @@ const api = createTRPCClient<AppRouter>({
         observable((observer) => {
           void Promise.resolve()
             .then(() => {
+              apiCalls.push(op.path);
               const handler = handlers[op.path];
               if (!handler) throw new Error(`Unexpected API call: ${op.path}`);
               return handler(op.input);
@@ -150,10 +157,13 @@ mock.module("./auth", () => ({
   authClient: {
     ...originalAuth.authClient,
     getCookie: () => (signedOut ? null : `session-${userId}`),
-    getSession: async () => ({
-      data: signedOut || sessionError ? null : { user: { id: userId } },
-      error: sessionError,
-    }),
+    getSession: async () => {
+      sessionReads++;
+      return {
+        data: signedOut || sessionError ? null : { user: { id: userId } },
+        error: sessionError,
+      };
+    },
   },
 }));
 mock.module("expo-device", () => ({
@@ -164,6 +174,9 @@ mock.module("expo-secure-store", () => ({
   getItemAsync: async (key: string) => secure.get(key) ?? null,
   setItemAsync: async (key: string, value: string) => {
     secure.set(key, value);
+  },
+  deleteItemAsync: async (key: string) => {
+    secure.delete(key);
   },
   WHEN_UNLOCKED_THIS_DEVICE_ONLY: "device-only",
 }));
@@ -185,12 +198,25 @@ mock.module("expo-file-system/legacy", () => ({
   readDirectoryAsync: async () => [],
   deleteAsync: async (path: string) => {
     files.delete(path);
+    if (path.endsWith("/"))
+      for (const name of files.keys())
+        if (name.startsWith(path)) files.delete(name);
   },
   downloadAsync: async (_url: string, path: string) => {
     await download();
     files.set(path, "ciphertext");
     return { status: 200 };
   },
+  createDownloadResumable: (_url: string, path: string) => ({
+    cancelAsync: async () => {
+      disposedDownloads++;
+    },
+    downloadAsync: async () => {
+      await download();
+      files.set(path, "ciphertext");
+      return { status: 200, uri: path };
+    },
+  }),
 }));
 mock.module("react-native-whisp-mls", () => ({
   MlsError: {
@@ -200,13 +226,25 @@ mock.module("react-native-whisp-mls", () => ({
     Transport: NativeTransportError,
     Request: NativeRequestError,
   },
-  syncNativeConversation: () => syncDescriptors(),
+  readNativeDescriptor: async (
+    _config: string,
+    _conversation: string,
+    id: string,
+  ) => {
+    const cached = cachedDescriptors[id];
+    return cached === undefined ? undefined : JSON.stringify(cached);
+  },
+  syncNativeConversation: () => {
+    nativeSyncs++;
+    return syncDescriptors();
+  },
   forgetNativeDescriptor: async (
     _config: string,
     _conversation: string,
     id: string,
   ) => {
     delete descriptors[id];
+    delete cachedDescriptors[id];
   },
   MlsClient: NativeClient,
   acquireDeviceLease: async () => ({ release: () => {} }),
@@ -214,6 +252,7 @@ mock.module("react-native-whisp-mls", () => ({
     list: async () => JSON.stringify(nativeJobs),
     acknowledge: async (id: string) => {
       acknowledgedJobs.push(id);
+      onAcknowledge();
     },
     configure: async (config: string | null) => {
       nativeConfigurations.push(config);
@@ -243,8 +282,12 @@ mock.module("react-native-whisp-mls", () => ({
   },
 }));
 mock.module("./base-url", () => ({ getBaseUrl: () => "https://whisp.test" }));
-const { withEncryptionDevice, prepareEncryptionDevice } =
-  await import("./mls-device");
+const {
+  withEncryptionDevice,
+  prepareEncryptionDevice,
+  registerDevice,
+  resetEncryptionDevice,
+} = await import("./mls-device");
 const { openWhisp, readWhispMediaKind, retryWhispMediaKind } =
   await import("./mls-media");
 const { useInboxMediaKinds } = await import("~/hooks/useInboxMediaKinds");
@@ -259,14 +302,20 @@ beforeEach(() => {
   userId = "alice";
   signedOut = false;
   sessionError = null;
+  sessionReads = 0;
+  nativeSyncs = 0;
+  cachedDescriptors = {};
+  apiCalls = [];
   nativeConfigurations = [];
   nativeJobs = [];
   acknowledgedJobs = [];
+  onAcknowledge = () => {};
   notices.error.length = notices.info.length = notices.success.length = 0;
   descriptors = {};
   syncDescriptors = async () => JSON.stringify(descriptors);
   nativeEnqueue = async () => messageId;
   download = async () => {};
+  disposedDownloads = 0;
   handlers = {
     "mls.register": () => ({ ok: true }),
     "mls.inventory": () =>
@@ -293,6 +342,96 @@ test("device provisioning registers the phone model without personal device name
   expect(registrations[0]).toMatchObject({ name: "Pixel 8 Pro", signatureKey });
 });
 
+for (const operation of [
+  "mls.register",
+  "mls.inventory",
+  "mls.publish",
+] as const) {
+  test(`key maintenance releases the private-state lease during ${operation}`, async () => {
+    const blocked = gate();
+    const entered = gate();
+    handlers["mls.inventory"] = () => [];
+    handlers["mls.publish"] = () => ({ ok: true });
+    const original = handlers[operation];
+    handlers[operation] = async (input) => {
+      entered.release();
+      await blocked.promise;
+      return original?.(input);
+    };
+    const preparing = prepareEncryptionDevice();
+    expect(prepareEncryptionDevice()).toBe(preparing);
+    await entered.promise;
+    try {
+      expect(
+        await Promise.race([
+          withEncryptionDevice(async () => "available"),
+          delay(100).then(() => "blocked"),
+        ]),
+      ).toBe("available");
+    } finally {
+      blocked.release();
+      await preparing;
+    }
+    expect(apiCalls.filter((path) => path === operation)).toHaveLength(1);
+  });
+}
+
+for (const change of ["account", "device"] as const) {
+  test(`key maintenance does not publish after changing ${change}`, async () => {
+    const device = await withEncryptionDevice(async (current) => current);
+    const blocked = gate();
+    const entered = gate();
+    handlers["mls.inventory"] = async () => {
+      entered.release();
+      await blocked.promise;
+      return [];
+    };
+    const preparing = prepareEncryptionDevice();
+    await entered.promise;
+    if (change === "account") userId = "bob";
+    else
+      files.set(
+        `${device.root}device.json`,
+        JSON.stringify({ deviceId: crypto.randomUUID() }),
+      );
+    blocked.release();
+    await expect(preparing).rejects.toThrow(
+      "account or encryption device changed",
+    );
+    expect(apiCalls).not.toContain("mls.publish");
+  });
+}
+
+test("reset provisions a new device without reusing interrupted maintenance", async () => {
+  const device = await withEncryptionDevice(async (current) => current);
+  const entered = gate();
+  const blocked = gate();
+  let calls = 0;
+  handlers["mls.inventory"] = async () => {
+    if (++calls === 1) {
+      entered.release();
+      await blocked.promise;
+    }
+    return Array.from({ length: 32 }, () => crypto.randomUUID());
+  };
+  handlers["mls.revoke"] = () => ({ ok: true });
+  const preparing = prepareEncryptionDevice();
+  const failed = preparing.then(
+    () => null,
+    (error: unknown) => error,
+  );
+  await entered.promise;
+  try {
+    await resetEncryptionDevice();
+    const current = await withEncryptionDevice(async (value) => value);
+    expect(current.deviceId).not.toBe(device.deviceId);
+    expect(calls).toBe(2);
+  } finally {
+    blocked.release();
+    expect(await failed).toBeInstanceOf(Error);
+  }
+});
+
 const descriptor = {
   version: 1,
   messageId,
@@ -310,6 +449,7 @@ const message = {
 };
 async function selfConversation() {
   const device = await withEncryptionDevice(async (current) => current);
+  await registerDevice(device);
   let revision = 0;
   handlers["mls.prepare"] = () => ({
     draftId: messageId,
@@ -332,6 +472,7 @@ async function selfConversation() {
   handlers["mls.settle"] = () => ({ revision });
   handlers["mls.delivery"] = () => ({
     kind: "mls",
+    messageId,
     conversationId,
     groupId: null,
   });
@@ -372,10 +513,10 @@ for (const scenario of [
     };
     if (scenario === "network recovers") {
       let attempts = 0;
-      const inventory = handlers["mls.inventory"];
-      handlers["mls.inventory"] = (input) => {
+      const delivery = handlers["mls.delivery"];
+      handlers["mls.delivery"] = (input) => {
         if (++attempts <= 3) throw new TypeError("Network request failed");
-        return inventory?.(input);
+        return delivery?.(input);
       };
     }
     const client = new QueryClient({
@@ -494,8 +635,20 @@ test("inbox metadata resolves photo and video types without consuming the whisp"
   // Metadata sync must leave the descriptor available to the actual viewer.
   const opened = await openWhisp(message);
   expect(opened.mimeType).toBe("video/mp4");
+  expect(disposedDownloads).toBe(1);
   await opened.dispose();
   expect(receipts).toBe(0);
+});
+
+test("a failed encrypted download releases native progress subscriptions", async () => {
+  await selfConversation();
+  await seedDescriptor();
+  download = async () => {
+    throw new Error("Download interrupted");
+  };
+  await expect(openWhisp(message)).rejects.toThrow("Download interrupted");
+  expect(disposedDownloads).toBe(1);
+  expect([...files.values()]).not.toContain("plaintext");
 });
 
 test("inbox metadata rejects missing and mismatched encrypted descriptors", async () => {
@@ -515,6 +668,152 @@ test("inbox metadata rejects missing and mismatched encrypted descriptors", asyn
   await expect(readWhispMediaKind(message)).rejects.toThrow(
     "missing its delivery keys",
   );
+});
+
+test("opening authenticated cached metadata only requests delivery authorization", async () => {
+  await selfConversation();
+  await seedDescriptor();
+  expect(await readWhispMediaKind(message)).toBe("video");
+  expect(nativeSyncs).toBe(1);
+  // Native storage retains authenticated descriptors after syncing metadata.
+  cachedDescriptors = { ...descriptors };
+  sessionReads = 0;
+  apiCalls = [];
+  const opened = await openWhisp(message);
+  expect(opened.mimeType).toBe("video/mp4");
+  expect(apiCalls).toEqual(["mls.delivery"]);
+  expect(sessionReads).toBe(1);
+  expect(nativeSyncs).toBe(1);
+  await opened.dispose();
+});
+
+test("concurrent metadata reads share device loading but authorize every delivery", async () => {
+  await selfConversation();
+  const messages = Array.from({ length: 3 }, () => {
+    const id = crypto.randomUUID();
+    descriptors[id] = { ...descriptor, messageId: id };
+    return { ...message, messageId: id, deliveryId: crypto.randomUUID() };
+  });
+  handlers["mls.delivery"] = (input) => {
+    const { deliveryId } = z.object({ deliveryId: z.string() }).parse(input);
+    const current = messages.find((item) => item.deliveryId === deliveryId);
+    if (!current) throw new Error("Missing test delivery");
+    return {
+      kind: "mls",
+      messageId: current.messageId,
+      conversationId,
+      groupId: null,
+    };
+  };
+  sessionReads = 0;
+  apiCalls = [];
+  expect(
+    await Promise.all(messages.map((item) => readWhispMediaKind(item))),
+  ).toEqual(["video", "video", "video"]);
+  expect(sessionReads).toBe(1);
+  expect(apiCalls).toEqual(["mls.delivery", "mls.delivery", "mls.delivery"]);
+});
+
+test("cached metadata never bypasses fresh delivery authorization", async () => {
+  await selfConversation();
+  cachedDescriptors[messageId] = descriptor;
+  handlers["mls.delivery"] = () => {
+    throw new Error("This whisp has already been viewed on your account.");
+  };
+  let downloads = 0;
+  download = async () => {
+    downloads++;
+  };
+  await expect(openWhisp(message)).rejects.toThrow("already been viewed");
+  expect(downloads).toBe(0);
+  expect(nativeSyncs).toBe(0);
+});
+
+test("delivery authorization binds the exact message before cached descriptor reuse", async () => {
+  await selfConversation();
+  cachedDescriptors[messageId] = descriptor;
+  let downloads = 0;
+  download = async () => {
+    downloads++;
+  };
+  for (const authorizedMessageId of [crypto.randomUUID(), undefined]) {
+    handlers["mls.delivery"] = () => ({
+      kind: "mls",
+      messageId: authorizedMessageId,
+      conversationId,
+      groupId: null,
+    });
+    await expect(openWhisp(message)).rejects.toThrow(
+      "does not match this delivery",
+    );
+  }
+  expect(downloads).toBe(0);
+  expect(nativeSyncs).toBe(0);
+});
+
+test("cached descriptors retain sender, message, and group validation", async () => {
+  await selfConversation();
+  for (const changed of [
+    { senderId: "mallory" },
+    { messageId: crypto.randomUUID() },
+    { groupId: "another-group" },
+  ]) {
+    cachedDescriptors[messageId] = { ...descriptor, ...changed };
+    await expect(readWhispMediaKind(message)).rejects.toThrow("does not match");
+  }
+  expect(nativeSyncs).toBe(0);
+});
+
+test("pending delivery authorization does not block private-state operations", async () => {
+  await selfConversation();
+  await seedDescriptor();
+  const entered = gate();
+  const blocked = gate();
+  handlers["mls.delivery"] = async () => {
+    entered.release();
+    await blocked.promise;
+    return { kind: "mls", messageId, conversationId, groupId: null };
+  };
+  const reading = readWhispMediaKind(message);
+  await entered.promise;
+  try {
+    expect(
+      await Promise.race([
+        withEncryptionDevice(async () => "available"),
+        delay(100).then(() => "blocked"),
+      ]),
+    ).toBe("available");
+  } finally {
+    blocked.release();
+    await reading;
+  }
+});
+
+test("pending read receipts do not block private-state operations", async () => {
+  await selfConversation();
+  await seedDescriptor();
+  const opened = await openWhisp(message);
+  const entered = gate();
+  const blocked = gate();
+  handlers["messages.markRead"] = async () => {
+    entered.release();
+    await blocked.promise;
+    return { ok: true };
+  };
+  const receipt = opened.acknowledge();
+  await entered.promise;
+  try {
+    expect(
+      await Promise.race([
+        withEncryptionDevice(async () => "available"),
+        delay(100).then(() => "blocked"),
+      ]),
+    ).toBe("available");
+  } finally {
+    blocked.release();
+    await receipt;
+    await opened.dispose();
+  }
 });
 
 test("canceled inbox metadata does not provision or query a device", async () => {
@@ -655,7 +954,7 @@ test("legacy close waits for the read receipt before one remote cleanup", async 
   expect(opened.mimeType).toBe("video/quicktime");
 });
 
-test("opening a whisp replenishes keys after offline provisioning failed", async () => {
+test("opening does not wait for key maintenance after offline provisioning failed", async () => {
   await selfConversation();
   handlers["mls.inventory"] = () => {
     throw new Error("offline");
@@ -678,9 +977,14 @@ test("opening a whisp replenishes keys after offline provisioning failed", async
     return { ok: true };
   };
   await seedDescriptor();
+  apiCalls = [];
   const opened = await openWhisp(message);
-  expect(published).toBe(32);
+  expect(published).toBe(0);
+  expect(apiCalls).toEqual(["mls.delivery"]);
   await opened.dispose();
+  // App lifecycle retries maintenance independently, preserving publish ordering.
+  await prepareEncryptionDevice();
+  expect(published).toBe(32);
 });
 
 test("a transient sign-in check failure preserves native worker configuration", async () => {
@@ -754,5 +1058,21 @@ test("terminal send failures are reported and acknowledged", async () => {
   expect(getOutboxStatusSnapshot()[job.recipients[0]]?.state).toBe("failed");
   expect(notices.error).toEqual([reason]);
   expect(acknowledgedJobs).toEqual([job.id]);
+  client.clear();
+});
+
+test("changing accounts during native acknowledgement stops remaining job side effects", async () => {
+  const client = new QueryClient();
+  const first = queuedSend("sent", null);
+  const second = queuedSend("failed", "Failure for previous account");
+  const pending = queuedSend("uploading", null);
+  nativeJobs = [first, second, pending];
+  onAcknowledge = () => {
+    userId = "bob";
+  };
+  await reconcileNativeSends(client);
+  expect(acknowledgedJobs).toEqual([first.id]);
+  expect(notices.error).toEqual([]);
+  expect(getOutboxStatusSnapshot()[pending.recipients[0]]).toBeUndefined();
   client.clear();
 });

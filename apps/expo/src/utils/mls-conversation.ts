@@ -2,6 +2,7 @@ import type { EncryptionDevice } from "./mls-device";
 
 import {
   forgetNativeDescriptor,
+  readNativeDescriptor,
   syncNativeConversation,
 } from "react-native-whisp-mls";
 
@@ -20,6 +21,22 @@ export const descriptorSchema = z.object({
 });
 export type Descriptor = z.infer<typeof descriptorSchema>;
 const descriptorsSchema = z.record(z.string(), descriptorSchema).nullable();
+
+/** Fresh delivery authorization must precede this authenticated local lookup. */
+export async function readConversationDescriptor(
+  device: EncryptionDevice,
+  conversationId: string,
+  messageId: string,
+) {
+  const cached = await readNativeDescriptor(
+    nativeDeviceConfig(device),
+    conversationId,
+    messageId,
+  );
+  if (cached !== undefined) return descriptorSchema.parse(JSON.parse(cached));
+  const conversation = await syncConversation(device, conversationId);
+  return conversation?.descriptors[messageId];
+}
 
 /** Caller holds withEncryptionDevice's native lease throughout the operation. */
 export async function syncConversation(
