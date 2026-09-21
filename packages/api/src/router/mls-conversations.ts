@@ -129,6 +129,7 @@ export const mlsConversationsRouter = {
           ...prepared,
           deviceIdentityValidated: input.signatureKey !== undefined,
           supportsAtomicBegin: true,
+          supportsApplicationPublish: true,
         };
       }),
     ),
