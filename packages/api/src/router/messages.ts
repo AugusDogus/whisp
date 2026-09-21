@@ -6,6 +6,8 @@ import { z } from "zod/v4";
 import { and, eq, inArray, isNull } from "@acme/db";
 import { Message, MessageDelivery } from "@acme/db/schema";
 
+import { Blocking } from "../services/blocking";
+import { ContentAccess } from "../services/content-access";
 import { protectedProcedure } from "../trpc";
 import { PreviewScope } from "../uploadthing/preview-scope";
 import { PreviewUploads } from "../uploadthing/preview-uploads";
@@ -28,7 +30,13 @@ export const messagesRouter = {
       ? await ctx.db
           .select()
           .from(Message)
-          .where(inArray(Message.id, messageIds))
+          .where(
+            and(
+              inArray(Message.id, messageIds),
+              Blocking.allowed(me, Message.senderId),
+              ContentAccess.notSuspended(Message.senderId),
+            ),
+          )
       : ([] as (typeof Message.$inferSelect)[]);
     const idToMessage = new Map(messages.map((m) => [m.id, m] as const));
 

@@ -19,6 +19,7 @@ import { useIsFocused } from "@react-navigation/native";
 import { useThemeColor } from "heroui-native/hooks";
 
 import { DiscordProfileCard } from "~/components/discord-profile-card";
+import { SafetyActions } from "~/components/safety-actions";
 import { Text } from "~/components/ui/text";
 
 export function FriendActionsSheet({
@@ -114,6 +115,13 @@ export function FriendActionsSheet({
         </View>
 
         <View className="gap-2 px-4">
+          {selectedFriend && (
+            <SafetyActions
+              userId={selectedFriend.id}
+              name={selectedFriend.name}
+              onBlocked={() => bottomSheetRef.current?.close()}
+            />
+          )}
           <Pressable
             className="active:bg-default flex-row items-center gap-3 rounded-lg px-3 py-3"
             onPress={() => {

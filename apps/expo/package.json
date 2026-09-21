@@ -96,7 +96,8 @@
     "uniwind": "^1.4.0",
     "uploadthing": "catalog:",
     "zod": "catalog:",
-    "zustand": "^5.0.11"
+    "zustand": "^5.0.11",
+    "@acme/validators": "workspace:*"
   },
   "devDependencies": {
     "@acme/api": "workspace:*",

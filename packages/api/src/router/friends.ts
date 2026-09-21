@@ -1,11 +1,13 @@
-import type { TRPCRouterRecord } from "@trpc/server";
-
+import { TRPCError, type TRPCRouterRecord } from "@trpc/server";
 import { z } from "zod/v4";
 
 import { and, eq, inArray, ne, or, sql } from "@acme/db";
 import { FriendRequest, Friendship, user as User } from "@acme/db/schema";
 
 import { FRIEND_REQUEST_STATUS } from "../constants";
+import { Blocking } from "../services/blocking";
+import { ContentAccess } from "../services/content-access";
+import { FriendRequests } from "../services/friend-requests";
 import { getFriendsWithDiscordIds } from "../services/member";
 import {
   deriveLastSentOpened,
@@ -13,7 +15,7 @@ import {
   getLastSentMimeTypes,
   getPendingSentDeliveries,
 } from "../services/message-status";
-import { protectedProcedure } from "../trpc";
+import { protectedProcedure, sharingProcedure } from "../trpc";
 import {
   notifyFriendAccept,
   notifyFriendRequest,
@@ -33,6 +35,8 @@ export const friendsRouter = {
           and(
             sql`lower(${User.discordUsername}) = lower(${input.query})`,
             ne(User.id, me),
+            Blocking.allowed(me, User.id),
+            ContentAccess.notSuspended(User.id),
           ),
         );
 
@@ -109,7 +113,12 @@ export const friendsRouter = {
     const rows = await ctx.db
       .select()
       .from(Friendship)
-      .where(or(eq(Friendship.userIdA, me), eq(Friendship.userIdB, me)));
+      .where(
+        and(
+          or(eq(Friendship.userIdA, me), eq(Friendship.userIdB, me)),
+          Blocking.allowed(Friendship.userIdA, Friendship.userIdB),
+        ),
+      );
 
     const friendIds = rows.map((r) =>
       r.userIdA === me ? r.userIdB : r.userIdA,
@@ -218,6 +227,7 @@ export const friendsRouter = {
         and(
           eq(FriendRequest.toUserId, me),
           eq(FriendRequest.status, FRIEND_REQUEST_STATUS.PENDING),
+          Blocking.allowed(me, FriendRequest.fromUserId),
         ),
       );
 
@@ -236,91 +246,44 @@ export const friendsRouter = {
       .filter(Boolean);
   }),
 
-  sendRequest: protectedProcedure
+  sendRequest: sharingProcedure
     .input(z.object({ toUserId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
-      const me = ctx.session.user.id;
-      if (me === input.toUserId) return { ok: true };
-
-      // If already friends, do nothing
-      const existingFriend = await ctx.db
-        .select()
-        .from(Friendship)
-        .where(
-          or(
-            and(
-              eq(Friendship.userIdA, me),
-              eq(Friendship.userIdB, input.toUserId),
-            ),
-            and(
-              eq(Friendship.userIdB, me),
-              eq(Friendship.userIdA, input.toUserId),
-            ),
-          ),
-        );
-      if (existingFriend.length > 0) return { ok: true };
-
-      const [friendRequest] = await ctx.db
-        .insert(FriendRequest)
-        .values({
-          fromUserId: me,
-          toUserId: input.toUserId,
-          status: FRIEND_REQUEST_STATUS.PENDING,
-        })
-        .returning();
-
-      // Send notification (fire-and-forget, don't block response)
-      if (friendRequest) {
+      const result = await ctx.db.transaction((tx) =>
+        FriendRequests.send(tx, ctx.session.user.id, input.toUserId),
+      );
+      if (result.status === "unavailable")
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "This account is unavailable for friend requests.",
+        });
+      if (result.status === "requested")
         void notifyFriendRequest(
           ctx.db,
           input.toUserId,
           ctx.session.user.name,
-          friendRequest.id,
+          result.requestId,
         );
-      }
-
       return { ok: true };
     }),
 
-  acceptRequest: protectedProcedure
+  acceptRequest: sharingProcedure
     .input(z.object({ requestId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
-      const me = ctx.session.user.id;
-      const request = (
-        await ctx.db
-          .select()
-          .from(FriendRequest)
-          .where(eq(FriendRequest.id, input.requestId))
-      )[0];
-      if (
-        request?.toUserId !== me ||
-        request.status !== FRIEND_REQUEST_STATUS.PENDING
-      )
-        return { ok: false };
-
-      // create friendship with normalized pair
-      const a =
-        request.fromUserId < request.toUserId
-          ? request.fromUserId
-          : request.toUserId;
-      const b =
-        request.fromUserId < request.toUserId
-          ? request.toUserId
-          : request.fromUserId;
-      await ctx.db.insert(Friendship).values({ userIdA: a, userIdB: b });
-
-      // Delete the friend request now that it's been accepted
-      await ctx.db
-        .delete(FriendRequest)
-        .where(eq(FriendRequest.id, input.requestId));
-
-      // Send notification to the person who sent the request (fire-and-forget)
+      const result = await ctx.db.transaction((tx) =>
+        FriendRequests.accept(tx, ctx.session.user.id, input.requestId),
+      );
+      if (result.status === "unavailable")
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "This friend request is no longer available.",
+        });
       void notifyFriendAccept(
         ctx.db,
-        request.fromUserId,
+        result.senderId,
         ctx.session.user.name,
+        ctx.session.user.id,
       );
-
       return { ok: true };
     }),
 

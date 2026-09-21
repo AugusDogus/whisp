@@ -18,6 +18,7 @@ import { Button } from "heroui-native/button";
 import { Dialog } from "heroui-native/dialog";
 import { Switch } from "heroui-native/switch";
 
+import { BlockedUsers } from "~/components/blocked-users";
 import { DiscordProfileCard } from "~/components/discord-profile-card";
 import { PreviewSettings } from "~/components/preview-settings";
 import { SafeAreaView } from "~/components/styled";
@@ -132,6 +133,7 @@ export default function ProfileScreen() {
 
           {/* Cards */}
           <View className="mt-8 gap-3 pb-4">
+            <BlockedUsers />
             {/* Discord */}
             <Pressable
               onPress={() => {

@@ -12,7 +12,10 @@ const t = initTRPC
   .context<{ db: typeof db; session: { user: { id: string } } }>()
   .create();
 
-mock.module("../trpc", () => ({ protectedProcedure: t.procedure }));
+mock.module("../trpc", () => ({
+  protectedProcedure: t.procedure,
+  sharingProcedure: t.procedure,
+}));
 const { friendsRouter } = await import("./friends");
 const caller = t.router(friendsRouter).createCaller({
   db,
@@ -43,6 +46,12 @@ await client.executeMultiple(`
     id TEXT, messageId TEXT, recipientId TEXT, groupId TEXT, readAt INTEGER, createdAt INTEGER
   );
 `);
+
+await client.executeMultiple(
+  await Bun.file(
+    new URL("../../../db/drizzle/0002_account_safety.sql", import.meta.url),
+  ).text(),
+);
 
 beforeEach(async () => {
   await db.delete(schema.FriendRequest);

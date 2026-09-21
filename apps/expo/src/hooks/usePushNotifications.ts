@@ -67,33 +67,8 @@ export function usePushNotifications(sessionId: string | null) {
             typeof data.senderId === "string" ? data.senderId : "";
           console.log("Navigating to message from sender:", senderId);
           if (navigationRef.current && senderId) {
-            // If we have fileUrl and mimeType in the notification, pass them for instant viewing
-            const params: {
-              openMessageFromSender: string;
-              instantMessage?: {
-                messageId: string;
-                senderId: string;
-                fileUrl: string;
-                mimeType: string;
-                deliveryId: string;
-              };
-            } = { openMessageFromSender: senderId };
-
-            if (
-              data.fileUrl &&
-              data.mimeType &&
-              data.messageId &&
-              data.deliveryId
-            ) {
-              console.log("Using instant message data from notification");
-              params.instantMessage = {
-                messageId: data.messageId as string,
-                senderId: data.senderId as string,
-                fileUrl: data.fileUrl as string,
-                mimeType: data.mimeType as string,
-                deliveryId: data.deliveryId as string,
-              };
-            }
+            // Resolve notification content from the server so old pushes cannot bypass a block.
+            const params = { openMessageFromSender: senderId };
 
             navigationRef.current.navigate("Main", {
               screen: "Friends",

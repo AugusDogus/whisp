@@ -224,9 +224,6 @@ export default function FriendsScreen() {
    */
   useMessageFromNotification({
     senderId: mediaParams?.openMessageFromSender,
-    instantMessage: mediaParams?.instantMessage,
-    inbox,
-    inboxLoading,
     viewerOpen: !!viewer,
     utils,
     clearParams: () => {
@@ -238,7 +235,9 @@ export default function FriendsScreen() {
     openViewer: openViewerWithQueue,
     markAsRead: (deliveryId) => markRead.mutate({ deliveryId }),
     refetchInbox: () =>
-      refetchInbox().then((result) => ({ data: result.data })),
+      refetchInbox({ throwOnError: true }).then((result) => ({
+        data: result.data,
+      })),
   });
 
   const filteredRows = useMemo(() => {

@@ -5,6 +5,7 @@ import type { AVPlaybackStatus, Video as VideoType } from "expo-av";
 import { ResizeMode, Video } from "expo-av";
 import { Image } from "expo-image";
 
+import { SafetyActions } from "~/components/safety-actions";
 import type { ViewerState } from "~/hooks/useMessageViewerState";
 import { isVideoMime } from "~/utils/media-kind";
 
@@ -186,6 +187,19 @@ export function MessageViewerModal({
             : null}
         </View>
       </TouchableWithoutFeedback>
+      {currentViewerMessage && (
+        <View
+          className="bg-surface absolute right-3 rounded-xl"
+          style={{ top: insetsTop + 24 }}
+        >
+          <SafetyActions
+            userId={currentViewerMessage.senderId}
+            name="Sender"
+            onBlocked={onRequestClose}
+            compact
+          />
+        </View>
+      )}
     </Modal>
   );
 }

@@ -13,7 +13,7 @@ export default function TermsPage() {
           <h1 className="mb-8 text-4xl font-bold">Terms of Service</h1>
           <div className="space-y-6 font-mono text-sm leading-relaxed">
             <p className="text-muted-foreground">
-              Last Updated: October 20, 2025
+              Last Updated: September 21, 2026
             </p>
 
             <section>
@@ -21,9 +21,9 @@ export default function TermsPage() {
                 1. Acceptance of Terms
               </h2>
               <p>
-                By accessing or using Whisp, you agree to be bound by these
+                By accessing or using whisp, you agree to be bound by these
                 Terms of Service. If you do not agree to these terms, you may
-                not use the service. Whisp reserves the right to modify these
+                not use the service. whisp reserves the right to modify these
                 terms at any time, and your continued use of the service
                 constitutes acceptance of any changes.
               </p>
@@ -32,10 +32,10 @@ export default function TermsPage() {
             <section>
               <h2 className="mb-3 text-xl font-semibold">2. Eligibility</h2>
               <p>
-                You must be at least 13 years of age to use Whisp. By using the
+                You must be at least 13 years of age to use whisp. By using the
                 service, you represent and warrant that you meet this age
                 requirement. If you are under 18, you represent that you have
-                your parent or guardian&apos;s permission to use Whisp. Users
+                your parent or guardian&apos;s permission to use whisp. Users
                 under 13 are strictly prohibited from using the service.
               </p>
             </section>
@@ -45,7 +45,7 @@ export default function TermsPage() {
                 3. Account and Authentication
               </h2>
               <p>
-                Whisp uses Discord for authentication. By signing in with
+                whisp uses Discord for authentication. By signing in with
                 Discord, you authorize us to access and collect certain
                 information from your Discord account, including your Discord
                 username, user ID, email address, and profile picture. You are
@@ -61,12 +61,12 @@ export default function TermsPage() {
                 4. Service Description
               </h2>
               <p>
-                Whisp is a privacy-first ephemeral messaging platform that
+                whisp is a privacy-first ephemeral messaging platform that
                 allows users to share photos and videos with their friends. All
-                media shared through Whisp is automatically and permanently
+                media shared through whisp is automatically and permanently
                 deleted from our servers immediately after it has been viewed by
                 the recipient. Once deleted, content cannot be recovered by
-                Whisp or any user. While we delete content from our servers
+                whisp or any user. While we delete content from our servers
                 immediately upon viewing, we cannot control what recipients do
                 with content before or during viewing, including taking
                 screenshots or using external recording devices.
@@ -79,7 +79,7 @@ export default function TermsPage() {
               </h2>
               <p className="mb-3">
                 You are solely responsible for the content you share through
-                Whisp. You agree not to use Whisp to share, upload, transmit, or
+                whisp. You agree not to use whisp to share, upload, transmit, or
                 otherwise make available any content that:
               </p>
               <ul className="ml-6 list-outside list-disc space-y-2">
@@ -108,8 +108,8 @@ export default function TermsPage() {
                   affiliation with a person or entity
                 </li>
                 <li>
-                  Involves the transmission of sexually explicit content
-                  involving minors
+                  Contains child sexual abuse or exploitation, sexual content
+                  involving minors, or non-consensual intimate images
                 </li>
                 <li>
                   Harasses, threatens, or promotes violence against any
@@ -117,7 +117,35 @@ export default function TermsPage() {
                 </li>
               </ul>
               <p className="mt-3">
-                Whisp reserves the right to remove any content and terminate any
+                You must accept these terms and the in-app conduct rules before
+                sending content. To report abuse, open the account actions on a
+                friend profile, received message, friend request, or group
+                member and choose Report. Select a reason and optionally
+                describe what happened. Reports identify the accounts involved
+                and are reviewed by the whisp team. Reporting does not attach or
+                preserve photos or videos. Do not include passwords or illegal
+                material in reports.
+              </p>
+              <p className="mt-3">
+                Choose Block to stop messages and friend requests between your
+                accounts, including messages in shared groups. This removes your
+                friendship and pending requests. You can manage blocked accounts
+                in Profile. Unblocking does not restore the friendship or old
+                messages. Other members of a shared group can still communicate.
+                Blocking cannot retract content someone has already received or
+                saved outside whisp.
+              </p>
+              <p className="mt-3">
+                We may suspend sharing privileges for violations. You can appeal
+                a suspension or contact us about urgent safety concerns at{" "}
+                <a className="underline" href="mailto:augie@luebbers.email">
+                  augie@luebbers.email
+                </a>
+                . If someone is in immediate danger, contact local emergency
+                services.
+              </p>
+              <p className="mt-3">
+                whisp reserves the right to remove any content and terminate any
                 user account that violates these terms, at our sole discretion
                 and without prior notice.
               </p>
@@ -128,12 +156,12 @@ export default function TermsPage() {
                 6. Intellectual Property
               </h2>
               <p>
-                You retain all rights to the content you share through Whisp.
-                However, by using the service, you grant Whisp a limited,
+                You retain all rights to the content you share through whisp.
+                However, by using the service, you grant whisp a limited,
                 non-exclusive, royalty-free license to store, process, and
                 transmit your content solely for the purpose of providing the
                 service. This license terminates when your content is deleted
-                from our servers. The Whisp service, including its design,
+                from our servers. The whisp service, including its design,
                 functionality, and underlying technology, is protected by
                 copyright, trademark, and other intellectual property laws. You
                 may not copy, modify, distribute, or reverse engineer any part
@@ -146,16 +174,16 @@ export default function TermsPage() {
                 7. Termination Rights
               </h2>
               <p>
-                You may terminate your Whisp account at any time by deleting
+                You may terminate your whisp account at any time by deleting
                 your account through the app settings. When you delete your
-                account, all information we have stored about you, including
-                your account data and friend connections, will be permanently
-                deleted from our servers. Whisp reserves the right to suspend or
-                terminate your access to the service at any time, with or
-                without cause, and with or without notice. Upon termination,
-                your right to use the service will immediately cease. Whisp is
-                not liable to you or any third party for any termination of your
-                access to the service.
+                account, your sign-in account and sessions are deleted. Safety
+                reports are retained for review with their account references
+                removed, as described in our privacy policy. whisp reserves the
+                right to suspend or terminate your access to the service at any
+                time, with or without cause, and with or without notice. Upon
+                termination, your right to use the service will immediately
+                cease. whisp is not liable to you or any third party for any
+                termination of your access to the service.
               </p>
             </section>
 
@@ -209,7 +237,7 @@ export default function TermsPage() {
                 These Terms shall be governed by and construed in accordance
                 with applicable law, without regard to its conflict of law
                 provisions. Any disputes arising from these Terms or your use of
-                Whisp shall be resolved through binding arbitration, except that
+                whisp shall be resolved through binding arbitration, except that
                 either party may seek injunctive relief in court for violations
                 of intellectual property rights.
               </p>
@@ -220,7 +248,7 @@ export default function TermsPage() {
                 10. Changes to Terms
               </h2>
               <p>
-                Whisp reserves the right to modify these Terms of Service at any
+                whisp reserves the right to modify these Terms of Service at any
                 time. We will notify users of material changes by posting the
                 updated terms on this page and updating the &quot;Last
                 Updated&quot; date. Your continued use of the service after such

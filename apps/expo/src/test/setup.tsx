@@ -53,6 +53,8 @@ function ImageStub(
 mock.module("react-native", () => ({
   View: "view",
   Text: "text",
+  ScrollView: "scroll-view",
+  Linking: { openURL: async () => undefined },
   I18nManager: { isRTL: false },
   StyleSheet: {
     absoluteFill: { position: "absolute" },
@@ -84,6 +86,12 @@ mock.module("react-native", () => ({
   },
 }));
 mock.module("expo-image", () => ({ Image: ImageStub }));
+mock.module("expo-notifications", () => ({
+  dismissAllNotificationsAsync: async () => undefined,
+}));
+mock.module("expo-splash-screen", () => ({ hideAsync: async () => undefined }));
+mock.module("heroui-native/button", () => ({ Button: "button" }));
+mock.module("~/components/styled", () => ({ SafeAreaView: "safe-area" }));
 mock.module("~/utils/auth", () => ({
   authClient: {
     getCookie: () => "test-session",

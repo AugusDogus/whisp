@@ -4,18 +4,18 @@ import {
   createUploadthing,
   UploadThingError,
   UTFiles,
+  UTApi,
 } from "uploadthing/server";
 import { z } from "zod/v4";
 
-import { and, eq } from "@acme/db";
 import { db } from "@acme/db/client";
 import {
   BackgroundUploadTestFile,
-  GroupMember,
   Message,
   MessageDelivery,
 } from "@acme/db/schema";
 
+import { MessageRecipients } from "../services/message-recipients";
 import { notifyNewMessage } from "../utils/send-notification";
 import { updateStreak } from "../utils/update-streak";
 import { PreviewScope } from "./preview-scope";
@@ -45,7 +45,7 @@ export function createUploadRouter({ getSession }: CreateDeps) {
     })
       .input(
         z.object({
-          recipients: z.array(z.string().min(1)).optional(),
+          recipients: z.array(z.string().min(1)).max(100).optional(),
           groupId: z.string().min(1).optional(),
           mimeType: z.string().optional(),
           thumbhash: z.string().optional(),
@@ -57,35 +57,15 @@ export function createUploadRouter({ getSession }: CreateDeps) {
         if (!session) throw new UploadThingError("Unauthorized");
         const scope = PreviewScope.fromEnvironment(process.env);
         await PreviewUploads.assertOpen(db, scope);
-        const hasRecipients = input.recipients && input.recipients.length > 0;
-        const hasGroupId = Boolean(input.groupId);
-        if (!hasRecipients && !hasGroupId) {
-          // eslint-disable-next-line @typescript-eslint/only-throw-error -- UploadThingError
+        const recipients = await MessageRecipients.resolve(
+          db,
+          session.user.id,
+          input,
+        );
+        if (recipients.status !== "ready") {
           throw new UploadThingError(
-            "Either recipients or groupId is required",
+            "Cannot send to these recipients. Check your account's terms acceptance, friendship, and group membership, then try again.",
           );
-        }
-        if (hasRecipients && hasGroupId) {
-          // eslint-disable-next-line @typescript-eslint/only-throw-error -- UploadThingError
-          throw new UploadThingError(
-            "Cannot specify both recipients and groupId",
-          );
-        }
-        if (hasGroupId && input.groupId) {
-          const [membership] = await db
-            .select()
-            .from(GroupMember)
-            .where(
-              and(
-                eq(GroupMember.groupId, input.groupId),
-                eq(GroupMember.userId, session.user.id),
-              ),
-            )
-            .limit(1);
-          if (!membership) {
-            // eslint-disable-next-line @typescript-eslint/only-throw-error -- UploadThingError
-            throw new UploadThingError("Not a member of this group");
-          }
         }
         return {
           [UTFiles]: files.map((file) => ({
@@ -110,53 +90,46 @@ export function createUploadRouter({ getSession }: CreateDeps) {
         const messageId = crypto.randomUUID();
         const isGroupMessage = Boolean(metadata.groupId);
 
-        await db.insert(Message).values({
-          id: messageId,
-          senderId: metadata.userId,
-          groupId: metadata.groupId ?? undefined,
-          fileUrl: file.ufsUrl,
-          fileKey: getFileKey(file),
-          mimeType: metadata.mimeType,
-          thumbhash: metadata.thumbhash,
+        const result = await db.transaction(async (tx) => {
+          const recipients = await MessageRecipients.resolve(
+            tx,
+            metadata.userId,
+            metadata,
+          );
+          if (recipients.status !== "ready")
+            return { status: "unavailable" } as const;
+          await tx.insert(Message).values({
+            id: messageId,
+            senderId: metadata.userId,
+            groupId: metadata.groupId,
+            fileUrl: file.ufsUrl,
+            fileKey: getFileKey(file),
+            mimeType: metadata.mimeType,
+            thumbhash: metadata.thumbhash,
+          });
+          const deliveries = recipients.recipientIds.map((recipientId) => ({
+            id: crypto.randomUUID(),
+            messageId,
+            recipientId,
+            groupId: metadata.groupId,
+          }));
+          await tx.insert(MessageDelivery).values(deliveries);
+          return { status: "delivered", deliveries } as const;
         });
-
-        let deliveries: {
-          id: string;
-          messageId: string;
-          recipientId: string;
-          groupId?: string;
-        }[];
-
-        if (isGroupMessage && metadata.groupId) {
-          const groupId = metadata.groupId;
-          const members = await db
-            .select({ userId: GroupMember.userId })
-            .from(GroupMember)
-            .where(eq(GroupMember.groupId, groupId));
-          const recipientIds = members
-            .map((m) => m.userId)
-            .filter((id) => id !== metadata.userId);
-          deliveries = recipientIds.map((rid) => ({
-            id: crypto.randomUUID(),
-            messageId,
-            recipientId: rid,
-            groupId,
-          }));
-        } else if (metadata.recipients.length > 0) {
-          deliveries = metadata.recipients.map((rid) => ({
-            id: crypto.randomUUID(),
-            messageId,
-            recipientId: rid,
-          }));
-        } else {
-          deliveries = [];
+        if (result.status !== "delivered") {
+          const deleted = await new UTApi().deleteFiles(getFileKey(file));
+          if (!deleted.success)
+            throw new UploadThingError(
+              "Delivery was cancelled, but uploaded file cleanup failed. Contact support.",
+            );
+          throw new UploadThingError(
+            "Delivery was cancelled because the recipients or account permissions changed during upload.",
+          );
         }
-
-        await db.insert(MessageDelivery).values(deliveries);
-
+        const deliveries = result.deliveries;
         if (!isGroupMessage) {
-          for (const recipientId of metadata.recipients) {
-            await updateStreak(db, metadata.userId, recipientId);
+          for (const delivery of deliveries) {
+            await updateStreak(db, metadata.userId, delivery.recipientId);
           }
         }
 
@@ -184,10 +157,6 @@ export function createUploadRouter({ getSession }: CreateDeps) {
               metadata.userId,
               sender.name,
               messageId,
-              file.ufsUrl,
-              metadata.mimeType,
-              delivery.id,
-              metadata.thumbhash,
               delivery.groupId
                 ? {
                     groupId: delivery.groupId,
