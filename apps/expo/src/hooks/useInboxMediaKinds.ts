@@ -4,7 +4,7 @@ import { useQueries } from "@tanstack/react-query";
 
 import type { InboxMessage } from "~/components/friends/types";
 import type { MediaKind } from "~/utils/media-kind";
-import { readWhispMediaKind } from "~/utils/mls-media";
+import { readWhispMediaKind, retryWhispMediaKind } from "~/utils/mls-media";
 
 /** Resolve only the latest direct whisp per sender, which determines the row's color. */
 export function useInboxMediaKinds(inbox: InboxMessage[], enabled: boolean) {
@@ -35,7 +35,9 @@ export function useInboxMediaKinds(inbox: InboxMessage[], enabled: boolean) {
       queryFn: ({ signal }: { signal: AbortSignal }) =>
         readWhispMediaKind(message, signal),
       staleTime: Infinity,
-      retry: 1,
+      // React Query backs retries off to 30s and cancels them when the screen
+      // stops observing. A brief outage must not leave the color stuck until refresh.
+      retry: retryWhispMediaKind,
     })),
   });
   const mediaKinds = new Map<string, MediaKind>();
