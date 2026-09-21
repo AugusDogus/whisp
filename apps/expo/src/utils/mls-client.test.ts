@@ -41,6 +41,7 @@ mock.module("sonner-native", () => ({
   },
 }));
 let descriptors: Record<string, unknown> = {};
+let syncDescriptors = async () => JSON.stringify(descriptors);
 let nativeEnqueue: () => Promise<string> = async () => messageId;
 let download: () => Promise<void> = async () => {};
 let handlers: Record<string, (input: unknown) => unknown> = {};
@@ -172,7 +173,7 @@ mock.module("expo-file-system/legacy", () => ({
   },
 }));
 mock.module("react-native-whisp-mls", () => ({
-  syncNativeConversation: async () => JSON.stringify(descriptors),
+  syncNativeConversation: () => syncDescriptors(),
   forgetNativeDescriptor: async (
     _config: string,
     _conversation: string,
@@ -217,7 +218,7 @@ mock.module("react-native-whisp-mls", () => ({
 mock.module("./base-url", () => ({ getBaseUrl: () => "https://whisp.test" }));
 const { withEncryptionDevice, prepareEncryptionDevice } =
   await import("./mls-device");
-const { openWhisp } = await import("./mls-media");
+const { openWhisp, readWhispMediaKind } = await import("./mls-media");
 
 const { enqueueNativeSend, configureNativeSends } =
   await import("./native-send");
@@ -234,6 +235,7 @@ beforeEach(() => {
   acknowledgedJobs = [];
   notices.error.length = notices.info.length = notices.success.length = 0;
   descriptors = {};
+  syncDescriptors = async () => JSON.stringify(descriptors);
   nativeEnqueue = async () => messageId;
   download = async () => {};
   handlers = {
@@ -320,6 +322,86 @@ function gate() {
 async function seedDescriptor() {
   descriptors[messageId] = descriptor;
 }
+
+test("inbox metadata resolves photo and video types without consuming the whisp", async () => {
+  await selfConversation();
+  let downloads = 0;
+  let receipts = 0;
+  let cleanups = 0;
+  download = async () => {
+    downloads++;
+  };
+  handlers["messages.markRead"] = () => {
+    receipts++;
+    return { ok: true };
+  };
+  handlers["messages.cleanupIfAllRead"] = () => {
+    cleanups++;
+    return { ok: true };
+  };
+  for (const [mimeType, kind] of [
+    ["image/jpeg", "photo"],
+    ["video/mp4", "video"],
+  ] as const) {
+    descriptors[messageId] = { ...descriptor, mimeType };
+    expect(await readWhispMediaKind(message)).toBe(kind);
+    expect(descriptors[messageId]).toBeDefined();
+  }
+  expect(downloads).toBe(0);
+  expect(receipts).toBe(0);
+  expect(cleanups).toBe(0);
+  expect([...files.values()]).not.toContain("plaintext");
+  // Metadata sync must leave the descriptor available to the actual viewer.
+  const opened = await openWhisp(message);
+  expect(opened.mimeType).toBe("video/mp4");
+  await opened.dispose();
+  expect(receipts).toBe(0);
+});
+
+test("inbox metadata rejects missing and mismatched encrypted descriptors", async () => {
+  await selfConversation();
+  await expect(readWhispMediaKind(message)).rejects.toThrow(
+    "no valid media key",
+  );
+  for (const changed of [
+    { senderId: "mallory" },
+    { groupId: "other-group" },
+    { messageId: crypto.randomUUID() },
+  ]) {
+    descriptors[messageId] = { ...descriptor, ...changed };
+    await expect(readWhispMediaKind(message)).rejects.toThrow("does not match");
+  }
+  handlers["mls.delivery"] = () => ({ kind: "legacy" });
+  await expect(readWhispMediaKind(message)).rejects.toThrow(
+    "missing its delivery keys",
+  );
+});
+
+test("canceled inbox metadata does not provision or query a device", async () => {
+  const controller = new AbortController();
+  controller.abort();
+  await expect(readWhispMediaKind(message, controller.signal)).rejects.toThrow(
+    "canceled",
+  );
+  expect(files.size).toBe(0);
+});
+
+test("switching accounts during metadata sync discards the decrypted type", async () => {
+  await selfConversation();
+  await seedDescriptor();
+  const entered = gate();
+  const blocked = gate();
+  syncDescriptors = async () => {
+    entered.release();
+    await blocked.promise;
+    return JSON.stringify(descriptors);
+  };
+  const reading = readWhispMediaKind(message);
+  await entered.promise;
+  userId = "bob";
+  blocked.release();
+  await expect(reading).rejects.toThrow("account or encryption device changed");
+});
 
 test("native enqueue does not hold the foreground device lock", async () => {
   await selfConversation();

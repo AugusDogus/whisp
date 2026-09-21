@@ -2,6 +2,7 @@ import { decryptAttachment, newId } from "react-native-whisp-mls";
 
 import * as FS from "expo-file-system/legacy";
 
+import { mimeToMediaKind } from "./media-kind";
 import { forgetDescriptor, syncConversation } from "./mls-conversation";
 import { replenishKeys, withEncryptionDevice } from "./mls-device";
 
@@ -21,7 +22,7 @@ export type OpenedWhisp = {
   dispose: () => Promise<void>;
   acknowledge: () => Promise<void>;
 };
-export async function openWhisp(message: {
+type WhispMessage = {
   deliveryId: string;
   messageId: string;
   senderId: string;
@@ -29,8 +30,12 @@ export async function openWhisp(message: {
   fileUrl: string;
   mimeType?: string;
   thumbhash?: string;
-}): Promise<OpenedWhisp> {
-  const prepared = await withEncryptionDevice(async (device) => {
+};
+
+async function prepareWhisp(message: WhispMessage, signal?: AbortSignal) {
+  if (signal?.aborted) throw new Error("Inbox metadata sync canceled.");
+  return withEncryptionDevice(async (device) => {
+    if (signal?.aborted) throw new Error("Inbox metadata sync canceled.");
     const api = device.api;
     await replenishKeys(device);
     const delivery = await api.mls.delivery.query({
@@ -54,8 +59,10 @@ export async function openWhisp(message: {
         "This whisp has no valid media key on this device. Open it on an original recipient device, or ask the sender to resend it. It remains unread.",
       );
     if (
+      descriptor.messageId !== message.messageId ||
       descriptor.senderId !== message.senderId ||
-      descriptor.groupId !== delivery.groupId
+      descriptor.groupId !== delivery.groupId ||
+      descriptor.groupId !== (message.groupId ?? null)
     )
       throw new Error(
         "The encrypted whisp does not match this delivery. It remains unread.",
@@ -67,6 +74,27 @@ export async function openWhisp(message: {
       conversationId: delivery.conversationId,
     };
   });
+}
+
+/** Read only authenticated metadata. Never download media or acknowledge a view. */
+export async function readWhispMediaKind(
+  message: WhispMessage,
+  signal?: AbortSignal,
+) {
+  if (signal?.aborted) throw new Error("Inbox metadata sync canceled.");
+  if (message.mimeType !== ENCRYPTED_MIME)
+    return mimeToMediaKind(message.mimeType);
+  const prepared = await prepareWhisp(message, signal);
+  return withEncryptionDevice(async () => {
+    if (signal?.aborted) throw new Error("Inbox metadata sync canceled.");
+    return mimeToMediaKind(
+      prepared.kind === "mls" ? prepared.descriptor.mimeType : message.mimeType,
+    );
+  }, prepared.device);
+}
+
+export async function openWhisp(message: WhispMessage): Promise<OpenedWhisp> {
+  const prepared = await prepareWhisp(message);
   const { device } = prepared;
   const api = device.api;
   let uri = message.fileUrl;
