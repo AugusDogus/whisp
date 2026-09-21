@@ -318,44 +318,48 @@ export default function CameraPage(): React.ReactElement {
               .runOnJS(true)
               .onEnd(onDoubleTap)}
           >
-            {device && (
-              <ReanimatedCamera
-                style={StyleSheet.absoluteFill}
-                device={device}
-                isActive={isActive}
-                ref={camera}
-                onInitialized={onInitialized}
-                onError={onError}
-                onStarted={() => console.log("Camera started!")}
-                onStopped={() => console.log("Camera stopped!")}
-                onPreviewStarted={() => console.log("Preview started!")}
-                onPreviewStopped={() => console.log("Preview stopped!")}
-                onOutputOrientationChanged={(o) =>
-                  console.log(`Output orientation changed to ${o}!`)
-                }
-                onPreviewOrientationChanged={(o) =>
-                  console.log(`Preview orientation changed to ${o}!`)
-                }
-                onUIRotationChanged={(degrees) =>
-                  console.log(`UI Rotation changed: ${degrees}°`)
-                }
-                format={format}
-                fps={fps}
-                photoHdr={photoHdr}
-                videoHdr={videoHdr}
-                photoQualityBalance="speed"
-                lowLightBoost={device.supportsLowLightBoost && enableNightMode}
-                videoStabilizationMode="off"
-                enableZoomGesture={false}
-                animatedProps={cameraAnimatedProps}
-                exposure={0}
-                outputOrientation="preview"
-                photo={true}
-                video={true}
-                audio={microphonePermission === RESULTS.GRANTED}
-                enableLocation={false}
-              />
-            )}
+            <View style={StyleSheet.absoluteFill} collapsable={false}>
+              {device && (
+                <ReanimatedCamera
+                  style={StyleSheet.absoluteFill}
+                  device={device}
+                  isActive={isActive}
+                  ref={camera}
+                  onInitialized={onInitialized}
+                  onError={onError}
+                  onStarted={() => console.log("Camera started!")}
+                  onStopped={() => console.log("Camera stopped!")}
+                  onPreviewStarted={() => console.log("Preview started!")}
+                  onPreviewStopped={() => console.log("Preview stopped!")}
+                  onOutputOrientationChanged={(o) =>
+                    console.log(`Output orientation changed to ${o}!`)
+                  }
+                  onPreviewOrientationChanged={(o) =>
+                    console.log(`Preview orientation changed to ${o}!`)
+                  }
+                  onUIRotationChanged={(degrees) =>
+                    console.log(`UI Rotation changed: ${degrees}°`)
+                  }
+                  format={format}
+                  fps={fps}
+                  photoHdr={photoHdr}
+                  videoHdr={videoHdr}
+                  photoQualityBalance="speed"
+                  lowLightBoost={
+                    device.supportsLowLightBoost && enableNightMode
+                  }
+                  videoStabilizationMode="off"
+                  enableZoomGesture={false}
+                  animatedProps={cameraAnimatedProps}
+                  exposure={0}
+                  outputOrientation="preview"
+                  photo={true}
+                  video={true}
+                  audio={microphonePermission === RESULTS.GRANTED}
+                  enableLocation={false}
+                />
+              )}
+            </View>
           </GestureDetector>
         </Reanimated.View>
       </GestureDetector>
