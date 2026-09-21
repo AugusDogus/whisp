@@ -3,7 +3,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import { toast } from "sonner-native";
 
 import type { FriendsListOutput } from "~/utils/api";
-import type { MediaKind } from "~/utils/media-kind";
+import { whispMediaKindKey, type MediaKind } from "~/utils/media-kind";
 import {
   markWhispFailed,
   markWhispPending,
@@ -112,6 +112,10 @@ export async function reconcileNativeSends(queryClient: QueryClient) {
   if (cookie !== authClient.getCookie()) return;
   for (const job of jobs) {
     if (cookie !== authClient.getCookie()) return;
+    // Restore known types before publishing inbox invalidations, including jobs
+    // recovered after process death. This caches no keys or viewing permission.
+    if (job.status !== "failed")
+      queryClient.setQueryData(whispMediaKindKey(job.id), job.kind);
     const status = `${job.status}:${job.error ?? ""}`;
     if (observed.get(job.id) !== status) {
       observed.set(job.id, status);
@@ -154,12 +158,18 @@ export async function reconcileNativeSends(queryClient: QueryClient) {
 }
 export async function uploadMedia(params: UploadMediaParams): Promise<void> {
   const isGroupSend = Boolean(params.groupId?.trim());
+  const cookie = authClient.getCookie();
   try {
     if (!isGroupSend) markWhispUploading(params.recipients, params.type);
-    await enqueueNativeSend({
+    const messageId = await enqueueNativeSend({
       ...params,
       groupId: params.groupId?.trim() || undefined,
     });
+    if (cookie === authClient.getCookie())
+      params.queryClient.setQueryData(
+        whispMediaKindKey(messageId),
+        params.type,
+      );
   } catch (error) {
     applyFailedUploadSideEffects({
       recipients: params.recipients,
