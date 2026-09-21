@@ -101,11 +101,15 @@ export function createUploadRouter({ getSession }: CreateDeps) {
               recipientId,
               groupId: draft.groupId,
             }));
-            await tx.insert(MessageDelivery).values(deliveries);
-            await tx
-              .update(MlsDraft)
-              .set({ completedAt: new Date() })
-              .where(eq(MlsDraft.id, draft.id));
+            // The message exists before its deliveries. These independent writes
+            // share one LibSQL pipeline and remain inside the same transaction.
+            await Promise.all([
+              tx.insert(MessageDelivery).values(deliveries),
+              tx
+                .update(MlsDraft)
+                .set({ completedAt: new Date() })
+                .where(eq(MlsDraft.id, draft.id)),
+            ]);
             return { kind: "created" as const, draft, deliveries };
           })
           .catch(async (error: unknown) => {
