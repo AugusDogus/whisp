@@ -12,7 +12,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 
 import { BottomSheetBackdrop } from "@gorhom/bottom-sheet";
-import { useNavigation, useRoute } from "@react-navigation/native";
+import {
+  useIsFocused,
+  useNavigation,
+  useRoute,
+} from "@react-navigation/native";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { AddFriendsPanel } from "~/components/add-friends-panel";
@@ -26,8 +30,10 @@ import { MessageViewerModal } from "~/components/friends/MessageViewerModal";
 import { RemoveFriendDialog } from "~/components/friends/RemoveFriendDialog";
 import { SendModePanel } from "~/components/friends/SendModePanel";
 import type { FriendRow, GroupRow } from "~/components/friends/types";
+import { Text } from "~/components/ui/text";
 import { useRecording } from "~/contexts/RecordingContext";
 import { useFriendRows } from "~/hooks/useFriendRows";
+import { useInboxMediaKinds } from "~/hooks/useInboxMediaKinds";
 import { useMessageFromNotification } from "~/hooks/useMessageFromNotification";
 import { useMessageViewerState } from "~/hooks/useMessageViewerState";
 import { usePreviewSettings } from "~/hooks/usePreviewSettings";
@@ -49,6 +55,7 @@ import WhispLogoDark from "../../assets/splash-icon-dark.png";
 import WhispLogoLight from "../../assets/splash-icon.png";
 
 export default function FriendsScreen() {
+  const isFocused = useIsFocused();
   const queryClient = useQueryClient();
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -108,7 +115,12 @@ export default function FriendsScreen() {
 
   const onRefresh = async () => {
     setIsRefreshing(true);
-    await Promise.all([refetchFriends(), refetchInbox(), refetchGroups()]);
+    await Promise.all([
+      refetchFriends(),
+      refetchInbox(),
+      refetchGroups(),
+      queryClient.invalidateQueries({ queryKey: ["whisp-media-kind"] }),
+    ]);
     setIsRefreshing(false);
   };
 
@@ -152,6 +164,10 @@ export default function FriendsScreen() {
     inboxRaw,
     utils,
   });
+  const mediaTypes = useInboxMediaKinds(
+    inbox,
+    isFocused && !!selfUserId && !viewer && !hasMedia,
+  );
 
   // Handle hardware back button when in send mode (has media)
   useEffect(() => {
@@ -197,6 +213,7 @@ export default function FriendsScreen() {
     defaultRecipientId: mediaParams?.defaultRecipientId,
     outboxStatus,
     selfUserId,
+    mediaKinds: mediaTypes.mediaKinds,
   });
 
   const {
@@ -340,6 +357,16 @@ export default function FriendsScreen() {
             onToggleAddFriends={() => setShowAddFriends(!showAddFriends)}
             onNewGroup={() => navigation.navigate("CreateGroup")}
           />
+
+          {mediaTypes.hasError && !isLoading && !showAddFriends && (
+            <Text
+              accessibilityRole="alert"
+              className="px-4 py-2 text-sm text-muted"
+            >
+              Some whisp types couldn't load. Pull to refresh, or tap a whisp to
+              open it.
+            </Text>
+          )}
 
           {isLoading ? (
             <FriendsListSkeletonVaried />
