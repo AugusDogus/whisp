@@ -55,18 +55,22 @@ export async function getPendingSentDeliveries(
  * For each friend where I sent the last message, find the mimeType of the
  * most recent message I sent to them.
  */
-export async function getLastSentMimeTypes(
+export async function getLastSentMessages(
   dbClient: typeof db,
   me: string,
   friendIds: string[],
-): Promise<Map<string, string | null>> {
-  const mimeMap = new Map<string, string | null>();
+): Promise<Map<string, { messageId: string; mimeType: string | null }>> {
+  const mimeMap = new Map<
+    string,
+    { messageId: string; mimeType: string | null }
+  >();
   if (friendIds.length === 0) return mimeMap;
 
   const deliveries = await dbClient
     .select({
       recipientId: MessageDelivery.recipientId,
       messageId: MessageDelivery.messageId,
+      mimeType: Message.mimeType,
       createdAt: MessageDelivery.createdAt,
     })
     .from(MessageDelivery)
@@ -80,26 +84,13 @@ export async function getLastSentMimeTypes(
     )
     .orderBy(desc(MessageDelivery.createdAt));
 
-  const latestPerRecipient = new Map<string, { messageId: string }>();
-  for (const d of deliveries) {
-    if (!latestPerRecipient.has(d.recipientId)) {
-      latestPerRecipient.set(d.recipientId, { messageId: d.messageId });
+  for (const delivery of deliveries) {
+    if (!mimeMap.has(delivery.recipientId)) {
+      mimeMap.set(delivery.recipientId, {
+        messageId: delivery.messageId,
+        mimeType: delivery.mimeType,
+      });
     }
-  }
-
-  const messageIds = [
-    ...new Set([...latestPerRecipient.values()].map((v) => v.messageId)),
-  ];
-  if (messageIds.length === 0) return mimeMap;
-
-  const msgs = await dbClient
-    .select({ id: Message.id, mimeType: Message.mimeType })
-    .from(Message)
-    .where(inArray(Message.id, messageIds));
-  const msgMimeMap = new Map(msgs.map((m) => [m.id, m.mimeType]));
-
-  for (const [recipientId, { messageId }] of latestPerRecipient) {
-    mimeMap.set(recipientId, msgMimeMap.get(messageId) ?? null);
   }
 
   return mimeMap;
@@ -109,17 +100,21 @@ export async function getLastSentMimeTypes(
  * For each friend where they sent the last message to me, find the mimeType
  * of their most recent message.
  */
-export async function getLastReceivedMimeTypes(
+export async function getLastReceivedMessages(
   dbClient: typeof db,
   me: string,
   friendIds: string[],
-): Promise<Map<string, string | null>> {
-  const mimeMap = new Map<string, string | null>();
+): Promise<Map<string, { messageId: string; mimeType: string | null }>> {
+  const mimeMap = new Map<
+    string,
+    { messageId: string; mimeType: string | null }
+  >();
   if (friendIds.length === 0) return mimeMap;
 
   const deliveries = await dbClient
     .select({
       senderId: Message.senderId,
+      messageId: Message.id,
       mimeType: Message.mimeType,
       createdAt: MessageDelivery.createdAt,
     })
@@ -136,7 +131,7 @@ export async function getLastReceivedMimeTypes(
 
   for (const d of deliveries) {
     if (!mimeMap.has(d.senderId)) {
-      mimeMap.set(d.senderId, d.mimeType);
+      mimeMap.set(d.senderId, { messageId: d.messageId, mimeType: d.mimeType });
     }
   }
 

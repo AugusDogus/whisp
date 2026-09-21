@@ -55,6 +55,7 @@ function applySuccessfulUploadSideEffects(params: {
   queryClient: QueryClient;
   recipients: string[];
   mediaKind: MediaKind;
+  messageId: string;
   isGroupSend: boolean;
   groupId?: string;
 }) {
@@ -79,6 +80,7 @@ function applySuccessfulUploadSideEffects(params: {
             ...f,
             lastActivityTimestamp: now,
             lastSentOpened: false,
+            lastMessageId: params.messageId,
           };
         });
       },
@@ -132,6 +134,7 @@ export async function reconcileNativeSends(queryClient: QueryClient) {
           queryClient,
           recipients: job.recipients,
           mediaKind: job.kind,
+          messageId: job.id,
           isGroupSend,
           groupId: job.groupId ?? undefined,
         });

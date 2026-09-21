@@ -85,8 +85,11 @@ export function AddFriendsPanel() {
     },
     onSettled: async () => {
       // Always refetch after error or success to ensure we're in sync
-      await utils.friends.incomingRequests.invalidate();
-      await utils.friends.list.invalidate();
+      await Promise.all([
+        utils.friends.list.invalidate(),
+        utils.friends.incomingRequests.invalidate(),
+        utils.friends.searchUsers.invalidate(),
+      ]);
     },
   });
 
