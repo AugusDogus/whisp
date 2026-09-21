@@ -942,3 +942,122 @@ test("atomic begin authenticates draft ownership, device and current group acces
   });
   expect(await db.select().from(schema.MlsOperation)).toEqual([]);
 });
+
+test("append batches commit and Welcome writes without extra per-commit queries", async () => {
+  const secondRecipientDevice = crypto.randomUUID();
+  await receiver.register({ deviceId: secondRecipientDevice, signatureKey });
+  await receiver.publish({
+    deviceId: secondRecipientDevice,
+    packages: [{ id: crypto.randomUUID(), data: wire }],
+  });
+  const draft = await prepare();
+  const pending = await begin(draft.conversationId);
+  const input = {
+    ...pending.request,
+    draftId: draft.draftId,
+    commits: [
+      ...pending.request.commits,
+      { data: wire, members: pending.operation.members },
+    ],
+  };
+  const beforeAppend = queryCount;
+  const accepted = await sender.append(input);
+  expect(queryCount - beforeAppend).toBeLessThanOrEqual(8);
+  expect(accepted.revision).toBe(3);
+  expect(
+    new Set(
+      (await db.select().from(schema.MlsWelcome)).map(
+        (welcome) => welcome.deviceId,
+      ),
+    ),
+  ).toEqual(new Set([recipientDevice, secondRecipientDevice]));
+  const synced = await receiver.sync({
+    deviceId: recipientDevice,
+    conversationId: draft.conversationId,
+    after: 0,
+  });
+  expect(synced.welcome?.sequence).toBe(1);
+  expect(
+    synced.events.map((event) => ({
+      sequence: event.sequence,
+      kind: event.entry.kind,
+    })),
+  ).toEqual([
+    { sequence: 2, kind: "commit" },
+    { sequence: 3, kind: "application" },
+  ]);
+  const beforeRetry = queryCount;
+  // Accepted operations remain idempotent even if an obsolete draft ID is sent.
+  expect(
+    await sender.append({ ...input, draftId: crypto.randomUUID() }),
+  ).toEqual(accepted);
+  expect(queryCount - beforeRetry).toBe(1);
+  await sender.revoke({ deviceId: senderDevice });
+  await expect(sender.append(input)).rejects.toMatchObject({
+    code: "PRECONDITION_FAILED",
+  });
+});
+
+test("append validates every Welcome before advancing the conversation", async () => {
+  const draft = await prepare();
+  const pending = await begin(draft.conversationId);
+  await expect(
+    sender.append({
+      ...pending.request,
+      draftId: draft.draftId,
+      welcomes: pending.request.welcomes.map((welcome) => ({
+        ...welcome,
+        commitIndex: 1,
+      })),
+    }),
+  ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+  expect(await db.select().from(schema.MlsEvent)).toEqual([]);
+  expect(await db.select().from(schema.MlsWelcome)).toEqual([]);
+  expect(await db.select().from(schema.MlsDraftConversation)).toEqual([]);
+  expect(
+    (
+      await sender.sync({
+        deviceId: senderDevice,
+        conversationId: draft.conversationId,
+        after: 0,
+      })
+    ).conversation.revision,
+  ).toBe(0);
+  await expect(
+    sender.append({ ...pending.request, draftId: crypto.randomUUID() }),
+  ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+  await expect(
+    receiver.append({
+      ...pending.request,
+      deviceId: recipientDevice,
+      draftId: draft.draftId,
+    }),
+  ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+  expect(
+    await sender.append({ ...pending.request, draftId: draft.draftId }),
+  ).toEqual({ revision: 2 });
+});
+
+test("joined append authorization rejects membership changes before writing events", async () => {
+  await db.insert(schema.GroupMember).values([
+    { groupId: "append-group", userId: "alice" },
+    { groupId: "append-group", userId: "bob" },
+  ]);
+  const draft = await prepare("append-group");
+  const pending = await begin(draft.conversationId);
+  await db
+    .delete(schema.GroupMember)
+    .where(eq(schema.GroupMember.userId, "alice"));
+  await expect(
+    sender.append({ ...pending.request, draftId: draft.draftId }),
+  ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  expect(await db.select().from(schema.MlsEvent)).toEqual([]);
+  await db
+    .insert(schema.GroupMember)
+    .values({ groupId: "append-group", userId: "alice" });
+  await receiver.revoke({ deviceId: recipientDevice });
+  await expect(
+    sender.append({ ...pending.request, draftId: draft.draftId }),
+  ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+  expect(await db.select().from(schema.MlsEvent)).toEqual([]);
+});

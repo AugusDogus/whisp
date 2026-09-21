@@ -2,10 +2,11 @@
 import { TRPCError, type TRPCRouterRecord } from "@trpc/server";
 import { z } from "zod/v4";
 
-import { and, asc, desc, eq, gt, inArray } from "@acme/db";
+import { and, asc, desc, eq, gt, inArray, isNull } from "@acme/db";
 import {
   MessageDelivery,
   MlsConversation,
+  MlsDevice,
   MlsDraft,
   MlsDraftConversation,
   MlsEvent,
@@ -345,16 +346,47 @@ export const mlsConversationsRouter = {
     )
     .mutation(async ({ ctx, input }) =>
       ctx.db.transaction(async (tx) => {
-        await requireDevice(tx, ctx.session.user.id, input.deviceId);
-        const [operation] = await tx
-          .select()
-          .from(MlsOperation)
-          .where(
+        // Keep the active device as the root so accepted-operation retries are
+        // still authenticated even if their original draft is no longer present.
+        const [context] = await tx
+          .select({
+            device: MlsDevice,
+            operation: MlsOperation,
+            conversation: MlsConversation,
+            draft: MlsDraft,
+          })
+          .from(MlsDevice)
+          .leftJoin(
+            MlsOperation,
             and(
               eq(MlsOperation.id, input.operationId),
-              eq(MlsOperation.deviceId, input.deviceId),
+              eq(MlsOperation.deviceId, MlsDevice.id),
+            ),
+          )
+          .leftJoin(
+            MlsConversation,
+            eq(MlsConversation.id, MlsOperation.conversationId),
+          )
+          .leftJoin(
+            MlsDraft,
+            and(
+              eq(MlsDraft.id, input.draftId),
+              eq(MlsDraft.senderId, ctx.session.user.id),
+              eq(MlsDraft.senderDeviceId, MlsDevice.id),
+            ),
+          )
+          .where(
+            and(
+              eq(MlsDevice.id, input.deviceId),
+              eq(MlsDevice.userId, ctx.session.user.id),
+              isNull(MlsDevice.revokedAt),
             ),
           );
+        if (!context)
+          mlsConflict(
+            "This encryption device is unavailable. Register this device before sending or opening whisps.",
+          );
+        const { operation, conversation, draft } = context;
         if (!operation)
           mlsConflict(
             "This encrypted operation is unavailable. Sync and retry.",
@@ -363,21 +395,14 @@ export const mlsConversationsRouter = {
           return { revision: operation.revision };
         if (operation.expiresAt <= new Date())
           mlsConflict("This encryption operation expired. Sync and retry.");
-        const conversation = await authorizedConversation(
-          tx,
-          operation.conversationId,
-          ctx.session.user.id,
-        );
-        const [draft] = await tx
-          .select()
-          .from(MlsDraft)
-          .where(
-            and(
-              eq(MlsDraft.id, input.draftId),
-              eq(MlsDraft.senderId, ctx.session.user.id),
-              eq(MlsDraft.senderDeviceId, input.deviceId),
-            ),
-          );
+        const users = conversation
+          ? await conversationUsers(tx, conversation)
+          : [];
+        if (!conversation || !users.includes(ctx.session.user.id))
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "You are not a member of this encrypted conversation.",
+          });
         if (
           !draft ||
           draft.expiresAt <= new Date() ||
@@ -386,10 +411,7 @@ export const mlsConversationsRouter = {
           mlsConflict(
             "This upload draft does not belong to the encrypted conversation.",
           );
-        const roster = await conversationRoster(
-          tx,
-          await conversationUsers(tx, conversation),
-        );
+        const roster = await conversationRoster(tx, users);
         if (!sameRoster(roster, operation.members))
           throw new TRPCError({
             code: "CONFLICT",
@@ -426,6 +448,27 @@ export const mlsConversationsRouter = {
             packages.length
         )
           mlsConflict("Every new member needs exactly one Welcome.");
+        const welcomes: (typeof MlsWelcome.$inferInsert)[] = [];
+        for (const welcome of input.welcomes) {
+          const key = packages.find((p) => p.id === welcome.keyPackageId);
+          const entry = input.commits[welcome.commitIndex];
+          if (
+            !key ||
+            !entry?.welcome ||
+            !entry.members.some((m) => m.deviceId === key.deviceId)
+          )
+            mlsConflict(
+              "A Welcome does not match its reserved device and commit.",
+            );
+          welcomes.push({
+            keyPackageId: key.id,
+            conversationId: conversation.id,
+            deviceId: key.deviceId,
+            sequence: operation.baseRevision + welcome.commitIndex + 1,
+            data: entry.welcome,
+            members: entry.members,
+          });
+        }
         const revision = operation.baseRevision + input.commits.length + 1;
         const advanced = await tx
           .update(MlsConversation)
@@ -448,34 +491,15 @@ export const mlsConversationsRouter = {
           conversationId: conversation.id,
           members: roster,
         });
-        for (const [index, entry] of input.commits.entries())
-          await tx.insert(MlsEvent).values({
+        const events: (typeof MlsEvent.$inferInsert)[] = input.commits.map(
+          (entry, index) => ({
             id: crypto.randomUUID(),
             conversationId: conversation.id,
             sequence: operation.baseRevision + index + 1,
             entry: { kind: "commit", data: entry.data, members: entry.members },
-          });
-        for (const welcome of input.welcomes) {
-          const key = packages.find((p) => p.id === welcome.keyPackageId);
-          const entry = input.commits[welcome.commitIndex];
-          if (
-            !key ||
-            !entry?.welcome ||
-            !entry.members.some((m) => m.deviceId === key.deviceId)
-          )
-            mlsConflict(
-              "A Welcome does not match its reserved device and commit.",
-            );
-          await tx.insert(MlsWelcome).values({
-            keyPackageId: key.id,
-            conversationId: conversation.id,
-            deviceId: key.deviceId,
-            sequence: operation.baseRevision + welcome.commitIndex + 1,
-            data: entry.welcome,
-            members: entry.members,
-          });
-        }
-        await tx.insert(MlsEvent).values({
+          }),
+        );
+        events.push({
           id: crypto.randomUUID(),
           conversationId: conversation.id,
           sequence: revision,
@@ -488,6 +512,8 @@ export const mlsConversationsRouter = {
             groupId: draft.groupId,
           },
         });
+        await tx.insert(MlsEvent).values(events);
+        if (welcomes.length) await tx.insert(MlsWelcome).values(welcomes);
         await tx
           .update(MlsOperation)
           .set({ revision })
