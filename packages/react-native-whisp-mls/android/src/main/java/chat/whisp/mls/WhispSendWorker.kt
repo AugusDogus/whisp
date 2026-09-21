@@ -9,6 +9,7 @@ import androidx.core.app.NotificationCompat
 import androidx.work.*
 import chat.whisp.mls.core.*
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.net.HttpURLConnection
@@ -39,6 +40,7 @@ internal class WhispSendWorker(context: Context, params: WorkerParameters) : Cor
   }
   private suspend fun runJob(config: String, id: String, version: String): Result {
     try {
+      var confirmationRetries = 0
       while (true) {
         if (isStopped || SendVault.get(applicationContext) != config) return Result.retry()
         when (val step = advanceSendJob(config, id)) {
@@ -60,7 +62,13 @@ internal class WhispSendWorker(context: Context, params: WorkerParameters) : Cor
               return Result.retry()
             }
           }
-          SendStep.Confirm -> return Result.retry()
+          SendStep.Confirm -> {
+            // Upload callbacks can lag the transfer by a few hundred milliseconds.
+            // Briefly recheck before handing pending confirmation to OS backoff.
+            if (confirmationRetries == 3) return Result.retry()
+            delay(250L shl confirmationRetries)
+            confirmationRetries += 1
+          }
           SendStep.Sent, is SendStep.Failed -> return Result.success()
           is SendStep.Paused -> return if (step.failure.disposition == SendDisposition.RETRY) Result.retry() else Result.success()
           SendStep.Continue -> Unit

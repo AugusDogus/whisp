@@ -285,12 +285,22 @@ struct Sync {
     events: Vec<Event>,
     #[serde(default, rename = "retainedMessageIds")]
     retained_message_ids: Option<Vec<String>>,
+    #[serde(default, rename = "descriptorPublished")]
+    descriptor_published: Option<bool>,
 }
-fn sync(api: &Api, id: &str) -> Result<Option<State>, MlsError> {
+fn sync(
+    api: &Api,
+    id: &str,
+    draft_id: Option<&str>,
+) -> Result<(Option<State>, Option<bool>), MlsError> {
     let c = api.config;
     let mut state = recover(api, id)?;
     loop {
-        let result: Sync = api.call("sync", false, json!({"deviceId":c.device_id,"conversationId":id,"after":state.as_ref().map_or(0, |s| s.cursor)}))?;
+        let mut input = json!({"deviceId":c.device_id,"conversationId":id,"after":state.as_ref().map_or(0, |s| s.cursor)});
+        if let Some(draft) = draft_id {
+            input["draftId"] = json!(draft);
+        }
+        let result: Sync = api.call("sync", false, input)?;
         if state
             .as_ref()
             .is_some_and(|s| result.conversation.revision < s.cursor)
@@ -298,7 +308,7 @@ fn sync(api: &Api, id: &str) -> Result<Option<State>, MlsError> {
             return Err(MlsError::protocol("MLS history rollback detection"));
         }
         if state.is_none() && result.conversation.revision == 0 {
-            return Ok(None);
+            return Ok((None, result.descriptor_published));
         }
         if let Some(welcome) = result.welcome {
             uuid::Uuid::parse_str(&welcome.key_package_id)
@@ -418,7 +428,7 @@ fn sync(api: &Api, id: &str) -> Result<Option<State>, MlsError> {
                     },
                 )?;
             }
-            return Ok(Some(current));
+            return Ok((Some(current), result.descriptor_published));
         }
         if empty {
             return Err(MlsError::protocol("incomplete MLS event log"));
@@ -445,13 +455,17 @@ struct Operation {
 
 pub(crate) fn send(api: &Api, id: &str, descriptor: &Descriptor) -> Result<(), MlsError> {
     let c = api.config;
-    let current = sync(api, id)?;
-    // Receipt query comes AFTER recovery, including accepted requests whose response was lost.
-    let published: bool = api.call(
-        "descriptorPublished",
-        false,
-        json!({"deviceId":c.device_id,"draftId":descriptor.message_id,"conversationId":id}),
-    )?;
+    let (current, published) = sync(api, id, Some(&descriptor.message_id))?;
+    // Sync runs after recovery, including accepted append responses that were
+    // lost. Older backends omit the receipt and need the separate query.
+    let published = match published {
+        Some(published) => published,
+        None => api.call::<bool>(
+            "descriptorPublished",
+            false,
+            json!({"deviceId":c.device_id,"draftId":descriptor.message_id,"conversationId":id}),
+        )?,
+    };
     if published {
         return Ok(());
     }
@@ -562,7 +576,7 @@ pub async fn sync_native_conversation(
 ) -> Result<String, MlsError> {
     tokio::task::spawn_blocking(move || {
         let config = SendConfig::parse(&config)?;
-        let current = sync(&Api::new(&config)?, &conversation_id)?;
+        let (current, _) = sync(&Api::new(&config)?, &conversation_id, None)?;
         serde_json::to_string(&current.map(|s| s.descriptors))
             .map_err(|_| MlsError::protocol("received descriptor encoding"))
     })
