@@ -113,6 +113,7 @@ test("registered MLS migration upgrades an existing database and runs once", asy
       )
     ).rows.map((row) => row.name),
   ).toEqual([
+    "mls_application_attempt",
     "mls_conversation",
     "mls_device",
     "mls_draft",
@@ -136,14 +137,29 @@ test("MLS migration adopts tables created by earlier preview schema pushes witho
   );
   await client.executeMultiple(`
     INSERT INTO mls_conversation (id, scope, users, members) VALUES ('conversation', 'direct', '[]', '[]');
-    INSERT INTO mls_event (id, conversationId, sequence, entry) VALUES ('event', 'conversation', 1, 'encrypted whisp');
   `);
+  // Event rows have always stored a JSON envelope around the MLS ciphertext.
+  const entry = JSON.stringify({
+    kind: "application",
+    data: "encrypted whisp",
+    senderId: "sender",
+    senderDeviceId: "sender-device",
+    messageId: "message",
+    groupId: null,
+  });
+  await client.execute({
+    sql: "INSERT INTO mls_event (id, conversationId, sequence, entry) VALUES ('event', 'conversation', 1, ?)",
+    args: [entry],
+  });
   for (let attempt = 0; attempt < 2; attempt++) {
     await migrate(db, { migrationsFolder: source });
   }
   expect((await client.execute("SELECT entry FROM mls_event")).rows).toEqual([
-    { entry: "encrypted whisp" },
+    { entry },
   ]);
+  expect(
+    (await client.execute("SELECT epoch FROM mls_conversation")).rows,
+  ).toEqual([{ epoch: 0 }]);
   expect((await client.execute("PRAGMA foreign_key_check")).rows).toEqual([]);
   expect(
     (await client.execute("SELECT * FROM __drizzle_migrations")).rows,
