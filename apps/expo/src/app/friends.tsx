@@ -238,7 +238,9 @@ export default function FriendsScreen() {
     },
     openViewer: openViewerWithQueue,
     refetchInbox: () =>
-      refetchInbox().then((result) => ({ data: result.data })),
+      refetchInbox({ throwOnError: true }).then((result) => ({
+        data: result.data,
+      })),
   });
 
   const filteredRows = useMemo(() => {

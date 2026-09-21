@@ -14,6 +14,7 @@ import { Image } from "expo-image";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner-native";
 
+import { SafetyActions } from "~/components/safety-actions";
 import type { ViewerState } from "~/hooks/useMessageViewerState";
 import { isVideoMime } from "~/utils/media-kind";
 import { openWhisp, type OpenedWhisp } from "~/utils/mls-media";
@@ -219,6 +220,19 @@ export function MessageViewerModal({
           )}
         </View>
       </TouchableWithoutFeedback>
+      {message && (
+        <View
+          className="bg-surface absolute right-3 rounded-xl"
+          style={{ top: insetsTop + 24 }}
+        >
+          <SafetyActions
+            userId={message.senderId}
+            name="Sender"
+            onBlocked={onRequestClose}
+            compact
+          />
+        </View>
+      )}
     </Modal>
   );
 }

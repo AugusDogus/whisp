@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import * as schema from "@acme/db/schema";
+import { CONTENT_POLICY_VERSION } from "@acme/validators";
 
 const directory = await mkdtemp(join(tmpdir(), "whisp-mls-test-"));
 const client = createClient({ url: `file:${join(directory, "test.db")}` });
@@ -23,7 +24,10 @@ const db = drizzle({
 const t = initTRPC
   .context<{ db: typeof db; session: { user: { id: string } } }>()
   .create();
-mock.module("../../trpc", () => ({ protectedProcedure: t.procedure }));
+mock.module("../../trpc", () => ({
+  protectedProcedure: t.procedure,
+  sharingProcedure: t.procedure,
+}));
 const { mlsRouter } = await import("../../router/mls");
 const router = t.router(mlsRouter);
 type Caller = ReturnType<typeof router.createCaller>;
@@ -71,9 +75,21 @@ await client.executeMultiple(
     ),
   ).text(),
 );
+// Sending requires current terms acceptance and checks blocks and suspensions.
+await client.executeMultiple(
+  await Bun.file(
+    new URL("../../../../db/drizzle/0006_account_safety.sql", import.meta.url),
+  ).text(),
+);
 beforeEach(async () => {
   await client.executeMultiple(
     "DELETE FROM mls_draft; DELETE FROM mls_conversation; DELETE FROM mls_key_package; DELETE FROM mls_device; DELETE FROM friendship; DELETE FROM group_member; DELETE FROM message_delivery; DELETE FROM user; INSERT INTO user VALUES ('alice'), ('bob'), ('mallory');",
+  );
+  await db.insert(schema.ContentPolicyAcceptance).values(
+    ["alice", "bob", "mallory"].map((userId) => ({
+      userId,
+      version: CONTENT_POLICY_VERSION,
+    })),
   );
   await db
     .insert(schema.Friendship)

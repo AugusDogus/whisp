@@ -18,6 +18,7 @@ import { Button } from "heroui-native/button";
 import { Dialog } from "heroui-native/dialog";
 import { Switch } from "heroui-native/switch";
 
+import { BlockedUsers } from "~/components/blocked-users";
 import { DiscordProfileCard } from "~/components/discord-profile-card";
 import { PreviewSettings } from "~/components/preview-settings";
 import { SafeAreaView } from "~/components/styled";
@@ -143,6 +144,7 @@ export default function ProfileScreen() {
               <Text className="flex-1 text-base font-semibold">Settings</Text>
               <Ionicons name="chevron-forward" size={18} color={iconColor} />
             </Pressable>
+            <BlockedUsers />
             {/* Discord */}
             <Pressable
               onPress={() => {

@@ -8,6 +8,8 @@ import {
   MlsDraftConversation,
 } from "@acme/db/schema";
 
+import { Blocking } from "./blocking";
+import { ContentAccess } from "./content-access";
 import { directScope, hasConversationScope } from "./mls-preparation";
 
 /** Return unread deliveries and their direct MLS session in the same response.
@@ -32,6 +34,8 @@ export async function getMessageInbox(database: MlsDatabase, userId: string) {
       and(
         eq(MessageDelivery.recipientId, userId),
         isNull(MessageDelivery.readAt),
+        Blocking.allowed(userId, Message.senderId),
+        ContentAccess.notSuspended(Message.senderId),
       ),
     );
   const encrypted = deliveries.filter(

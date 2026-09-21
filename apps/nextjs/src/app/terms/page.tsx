@@ -13,7 +13,7 @@ export default function TermsPage() {
           <h1 className="mb-8 text-4xl font-bold">Terms of Service</h1>
           <div className="space-y-6 font-mono text-sm leading-relaxed">
             <p className="text-muted-foreground">
-              Last Updated: October 20, 2025
+              Last Updated: September 21, 2026
             </p>
 
             <section>
@@ -108,14 +108,42 @@ export default function TermsPage() {
                   affiliation with a person or entity
                 </li>
                 <li>
-                  Involves the transmission of sexually explicit content
-                  involving minors
+                  Contains child sexual abuse or exploitation, sexual content
+                  involving minors, or non-consensual intimate images
                 </li>
                 <li>
                   Harasses, threatens, or promotes violence against any
                   individual or group
                 </li>
               </ul>
+              <p className="mt-3">
+                You must accept these terms and the in-app conduct rules before
+                sending content. To report abuse, open the account actions on a
+                friend profile, received message, friend request, or group
+                member and choose Report. Select a reason and optionally
+                describe what happened. Reports identify the accounts involved
+                and are reviewed by the whisp team. Reporting does not attach or
+                preserve photos or videos. Do not include passwords or illegal
+                material in reports.
+              </p>
+              <p className="mt-3">
+                Choose Block to stop messages and friend requests between your
+                accounts, including messages in shared groups. This removes your
+                friendship and pending requests. You can manage blocked accounts
+                in Profile. Unblocking does not restore the friendship or old
+                messages. Other members of a shared group can still communicate.
+                Blocking cannot retract content someone has already received or
+                saved outside whisp.
+              </p>
+              <p className="mt-3">
+                We may suspend sharing privileges for violations. You can appeal
+                a suspension or contact us about urgent safety concerns at{" "}
+                <a className="underline" href="mailto:augie@luebbers.email">
+                  augie@luebbers.email
+                </a>
+                . If someone is in immediate danger, contact local emergency
+                services.
+              </p>
               <p className="mt-3">
                 whisp reserves the right to remove any content and terminate any
                 user account that violates these terms, at our sole discretion
@@ -148,14 +176,14 @@ export default function TermsPage() {
               <p>
                 You may terminate your whisp account at any time by deleting
                 your account through the app settings. When you delete your
-                account, all information we have stored about you, including
-                your account data and friend connections, will be permanently
-                deleted from our servers. whisp reserves the right to suspend or
-                terminate your access to the service at any time, with or
-                without cause, and with or without notice. Upon termination,
-                your right to use the service will immediately cease. whisp is
-                not liable to you or any third party for any termination of your
-                access to the service.
+                account, your sign-in account and sessions are deleted. Safety
+                reports are retained for review with their account references
+                removed, as described in our privacy policy. whisp reserves the
+                right to suspend or terminate your access to the service at any
+                time, with or without cause, and with or without notice. Upon
+                termination, your right to use the service will immediately
+                cease. whisp is not liable to you or any third party for any
+                termination of your access to the service.
               </p>
             </section>
 

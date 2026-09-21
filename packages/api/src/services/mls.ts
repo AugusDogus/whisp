@@ -12,6 +12,8 @@ import {
   MlsDraftConversation,
 } from "@acme/db/schema";
 
+import { MessageRecipients } from "./message-recipients";
+
 export type MlsDatabase = Pick<
   typeof db,
   "select" | "insert" | "update" | "delete"
@@ -44,6 +46,34 @@ export async function requireDevice(
 }
 
 export async function resolveRecipients(
+  database: MlsDatabase,
+  senderId: string,
+  input: { recipients?: string[]; groupId?: string },
+) {
+  const candidates = await candidateRecipients(database, senderId, input);
+  // Terms acceptance, suspensions, and blocks apply when a draft is prepared and
+  // again when its upload is delivered. Blocked group members get no keys.
+  const allowed = await MessageRecipients.resolve(
+    database,
+    senderId,
+    // Group drafts also carry their encrypted recipient list; membership decides.
+    input.groupId ? { groupId: input.groupId } : { recipients: input.recipients },
+  );
+  if (allowed.status === "restricted")
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message:
+        "Accept the current Terms of Service in Profile before sharing. If you already have, your account may be suspended; contact augie@luebbers.email.",
+    });
+  if (allowed.status !== "ready")
+    mlsConflict(
+      "One or more recipients can no longer receive whisps from you. Refresh and choose recipients again.",
+    );
+  const permitted = new Set(allowed.recipientIds);
+  return candidates.filter((id) => permitted.has(id));
+}
+
+async function candidateRecipients(
   database: MlsDatabase,
   senderId: string,
   input: { recipients?: string[]; groupId?: string },
@@ -173,7 +203,7 @@ export async function validateDraft(
   });
   if (JSON.stringify(current) !== JSON.stringify(draft.recipients))
     mlsConflict(
-      "Group membership changed while uploading. Send again to encrypt for the current members.",
+      "The recipients changed while uploading, for example someone left the group or a block was added. Send again to encrypt for the current recipients.",
     );
   // Read sealed receipts and current rosters in batches. Every conversation
   // still validates its own users and device limit before delivery is accepted.

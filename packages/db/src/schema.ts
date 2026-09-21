@@ -5,6 +5,7 @@ import { z } from "zod/v4";
 import { session, user } from "./auth-schema";
 
 export * from "./auth-schema";
+export * from "./safety-schema";
 
 export const PreviewPushTokenReset = sqliteTable(
   "preview_push_token_reset",

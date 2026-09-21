@@ -43,6 +43,13 @@
       "when": 1790207284559,
       "tag": "0005_mls_application_epochs",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1790624320372,
+      "tag": "0006_account_safety",
+      "breakpoints": true
     }
   ]
 }
