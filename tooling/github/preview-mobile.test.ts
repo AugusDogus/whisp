@@ -68,7 +68,9 @@ test("comments match Expo's template with reused and new build details and Whisp
   expect(comment.match(/width="250px" height="250px"/g)).toHaveLength(2);
   expect(comment).toContain(`/builds/${androidBuild}`);
   expect(comment).toContain(`/builds/${iosBuild}`);
-  expect(comment).toContain(`groupId=${group}`);
+  expect(comment).toContain("https://qr.expo.dev/development-client?");
+  expect(comment).toContain(encodeURIComponent(`/group/${group}`));
+  expect(comment).not.toContain("https://qr.expo.dev/eas-update");
   expect(comment).toContain("appScheme=whisp-preview");
   expect(comment).not.toContain("## Whisp Preview");
   expect(comment).not.toContain("Install the development build once");

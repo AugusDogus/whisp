@@ -247,7 +247,7 @@ export default function OnboardingScreen() {
                   Camera Access
                 </Text>
                 <Text className="text-center text-lg text-muted">
-                  Whisp needs camera access to capture and send photos and
+                  whisp needs camera access to capture and send photos and
                   videos to your friends.
                 </Text>
               </View>

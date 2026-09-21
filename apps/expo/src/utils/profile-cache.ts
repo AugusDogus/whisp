@@ -15,6 +15,10 @@ const profileKey = [["auth", "discordProfile"]] as const;
 
 export function createQueryClient() {
   const client = new QueryClient();
+  client.setQueryDefaults(["whisp-media-kind"], {
+    staleTime: Infinity,
+    gcTime: PROFILE_CACHE_MAX_AGE,
+  });
   for (const key of [friendsKey, profileKey]) {
     client.setQueryDefaults(key, {
       staleTime: PROFILE_STALE_TIME,
@@ -74,9 +78,14 @@ export function createProfileCache(
         scope !== null &&
         query.state.data !== undefined &&
         Date.now() - query.state.dataUpdatedAt < PROFILE_CACHE_MAX_AGE &&
-        [friendsKey, profileKey].some(
-          (key) => JSON.stringify(query.queryKey[0]) === JSON.stringify(key[0]),
-        ),
+        ((query.queryKey[0] === "whisp-media-kind" &&
+          query.queryKey.length === 2 &&
+          typeof query.queryKey[1] === "string" &&
+          (query.state.data === "photo" || query.state.data === "video")) ||
+          [friendsKey, profileKey].some(
+            (key) =>
+              JSON.stringify(query.queryKey[0]) === JSON.stringify(key[0]),
+          )),
     },
   };
   const restore = persister.restoreClient;

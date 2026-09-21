@@ -18,6 +18,8 @@ interface UseFriendRowsParams {
   defaultRecipientId: string | undefined;
   outboxStatus: Record<string, OutboxStatus | undefined>;
   selfUserId: string | null;
+  mediaKinds?: ReadonlyMap<string, MediaKind>;
+  sentMediaKinds?: ReadonlyMap<string, MediaKind>;
 }
 
 export function useFriendRows({
@@ -27,23 +29,22 @@ export function useFriendRows({
   defaultRecipientId,
   outboxStatus,
   selfUserId,
+  mediaKinds,
+  sentMediaKinds,
 }: UseFriendRowsParams) {
   return useMemo<FriendRow[]>(() => {
     const now = Date.now();
     const senderToMessages = new Map<string, number>();
-    const senderToLatestTimestamp = new Map<string, Date>();
-    const senderToLatestMime = new Map<string, string | undefined>();
+    const senderToLatest = new Map<string, NonNullable<InboxMessage>>();
     for (const m of inbox) {
       if (!m) continue;
       if (m.groupId) continue;
       const count = senderToMessages.get(m.senderId) ?? 0;
       senderToMessages.set(m.senderId, count + 1);
 
-      const current = senderToLatestTimestamp.get(m.senderId);
-      if (!current || m.createdAt > current) {
-        senderToLatestTimestamp.set(m.senderId, m.createdAt);
-        senderToLatestMime.set(m.senderId, m.mimeType);
-      }
+      const current = senderToLatest.get(m.senderId);
+      if (!current || m.createdAt > current.createdAt)
+        senderToLatest.set(m.senderId, m);
     }
 
     return friends.map((f) => {
@@ -65,19 +66,24 @@ export function useFriendRows({
       const rawOutboxState = outbox?.state ?? null;
       const outboxState: OutboxState | null =
         isSelf && rawOutboxState === "sent" ? null : rawOutboxState;
+      const isPendingSend =
+        outboxState === "uploading" ||
+        outboxState === "retrying" ||
+        outboxState === "blocked";
       const outboxUpdatedAt =
         outboxState && outbox?.updatedAtMs
           ? new Date(outbox.updatedAtMs)
           : null;
 
-      const incomingLatest = senderToLatestTimestamp.get(f.id) ?? null;
+      const incoming = senderToLatest.get(f.id);
+      const incomingLatest = incoming?.createdAt ?? null;
       const incomingMs = incomingLatest?.getTime() ?? 0;
       const outgoingMs = lastActivity ? new Date(lastActivity).getTime() : 0;
       const partnerMs = partnerLastActivity
         ? new Date(partnerLastActivity).getTime()
         : 0;
       const outboxMs =
-        outboxState === "uploading" || outboxState === "sent"
+        isPendingSend || outboxState === "sent"
           ? (outboxUpdatedAt?.getTime() ?? 0)
           : 0;
 
@@ -88,11 +94,12 @@ export function useFriendRows({
       const incomingIsLatest = incomingMs > 0 && incomingMs === latestMs;
 
       let lastMessageStatus: FriendRow["lastMessageStatus"] = null;
-      if (outboxState === "uploading" || outboxState === "failed") {
+      if (isPendingSend || outboxState === "failed") {
         lastMessageStatus = null;
       } else if (outgoingIsLatest) {
         if (isSelf) lastMessageStatus = "opened";
-        else if (lastSentOpened === true) lastMessageStatus = "opened";
+        else if (lastSentOpened === true && outgoingMs >= outboxMs)
+          lastMessageStatus = "opened";
         else lastMessageStatus = "sent";
       } else if (incomingIsLatest && hasUnread) {
         lastMessageStatus = "received";
@@ -102,13 +109,18 @@ export function useFriendRows({
 
       const lastMessageAt = latestMs > 0 ? new Date(latestMs) : null;
 
-      let lastMediaKind: MediaKind = "photo";
-      if (outboxState === "uploading" || outboxState === "sent") {
-        lastMediaKind = outbox?.mediaKind ?? "photo";
+      let lastMediaKind: MediaKind | null = null;
+      if (isPendingSend || (outboxState === "sent" && outgoingIsLatest)) {
+        lastMediaKind = outbox?.mediaKind ?? null;
       } else if (incomingIsLatest && hasUnread) {
-        lastMediaKind = mimeToMediaKind(senderToLatestMime.get(f.id));
+        lastMediaKind = incoming
+          ? (mediaKinds?.get(incoming.deliveryId) ??
+            mimeToMediaKind(incoming.mimeType))
+          : null;
       } else if (outgoingIsLatest) {
-        lastMediaKind = mimeToMediaKind(f.lastMimeType);
+        lastMediaKind =
+          (f.lastMessageId ? sentMediaKinds?.get(f.lastMessageId) : null) ??
+          mimeToMediaKind(f.lastMimeType);
       } else {
         lastMediaKind = mimeToMediaKind(f.lastMimeType);
       }
@@ -134,5 +146,14 @@ export function useFriendRows({
         outboxUpdatedAt,
       };
     });
-  }, [friends, inbox, hasMedia, defaultRecipientId, outboxStatus, selfUserId]);
+  }, [
+    friends,
+    inbox,
+    hasMedia,
+    defaultRecipientId,
+    outboxStatus,
+    selfUserId,
+    mediaKinds,
+    sentMediaKinds,
+  ]);
 }

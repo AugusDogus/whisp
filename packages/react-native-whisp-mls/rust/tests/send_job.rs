@@ -1,0 +1,1090 @@
+use serde_json::{Value, json};
+use std::{
+    fs,
+    io::{BufRead, BufReader, Read, Write},
+    net::TcpListener,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
+    thread,
+};
+use whisp_mls::*;
+
+struct Fixture {
+    root: std::path::PathBuf,
+    config: String,
+    id: String,
+    device: String,
+}
+impl Fixture {
+    fn new(base: &str) -> Self {
+        let root = std::env::temp_dir().join(new_id());
+        fs::create_dir_all(root.join("conversations")).unwrap();
+        fs::create_dir_all(root.join("packages")).unwrap();
+        let device = new_id();
+        let key = generate_storage_key();
+        let client = MlsClient::new(device.clone()).unwrap();
+        fs::write(
+            root.join("device.json"),
+            json!({"deviceId":device}).to_string(),
+        )
+        .unwrap();
+        fs::write(
+            root.join("identity.age"),
+            encode_base64(client.export_state(key.clone()).unwrap()),
+        )
+        .unwrap();
+        fs::write(root.join("capture"), b"private capture").unwrap();
+        let config = json!({"root":root,"userId":"alice","deviceId":device,"storageKey":key,"cookie":"session=test","baseUrl":base,"uploadthingVersion":"7.7.4"}).to_string();
+        Self {
+            root,
+            config,
+            id: new_id(),
+            device,
+        }
+    }
+    fn enqueue(&self) {
+        enqueue_send_job(self.config.clone(), json!({"id":self.id,"deviceId":self.device,"source":self.root.join("capture"),"kind":"photo","recipients":["bob"],"groupId":null}).to_string()).unwrap();
+    }
+    fn advance(&self) -> Value {
+        serde_json::to_value(advance_send_job(self.config.clone(), self.id.clone()).unwrap())
+            .unwrap()
+    }
+    fn dir(&self) -> std::path::PathBuf {
+        self.root.join("sends").join(&self.id)
+    }
+}
+impl Drop for Fixture {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.root);
+        let _ = fs::remove_file(format!("{}.lock", self.root.display()));
+    }
+}
+
+#[test]
+fn interrupted_preparation_retains_one_ciphertext_and_removes_plaintext() {
+    let f = Fixture::new("http://127.0.0.1:1");
+    f.enqueue();
+    fs::remove_file(f.root.join("capture")).unwrap();
+    assert_eq!(f.advance()["stage"], "compress");
+    assert_eq!(
+        fs::read(f.dir().join("source")).unwrap(),
+        b"private capture"
+    );
+    // Native compressor atomically publishes this file. An interrupted partial is ignored.
+    fs::write(f.dir().join("compressed.partial"), b"incomplete").unwrap();
+    assert_eq!(f.advance()["stage"], "compress");
+    fs::write(f.dir().join("compressed"), b"normalized jpeg").unwrap();
+    assert_eq!(f.advance()["stage"], "continue");
+    fs::write(f.dir().join("ciphertext.age"), b"interrupted encryption").unwrap();
+    assert_eq!(f.advance()["stage"], "continue");
+    assert!(!f.dir().join("source").exists());
+    assert!(!f.dir().join("compressed").exists());
+    let ciphertext = fs::read(f.dir().join("ciphertext.age")).unwrap();
+    assert_ne!(ciphertext, b"normalized jpeg");
+    assert!(matches!(
+        advance_send_job(f.config.clone(), f.id.clone()).unwrap(),
+        SendStep::Paused {
+            failure: SendFailure {
+                disposition: SendDisposition::Retry,
+                ..
+            }
+        }
+    ));
+    assert_eq!(
+        fs::read(f.dir().join("ciphertext.age")).unwrap(),
+        ciphertext
+    );
+    pause_send_job(f.config.clone(), f.id.clone(), SendInterruption::Transfer).unwrap();
+    let jobs: Value = serde_json::from_str(&list_send_jobs(f.config.clone()).unwrap()).unwrap();
+    assert_eq!(jobs[0]["status"], "uploading");
+    assert!(jobs[0]["error"].is_string());
+    // Observing an error cannot remove a retryable job or its ciphertext.
+    acknowledge_send_job(f.config.clone(), f.id.clone()).unwrap();
+    assert!(f.dir().join("job.age").exists());
+}
+
+#[tokio::test]
+async fn foreground_and_background_leases_exclude_each_other() {
+    let f = Fixture::new("http://127.0.0.1:1");
+    let root = f.root.to_string_lossy().into_owned();
+    let lease = acquire_device_lease(root.clone()).await.unwrap();
+    let entered = Arc::new(AtomicBool::new(false));
+    let observed = entered.clone();
+    let waiter = tokio::spawn(async move {
+        let second = acquire_device_lease(root).await.unwrap();
+        observed.store(true, Ordering::SeqCst);
+        second.release().unwrap();
+    });
+    std::thread::sleep(std::time::Duration::from_millis(25));
+    assert!(!entered.load(Ordering::SeqCst));
+    lease.release().unwrap();
+    waiter.await.unwrap();
+    assert!(entered.load(Ordering::SeqCst));
+}
+
+#[test]
+fn native_send_recovers_accepted_append_without_a_second_application() {
+    for self_send in [false, true] {
+        for modern_server in [false, true] {
+            recovered_send(
+                self_send,
+                modern_server,
+                false,
+                true,
+                ApplicationSend::Disabled,
+            );
+            if modern_server {
+                recovered_send(
+                    self_send,
+                    modern_server,
+                    true,
+                    true,
+                    ApplicationSend::Disabled,
+                );
+            }
+        }
+    }
+}
+#[test]
+fn native_send_avoids_redundant_requests_but_rechecks_resumed_uploads() {
+    recovered_send(true, true, false, false, ApplicationSend::Disabled);
+    recovered_send(true, true, true, false, ApplicationSend::Disabled);
+}
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum ApplicationSend {
+    Disabled,
+    Publish,
+    ReplayCheckpoint,
+    ExpirePending,
+}
+
+#[test]
+fn native_second_send_uses_application_capability_without_another_commit() {
+    recovered_send(false, true, true, false, ApplicationSend::Publish);
+}
+
+#[test]
+fn foreground_receive_settles_application_after_pending_send_job_expires() {
+    recovered_send(false, true, true, false, ApplicationSend::ExpirePending);
+}
+
+#[test]
+fn native_send_recovers_application_ack_before_job_checkpoint_without_duplicate_commit() {
+    recovered_send(false, true, true, false, ApplicationSend::ReplayCheckpoint);
+}
+
+fn recovered_send(
+    self_send: bool,
+    modern_server: bool,
+    atomic_begin: bool,
+    lose_append_response: bool,
+    application_send: ApplicationSend,
+) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let mut f = Fixture::new(&format!("http://{}", listener.local_addr().unwrap()));
+    let first_id = f.id.clone();
+    let conversation = new_id();
+    let conversation_for_receive = conversation.clone();
+    let operation = new_id();
+    let receiver_id = new_id();
+    let receiver = MlsClient::new(receiver_id.clone()).unwrap();
+    let package = encode_base64(receiver.key_package().unwrap());
+    let sender = MlsClient::restore_state(
+        decode_base64(fs::read_to_string(f.root.join("identity.age")).unwrap()).unwrap(),
+        serde_json::from_str::<Value>(&f.config).unwrap()["storageKey"]
+            .as_str()
+            .unwrap()
+            .into(),
+    )
+    .unwrap();
+    let mut roster = json!([
+        {"deviceId":f.device,"userId":"alice","signatureKey":encode_base64(sender.signature_key().unwrap())},
+        {"deviceId":receiver_id,"userId":"bob","signatureKey":encode_base64(receiver.signature_key().unwrap())}
+    ]);
+    if self_send {
+        roster = json!([roster[0]]);
+    }
+    let retained_id = f.id.clone();
+    let appended = Arc::new(Mutex::new(Vec::<Value>::new()));
+    let requests = appended.clone();
+    let applications = Arc::new(Mutex::new(Vec::<Value>::new()));
+    let server_applications = applications.clone();
+    let routes = Arc::new(Mutex::new(Vec::<String>::new()));
+    let server_routes = routes.clone();
+    let stop = Arc::new(AtomicBool::new(false));
+    let stopped = stop.clone();
+    let delivered = Arc::new(AtomicBool::new(false));
+    let server_delivered = delivered.clone();
+    listener.set_nonblocking(true).unwrap();
+    let server = thread::spawn(move || {
+        let mut revision = 0;
+        let mut application_revision = None;
+        let mut conflict = atomic_begin && lose_append_response;
+        while !stopped.load(Ordering::SeqCst) {
+            let (mut socket, _) = match listener.accept() {
+                Ok(s) => s,
+                Err(_) => {
+                    thread::sleep(std::time::Duration::from_millis(1));
+                    continue;
+                }
+            };
+            socket
+                .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+                .unwrap();
+            let mut reader = BufReader::new(socket.try_clone().unwrap());
+            let mut line = String::new();
+            reader.read_line(&mut line).unwrap();
+            let route = line
+                .split_whitespace()
+                .nth(1)
+                .unwrap()
+                .split('?')
+                .next()
+                .unwrap()
+                .to_owned();
+            let mut length = 0;
+            loop {
+                line.clear();
+                reader.read_line(&mut line).unwrap();
+                if line == "\r\n" {
+                    break;
+                }
+                if let Some((key, value)) = line.split_once(':')
+                    && key.eq_ignore_ascii_case("content-length")
+                {
+                    length = value.trim().parse().unwrap();
+                }
+            }
+            let mut body = vec![0; length];
+            reader.read_exact(&mut body).unwrap();
+            let input: Value = serde_json::from_slice(&body).unwrap_or(Value::Null);
+            server_routes.lock().unwrap().push(route.clone());
+            let result = match route.as_str() {
+                "/api/trpc/mls.register" => {
+                    assert!(!modern_server, "Preparation already validated the device");
+                    json!({"ok":true})
+                }
+                "/api/trpc/mls.prepare" => {
+                    assert!(input["json"]["signatureKey"].is_string());
+                    let mut response = json!({"conversations":[{"id":conversation}]});
+                    if modern_server {
+                        response["deviceIdentityValidated"] = json!(true);
+                        response["supportsAtomicBegin"] = json!(atomic_begin);
+                        response["supportsApplicationPublish"] =
+                            json!(application_send != ApplicationSend::Disabled);
+                    }
+                    response
+                }
+                "/api/trpc/mls.sync" => {
+                    let mut response =
+                        json!({"conversation":{"revision":revision},"welcome":null,"events":[]});
+                    if modern_server {
+                        response["descriptorPublished"] = json!(revision != 0);
+                    }
+                    if self_send {
+                        response["retainedMessageIds"] = if server_delivered.load(Ordering::SeqCst)
+                        {
+                            json!([])
+                        } else {
+                            json!([retained_id])
+                        };
+                    }
+                    response
+                }
+                "/api/trpc/mls.retainedMessages" => {
+                    assert!(!self_send, "Inline retention must not make another request");
+                    json!([retained_id])
+                }
+                "/api/trpc/mls.descriptorPublished" => {
+                    assert!(!modern_server, "Sync already returned the receipt");
+                    json!(revision != 0)
+                }
+                "/api/trpc/mls.begin" | "/api/trpc/mls.beginSend" => {
+                    assert_eq!(route.ends_with("beginSend"), atomic_begin);
+                    if atomic_begin && conflict {
+                        conflict = false;
+                        write!(socket, "HTTP/1.1 409 Conflict\r\nConnection: close\r\nContent-Length: 0\r\n\r\n").unwrap();
+                        continue;
+                    }
+                    if atomic_begin && revision != 0 {
+                        json!({"kind":"published", "retainedMessageIds":if self_send { json!([retained_id]) } else { json!([]) }})
+                    } else {
+                        let operation = json!({"operationId":operation,"members":roster,"packages":if self_send { json!([]) } else { json!([{
+                            "deviceId":receiver_id,"userId":"bob","signatureKey":roster[1]["signatureKey"],"keyPackageId":new_id(),"data":package
+                        }]) }});
+                        if atomic_begin {
+                            json!({"kind":"operation","operation":operation,"retainedMessageIds":[]})
+                        } else {
+                            operation
+                        }
+                    }
+                }
+                "/api/trpc/mls.append" => {
+                    requests.lock().unwrap().push(input["json"].clone());
+                    revision = if self_send { 2 } else { 3 };
+                    if lose_append_response {
+                        // Commit was accepted, but the connection dies before its response.
+                        continue;
+                    }
+                    json!({"revision":revision})
+                }
+                "/api/trpc/mls.publishApplication" => {
+                    assert_ne!(application_send, ApplicationSend::Disabled);
+                    server_applications
+                        .lock()
+                        .unwrap()
+                        .push(input["json"].clone());
+                    if application_revision.is_some()
+                        && application_send == ApplicationSend::ReplayCheckpoint
+                    {
+                        json!({"kind":"cancelled"})
+                    } else {
+                        if application_revision.is_none() {
+                            revision += 1;
+                            application_revision = Some(revision);
+                            if application_send == ApplicationSend::ExpirePending {
+                                continue; // Accepted, but its response was lost.
+                            }
+                        }
+                        json!({"kind":"published","revision":application_revision.unwrap(),"epoch":input["json"]["epoch"],"retainedMessageIds":[input["json"]["draftId"]]})
+                    }
+                }
+                "/api/trpc/mls.settle" => json!({"revision":revision}),
+                "/api/uploadthing" => {
+                    json!([{"url":"https://upload.example.test/signed-ciphertext"}])
+                }
+                "/api/trpc/mls.uploadStatus" => {
+                    json!({"status":if server_delivered.load(Ordering::SeqCst) { "sent" } else { "pending" }})
+                }
+                _ => panic!("unexpected route: {route}"),
+            };
+            let body = if route == "/api/uploadthing" {
+                result
+            } else {
+                json!({"result":{"data":{"json":result}}})
+            }
+            .to_string();
+            write!(socket, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{}", body.len(), body).unwrap();
+        }
+    });
+    f.enqueue();
+    fs::write(f.dir().join("compressed"), b"private media").unwrap();
+    f.advance();
+    f.advance();
+    let publish_checkpoint = fs::read_to_string(f.dir().join("job.age")).unwrap();
+    if lose_append_response {
+        assert!(matches!(
+            advance_send_job(f.config.clone(), f.id.clone()).unwrap(),
+            SendStep::Paused {
+                failure: SendFailure {
+                    disposition: SendDisposition::Retry,
+                    ..
+                }
+            }
+        ));
+    }
+    assert_eq!(f.advance()["stage"], "continue");
+    if modern_server && !lose_append_response {
+        let expected = if atomic_begin {
+            vec![
+                "/api/trpc/mls.prepare",
+                "/api/trpc/mls.beginSend",
+                "/api/trpc/mls.append",
+            ]
+        } else {
+            vec![
+                "/api/trpc/mls.prepare",
+                "/api/trpc/mls.sync",
+                "/api/trpc/mls.begin",
+                "/api/trpc/mls.append",
+            ]
+        };
+        assert_eq!(*routes.lock().unwrap(), expected);
+        if atomic_begin && application_send == ApplicationSend::Disabled {
+            // The append and ratchet were saved, but the send job still points
+            // to Publish after a crash. No pending operation remains to settle.
+            fs::write(f.dir().join("job.age"), publish_checkpoint).unwrap();
+            let before_retry = routes.lock().unwrap().len();
+            assert_eq!(f.advance()["stage"], "continue");
+            assert_eq!(
+                &routes.lock().unwrap()[before_retry..],
+                ["/api/trpc/mls.prepare", "/api/trpc/mls.beginSend"]
+            );
+        }
+    }
+    if atomic_begin && lose_append_response {
+        assert_eq!(
+            &routes.lock().unwrap()[..4],
+            [
+                "/api/trpc/mls.prepare",
+                "/api/trpc/mls.beginSend",
+                "/api/trpc/mls.sync",
+                "/api/trpc/mls.beginSend"
+            ]
+        );
+    }
+    if self_send {
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let state_path = f
+            .root
+            .join("conversations")
+            .join(format!("{conversation_for_receive}.age"));
+        let durable_before = fs::read(&state_path).unwrap();
+        let descriptors: Value = serde_json::from_str(
+            &runtime
+                .block_on(sync_native_conversation(
+                    f.config.clone(),
+                    conversation_for_receive.clone(),
+                ))
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(descriptors[&f.id]["messageId"], f.id);
+        // Syncing an unchanged revision must not re-encrypt and fsync the state.
+        assert_eq!(fs::read(&state_path).unwrap(), durable_before);
+        let cached: Value = serde_json::from_str(
+            &runtime
+                .block_on(read_native_descriptor(
+                    f.config.clone(),
+                    conversation_for_receive.clone(),
+                    f.id.clone(),
+                ))
+                .unwrap()
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(cached, descriptors[&f.id]);
+    }
+    fs::copy(
+        f.dir().join("ciphertext.age"),
+        f.root.join("verification.age"),
+    )
+    .unwrap();
+    let before_authorize = routes.lock().unwrap().len();
+    assert_eq!(f.advance()["stage"], "upload"); // authorize and return durable transfer
+    assert_eq!(
+        &routes.lock().unwrap()[before_authorize..],
+        ["/api/uploadthing"]
+    );
+    // A worker restarted with the stored URL must still reconcile delivery.
+    assert_eq!(f.advance()["stage"], "upload");
+    assert_eq!(
+        routes.lock().unwrap().last().unwrap(),
+        "/api/trpc/mls.uploadStatus"
+    );
+    complete_send_upload(f.config.clone(), f.id.clone(), true).unwrap();
+    assert_eq!(f.advance()["stage"], "confirm"); // bytes uploaded is not delivery
+    assert!(f.dir().join("ciphertext.age").exists());
+    delivered.store(true, Ordering::SeqCst);
+    assert_eq!(f.advance()["stage"], "continue");
+    assert_eq!(f.advance()["stage"], "sent");
+    assert!(!f.dir().join("ciphertext.age").exists());
+    acknowledge_send_job(f.config.clone(), f.id.clone()).unwrap();
+    assert_eq!(list_send_jobs(f.config.clone()).unwrap(), "[]");
+    if self_send {
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        // An unchanged MLS revision can still retire a viewed descriptor.
+        assert_eq!(
+            runtime
+                .block_on(sync_native_conversation(
+                    f.config.clone(),
+                    conversation_for_receive.clone()
+                ))
+                .unwrap(),
+            "{}"
+        );
+        assert!(
+            runtime
+                .block_on(read_native_descriptor(
+                    f.config.clone(),
+                    conversation_for_receive.clone(),
+                    f.id.clone()
+                ))
+                .unwrap()
+                .is_none()
+        );
+    }
+    if application_send != ApplicationSend::Disabled {
+        delivered.store(false, Ordering::SeqCst);
+        f.id = new_id();
+        f.enqueue();
+        fs::write(f.dir().join("compressed"), b"second private media").unwrap();
+        assert_eq!(f.advance()["stage"], "continue");
+        assert_eq!(f.advance()["stage"], "continue");
+        fs::copy(
+            f.dir().join("ciphertext.age"),
+            f.root.join("verification-second.age"),
+        )
+        .unwrap();
+        let second_publish_checkpoint = fs::read_to_string(f.dir().join("job.age")).unwrap();
+        let before_second = routes.lock().unwrap().len();
+        let published = f.advance();
+        assert_eq!(
+            &routes.lock().unwrap()[before_second..],
+            ["/api/trpc/mls.prepare", "/api/trpc/mls.publishApplication"]
+        );
+        if application_send == ApplicationSend::ExpirePending {
+            assert_eq!(published["stage"], "paused");
+            let configuration: Value = serde_json::from_str(&f.config).unwrap();
+            let storage_key = configuration["storageKey"].as_str().unwrap().to_owned();
+            let job: Value = serde_json::from_str(
+                &open_local(
+                    decode_base64(fs::read_to_string(f.dir().join("job.age")).unwrap()).unwrap(),
+                    storage_key,
+                )
+                .unwrap(),
+            )
+            .unwrap();
+            replace_phase(&f, job["phase"].clone(), 0);
+            assert_eq!(f.advance()["stage"], "failed");
+            assert!(!f.dir().join("ciphertext.age").exists());
+            acknowledge_send_job(f.config.clone(), f.id.clone()).unwrap();
+            assert!(!f.dir().exists());
+            let before_receive = routes.lock().unwrap().len();
+            tokio::runtime::Runtime::new()
+                .unwrap()
+                .block_on(sync_native_conversation(
+                    f.config.clone(),
+                    conversation_for_receive.clone(),
+                ))
+                .unwrap();
+            assert_eq!(
+                &routes.lock().unwrap()[before_receive..],
+                [
+                    "/api/trpc/mls.publishApplication",
+                    "/api/trpc/mls.sync",
+                    "/api/trpc/mls.retainedMessages"
+                ]
+            );
+            let replayed = applications.lock().unwrap();
+            assert_eq!(replayed.len(), 2);
+            assert_eq!(replayed[0], replayed[1]);
+        } else {
+            assert_eq!(published["stage"], "continue");
+            if application_send == ApplicationSend::ReplayCheckpoint {
+                fs::write(f.dir().join("job.age"), second_publish_checkpoint).unwrap();
+                let before_retry = routes.lock().unwrap().len();
+                assert_eq!(f.advance()["stage"], "continue");
+                assert_eq!(
+                    &routes.lock().unwrap()[before_retry..],
+                    [
+                        "/api/trpc/mls.prepare",
+                        "/api/trpc/mls.publishApplication",
+                        "/api/trpc/mls.beginSend"
+                    ]
+                );
+                let attempts = applications.lock().unwrap();
+                assert_eq!(attempts.len(), 2);
+                assert_ne!(attempts[0]["ciphertext"], attempts[1]["ciphertext"]);
+            }
+            let before_authorize = routes.lock().unwrap().len();
+            assert_eq!(f.advance()["stage"], "upload");
+            assert_eq!(
+                &routes.lock().unwrap()[before_authorize..],
+                ["/api/uploadthing"]
+            );
+            complete_send_upload(f.config.clone(), f.id.clone(), true).unwrap();
+            assert_eq!(f.advance()["stage"], "confirm");
+            delivered.store(true, Ordering::SeqCst);
+            assert_eq!(f.advance()["stage"], "continue");
+            assert_eq!(f.advance()["stage"], "sent");
+            assert!(!f.dir().join("ciphertext.age").exists());
+            acknowledge_send_job(f.config.clone(), f.id.clone()).unwrap();
+        }
+    }
+    stop.store(true, Ordering::SeqCst);
+    server.join().unwrap();
+    let appended = appended.lock().unwrap();
+    assert_eq!(appended.len(), 1);
+    if self_send {
+        return;
+    }
+    let request = &appended[0];
+    receiver
+        .join_group(
+            decode_base64(request["commits"][0]["welcome"].as_str().unwrap().into()).unwrap(),
+        )
+        .unwrap();
+    receiver
+        .process(decode_base64(request["commits"][1]["data"].as_str().unwrap().into()).unwrap())
+        .unwrap();
+    let ReceivedMessage::Application { plaintext, .. } = receiver
+        .process(decode_base64(request["ciphertext"].as_str().unwrap().into()).unwrap())
+        .unwrap()
+    else {
+        panic!("expected descriptor")
+    };
+    let descriptor: Value = serde_json::from_slice(&plaintext).unwrap();
+    assert_eq!(descriptor["messageId"], first_id);
+    decrypt_attachment_sync(
+        f.root
+            .join("verification.age")
+            .to_string_lossy()
+            .into_owned(),
+        f.root.join("received").to_string_lossy().into_owned(),
+        descriptor["key"].as_str().unwrap().into(),
+    )
+    .unwrap();
+    assert_eq!(fs::read(f.root.join("received")).unwrap(), b"private media");
+    if application_send != ApplicationSend::Disabled {
+        let applications = applications.lock().unwrap();
+        let ciphertext = applications[0]["ciphertext"].as_str().unwrap();
+        let ReceivedMessage::Application { plaintext, .. } = receiver
+            .process(decode_base64(ciphertext.into()).unwrap())
+            .unwrap()
+        else {
+            panic!("Expected second application descriptor");
+        };
+        let descriptor: Value = serde_json::from_slice(&plaintext).unwrap();
+        assert_eq!(descriptor["messageId"], f.id);
+        decrypt_attachment_sync(
+            f.root
+                .join("verification-second.age")
+                .to_string_lossy()
+                .into_owned(),
+            f.root
+                .join("received-second")
+                .to_string_lossy()
+                .into_owned(),
+            descriptor["key"].as_str().unwrap().into(),
+        )
+        .unwrap();
+        assert_eq!(
+            fs::read(f.root.join("received-second")).unwrap(),
+            b"second private media"
+        );
+    }
+}
+
+#[tokio::test]
+async fn native_receive_resumes_welcome_retirement_without_replaying_welcome() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let f = Fixture::new(&format!("http://{}", listener.local_addr().unwrap()));
+    let conversation = new_id();
+    let key_id = new_id();
+    let key = serde_json::from_str::<Value>(&f.config).unwrap()["storageKey"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let recipient = MlsClient::restore_state(
+        decode_base64(fs::read_to_string(f.root.join("identity.age")).unwrap()).unwrap(),
+        key.clone(),
+    )
+    .unwrap();
+    let package = recipient.key_package().unwrap();
+    let key_path = f.root.join("packages").join(format!("{key_id}.age"));
+    fs::write(
+        &key_path,
+        encode_base64(recipient.export_state(key).unwrap()),
+    )
+    .unwrap();
+    let sender_id = new_id();
+    let sender = MlsClient::new(sender_id.clone()).unwrap();
+    sender
+        .create_group(conversation.as_bytes().to_vec())
+        .unwrap();
+    let welcome = sender.add_member(package).unwrap().welcome;
+    let roster = json!([
+        {"deviceId":sender_id,"userId":"bob","signatureKey":encode_base64(sender.signature_key().unwrap())},
+        {"deviceId":f.device,"userId":"alice","signatureKey":encode_base64(recipient.signature_key().unwrap())}
+    ]);
+    let cursors = Arc::new(Mutex::new(Vec::<u64>::new()));
+    let observed = cursors.clone();
+    let stop = Arc::new(AtomicBool::new(false));
+    let stopped = stop.clone();
+    listener.set_nonblocking(true).unwrap();
+    let retired_key_path = key_path.clone();
+    let server = thread::spawn(move || {
+        let mut failed = false;
+        while !stopped.load(Ordering::SeqCst) {
+            let (mut socket, _) = match listener.accept() {
+                Ok(s) => s,
+                Err(_) => {
+                    thread::sleep(std::time::Duration::from_millis(1));
+                    continue;
+                }
+            };
+            socket
+                .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+                .unwrap();
+            let mut reader = BufReader::new(socket.try_clone().unwrap());
+            let mut line = String::new();
+            reader.read_line(&mut line).unwrap();
+            let url = reqwest::Url::parse(&format!(
+                "http://localhost{}",
+                line.split_whitespace().nth(1).unwrap()
+            ))
+            .unwrap();
+            let mut length = 0;
+            loop {
+                line.clear();
+                reader.read_line(&mut line).unwrap();
+                if line == "\r\n" {
+                    break;
+                }
+                if let Some((name, value)) = line.split_once(':')
+                    && name.eq_ignore_ascii_case("content-length")
+                {
+                    length = value.trim().parse().unwrap();
+                }
+            }
+            let mut body = vec![0; length];
+            reader.read_exact(&mut body).unwrap();
+            let mut status = "200 OK";
+            let result = match url.path() {
+                "/api/trpc/mls.sync" => {
+                    let (_, input) = url.query_pairs().find(|(name, _)| name == "input").unwrap();
+                    let after = serde_json::from_str::<Value>(&input).unwrap()["json"]["after"]
+                        .as_u64()
+                        .unwrap();
+                    observed.lock().unwrap().push(after);
+                    json!({"conversation":{"revision":1},"events":[],"welcome":if after == 0 { json!({"sequence":1,"keyPackageId":key_id,"members":roster,"data":encode_base64(welcome.clone())}) } else { Value::Null }})
+                }
+                "/api/trpc/mls.acknowledgeWelcome" => {
+                    assert!(!retired_key_path.exists());
+                    if !failed {
+                        failed = true;
+                        status = "503 Service Unavailable";
+                    }
+                    json!({"ok":true})
+                }
+                "/api/trpc/mls.retainedMessages" => json!([]),
+                _ => panic!("unexpected request"),
+            };
+            let body = json!({"result":{"data":{"json":result}}}).to_string();
+            write!(socket, "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{}", body.len(), body).unwrap();
+        }
+    });
+    assert!(
+        sync_native_conversation(f.config.clone(), conversation.clone())
+            .await
+            .is_err()
+    );
+    // A crash/filesystem interruption can also leave retirement itself unfinished.
+    fs::create_dir(&key_path).unwrap();
+    assert!(
+        sync_native_conversation(f.config.clone(), conversation.clone())
+            .await
+            .is_err()
+    );
+    fs::remove_dir(&key_path).unwrap();
+    assert_eq!(
+        sync_native_conversation(f.config.clone(), conversation.clone())
+            .await
+            .unwrap(),
+        "{}"
+    );
+    stop.store(true, Ordering::SeqCst);
+    server.join().unwrap();
+    assert_eq!(*cursors.lock().unwrap(), [0, 1]);
+}
+
+#[test]
+fn recovery_removes_plaintext_from_an_interrupted_enqueue() {
+    let f = Fixture::new("http://127.0.0.1:1");
+    fs::create_dir_all(f.dir()).unwrap();
+    fs::write(f.dir().join("source"), b"abandoned plaintext").unwrap();
+    assert_eq!(list_send_jobs(f.config.clone()).unwrap(), "[]");
+    assert!(!f.dir().exists());
+}
+
+fn replace_phase(f: &Fixture, phase: Value, created_at: u64) {
+    let config: Value = serde_json::from_str(&f.config).unwrap();
+    let key = config["storageKey"].as_str().unwrap().to_owned();
+    let path = f.dir().join("job.age");
+    let mut job: Value = serde_json::from_str(
+        &open_local(
+            decode_base64(fs::read_to_string(&path).unwrap()).unwrap(),
+            key.clone(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    job["phase"] = phase;
+    job["createdAt"] = json!(created_at);
+    fs::write(
+        path,
+        encode_base64(seal_local(job.to_string(), key).unwrap()),
+    )
+    .unwrap();
+}
+
+#[test]
+fn expired_uploads_reconcile_missing_server_drafts_and_cleanup() {
+    for phase in [
+        json!({"stage":"upload","url":"https://upload.example.test"}),
+        json!({"stage":"confirm"}),
+    ] {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let f = Fixture::new(&format!("http://{}", listener.local_addr().unwrap()));
+        f.enqueue();
+        replace_phase(&f, phase, 0);
+        fs::write(f.dir().join("ciphertext.age"), b"ciphertext").unwrap();
+        let server = thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            let mut reader = BufReader::new(socket.try_clone().unwrap());
+            let mut line = String::new();
+            reader.read_line(&mut line).unwrap();
+            assert!(line.contains("mls.uploadStatus"));
+            loop {
+                line.clear();
+                reader.read_line(&mut line).unwrap();
+                if line == "\r\n" {
+                    break;
+                }
+            }
+            write!(
+                socket,
+                "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            )
+            .unwrap();
+        });
+        assert_eq!(f.advance()["stage"], "failed");
+        server.join().unwrap();
+        assert!(!f.dir().join("ciphertext.age").exists());
+        let jobs: Value = serde_json::from_str(&list_send_jobs(f.config.clone()).unwrap()).unwrap();
+        assert_eq!(jobs[0]["status"], "failed");
+        assert!(jobs[0]["error"].as_str().unwrap().contains("expired"));
+    }
+}
+
+#[tokio::test]
+async fn recovery_does_not_remove_an_enqueue_that_owns_its_job_lock() {
+    let f = Fixture::new("http://127.0.0.1:1");
+    fs::create_dir_all(f.root.join("sends")).unwrap();
+    let lease = acquire_device_lease(f.dir().to_string_lossy().into_owned())
+        .await
+        .unwrap();
+    fs::create_dir_all(f.dir()).unwrap();
+    fs::write(f.dir().join("source"), b"copy in progress").unwrap();
+    assert_eq!(list_send_jobs(f.config.clone()).unwrap(), "[]");
+    assert!(f.dir().join("source").exists());
+    lease.release().unwrap();
+    list_send_jobs(f.config.clone()).unwrap();
+    assert!(!f.dir().exists());
+}
+
+fn respond_once(listener: TcpListener, status: u16, value: Value) -> thread::JoinHandle<()> {
+    let body = value.to_string();
+    let length = body.len();
+    respond_body_once(listener, status, body, length)
+}
+
+fn respond_body_once(
+    listener: TcpListener,
+    status: u16,
+    body: String,
+    content_length: usize,
+) -> thread::JoinHandle<()> {
+    thread::spawn(move || {
+        let (mut socket, _) = listener.accept().unwrap();
+        let mut reader = BufReader::new(socket.try_clone().unwrap());
+        loop {
+            let mut line = String::new();
+            reader.read_line(&mut line).unwrap();
+            if line == "\r\n" {
+                break;
+            }
+        }
+        write!(socket, "HTTP/1.1 {status} Result\r\nContent-Type: application/json\r\nContent-Length: {content_length}\r\nConnection: close\r\n\r\n{body}").unwrap();
+    })
+}
+
+#[test]
+fn interrupted_response_body_retries_without_explicit_resume() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let f = Fixture::new(&format!("http://{}", listener.local_addr().unwrap()));
+    f.enqueue();
+    replace_phase(&f, json!({"stage":"confirm"}), u64::MAX);
+    let retry_listener = listener.try_clone().unwrap();
+    let server = respond_body_once(listener, 200, "{\"result\":".into(), 1000);
+    assert_eq!(f.advance()["failure"]["disposition"], "retry");
+    server.join().unwrap();
+    let server = respond_once(
+        retry_listener,
+        200,
+        json!({"result":{"data":{"json":{"status":"sent"}}}}),
+    );
+    assert_eq!(f.advance()["stage"], "continue");
+    assert_eq!(f.advance()["stage"], "sent");
+    server.join().unwrap();
+}
+
+#[test]
+fn malformed_complete_response_still_requires_explicit_resume() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let f = Fixture::new(&format!("http://{}", listener.local_addr().unwrap()));
+    f.enqueue();
+    replace_phase(&f, json!({"stage":"confirm"}), u64::MAX);
+    let body = "invalid JSON".to_owned();
+    let length = body.len();
+    let server = respond_body_once(listener, 200, body, length);
+    assert_eq!(f.advance()["failure"]["disposition"], "blocked");
+    server.join().unwrap();
+    assert_eq!(f.advance()["failure"]["disposition"], "blocked");
+}
+
+#[test]
+fn interrupted_upload_reconciles_delivery_before_reauthorizing_or_expiring() {
+    for created_at in [0, u64::MAX] {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let f = Fixture::new(&format!("http://{}", listener.local_addr().unwrap()));
+        f.enqueue();
+        replace_phase(
+            &f,
+            json!({"stage":"upload","url":"https://upload.example.test"}),
+            created_at,
+        );
+        fs::write(f.dir().join("ciphertext.age"), b"ciphertext").unwrap();
+        // The server accepted the upload, but the platform lost its response.
+        complete_send_upload(f.config.clone(), f.id.clone(), false).unwrap();
+        pause_send_job(f.config.clone(), f.id.clone(), SendInterruption::Transfer).unwrap();
+        let server = respond_once(
+            listener,
+            200,
+            json!({"result":{"data":{"json":{"status":"sent"}}}}),
+        );
+        assert_eq!(f.advance()["stage"], "continue");
+        assert_eq!(f.advance()["stage"], "sent");
+        server.join().unwrap();
+        assert!(!f.dir().join("ciphertext.age").exists());
+    }
+}
+
+#[test]
+fn blocked_send_preserves_recovery_reason_and_waits_for_explicit_retry() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let f = Fixture::new(&format!("http://{}", listener.local_addr().unwrap()));
+    f.enqueue();
+    let current = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+    replace_phase(&f, json!({"stage":"confirm"}), current);
+    let reason =
+        "A member device has no unused encryption keys. Ask them to open whisp, then retry.";
+    let server = respond_once(
+        listener,
+        412,
+        json!({"error":{"json":{"message":reason,"data":{"code":"PRECONDITION_FAILED"}}}}),
+    );
+    assert_eq!(f.advance()["failure"]["disposition"], "blocked");
+    server.join().unwrap();
+    // The server is gone. Automatic advances must not call it again.
+    assert_eq!(f.advance()["failure"]["message"], reason);
+    let jobs: Value = serde_json::from_str(&list_send_jobs(f.config.clone()).unwrap()).unwrap();
+    assert_eq!(jobs[0]["status"], "blocked");
+    assert_eq!(jobs[0]["error"], reason);
+    acknowledge_send_job(f.config.clone(), f.id.clone()).unwrap();
+    assert!(f.dir().join("job.age").exists());
+    retry_send_job(f.config.clone(), f.id.clone()).unwrap();
+    assert_eq!(f.advance()["failure"]["disposition"], "retry");
+}
+
+#[test]
+fn old_upload_reconciles_success_before_expiring_locally() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let f = Fixture::new(&format!("http://{}", listener.local_addr().unwrap()));
+    f.enqueue();
+    replace_phase(&f, json!({"stage":"confirm"}), 0);
+    let server = respond_once(
+        listener,
+        200,
+        json!({"result":{"data":{"json":{"status":"sent"}}}}),
+    );
+    assert_eq!(f.advance()["stage"], "continue");
+    assert_eq!(f.advance()["stage"], "sent");
+    server.join().unwrap();
+}
+
+#[test]
+fn compression_failure_preserves_source_until_retry_or_expiry() {
+    let f = Fixture::new("http://127.0.0.1:1");
+    f.enqueue();
+    pause_send_job(
+        f.config.clone(),
+        f.id.clone(),
+        SendInterruption::Compression,
+    )
+    .unwrap();
+    assert_eq!(f.advance()["stage"], "paused");
+    assert!(f.dir().join("source").exists());
+    retry_send_job(f.config.clone(), f.id.clone()).unwrap();
+    assert_eq!(f.advance()["stage"], "compress");
+    replace_phase(&f, json!({"stage":"compress"}), 0);
+    assert_eq!(f.advance()["stage"], "failed");
+    assert!(!f.dir().join("source").exists());
+}
+
+#[test]
+fn failed_enqueue_erases_the_unjournaled_source_copy() {
+    let f = Fixture::new("http://127.0.0.1:1");
+    let mut config: Value = serde_json::from_str(&f.config).unwrap();
+    config["storageKey"] = json!("invalid key");
+    let result = enqueue_send_job(
+        config.to_string(),
+        json!({
+            "id": f.id, "deviceId": f.device, "source": f.root.join("capture"),
+            "kind": "photo", "recipients": ["bob"], "groupId": null,
+        })
+        .to_string(),
+    );
+    assert!(result.is_err());
+    assert!(!f.dir().exists());
+    assert!(f.root.join("capture").exists());
+}
+
+#[test]
+fn transient_server_failures_retry_without_exposing_internal_error_bodies() {
+    for status in [409, 503] {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let f = Fixture::new(&format!("http://{}", listener.local_addr().unwrap()));
+        f.enqueue();
+        replace_phase(&f, json!({"stage":"confirm"}), 0);
+        let server = respond_once(
+            listener,
+            status,
+            json!({"error":{"json":{"message":"INTERNAL_PRIVATE_DATA"}}}),
+        );
+        assert_eq!(f.advance()["failure"]["disposition"], "retry");
+        server.join().unwrap();
+        assert!(
+            !list_send_jobs(f.config.clone())
+                .unwrap()
+                .contains("INTERNAL_PRIVATE_DATA")
+        );
+    }
+}
+
+#[test]
+fn server_delivery_failure_reason_reaches_the_outbox() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let f = Fixture::new(&format!("http://{}", listener.local_addr().unwrap()));
+    f.enqueue();
+    replace_phase(&f, json!({"stage":"confirm"}), 0);
+    let reason = "Recipient devices changed while uploading. Send the whisp again.";
+    let server = respond_once(
+        listener,
+        200,
+        json!({"result":{"data":{"json":{"status":"failed","message":reason}}}}),
+    );
+    assert_eq!(f.advance()["stage"], "continue");
+    assert_eq!(f.advance()["message"], reason);
+    server.join().unwrap();
+    let jobs: Value = serde_json::from_str(&list_send_jobs(f.config.clone()).unwrap()).unwrap();
+    assert_eq!(jobs[0]["error"], reason);
+}
+
+#[test]
+fn expired_fresh_authorization_cleans_up_without_contacting_the_server() {
+    let f = Fixture::new("http://127.0.0.1:1");
+    f.enqueue();
+    replace_phase(&f, json!({"stage":"authorizeFresh"}), 0);
+    fs::write(f.dir().join("ciphertext.age"), b"expired ciphertext").unwrap();
+    assert_eq!(f.advance()["stage"], "failed");
+    assert!(!f.dir().join("ciphertext.age").exists());
+    assert!(!f.dir().join("source").exists());
+    assert!(f.dir().join("job.age").exists());
+}

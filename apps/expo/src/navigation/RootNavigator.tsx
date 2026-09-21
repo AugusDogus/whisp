@@ -17,6 +17,8 @@ import { Toaster } from "sonner-native";
 import BackgroundUploadTestScreen from "~/app/background-upload-test";
 import CameraScreen from "~/app/camera";
 import CreateGroupScreen from "~/app/create-group";
+import DevicesScreen from "~/app/devices";
+import EncryptionRecoveryScreen from "~/app/encryption-recovery";
 import FriendsScreen from "~/app/friends";
 import GroupScreen from "~/app/group";
 import GroupAddMembersScreen from "~/app/group-add-members";
@@ -24,8 +26,10 @@ import GroupSettingsScreen from "~/app/group-settings";
 import SplashScreen from "~/app/index";
 import LoginScreen from "~/app/login";
 import MediaScreen from "~/app/media";
+import MlsTestScreen from "~/app/mls-test";
 import OnboardingScreen from "~/app/onboarding";
 import ProfileScreen from "~/app/profile";
+import SettingsScreen from "~/app/settings";
 import { RecordingProvider, useRecording } from "~/contexts/RecordingContext";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -100,7 +104,14 @@ export function RootNavigator() {
           <Stack.Screen name="Login" component={LoginScreen} />
           <Stack.Screen name="Onboarding" component={OnboardingScreen} />
           <Stack.Screen name="Main" component={MainTabs} />
+          <Stack.Screen name="Settings" component={SettingsScreen} />
+          <Stack.Screen name="Devices" component={DevicesScreen} />
+          <Stack.Screen
+            name="EncryptionRecovery"
+            component={EncryptionRecoveryScreen}
+          />
           <Stack.Screen name="Media" component={MediaScreen} />
+          <Stack.Screen name="Send" component={FriendsScreen} />
           <Stack.Screen name="Group" component={GroupScreen} />
           <Stack.Screen name="GroupSettings" component={GroupSettingsScreen} />
           <Stack.Screen
@@ -112,6 +123,9 @@ export function RootNavigator() {
             component={BackgroundUploadTestScreen}
           />
           <Stack.Screen name="CreateGroup" component={CreateGroupScreen} />
+          {__DEV__ ? (
+            <Stack.Screen name="MlsTest" component={MlsTestScreen} />
+          ) : null}
         </Stack.Navigator>
         <Toaster />
       </NavigationContainer>

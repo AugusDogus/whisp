@@ -1,0 +1,59 @@
+// Adapted from uniffi-bindgen-react-native for React Native 0.81.
+apply plugin: "com.android.library"
+apply plugin: "org.jetbrains.kotlin.android"
+apply plugin: "com.facebook.react"
+
+android {
+  namespace "chat.whisp.mls"
+  ndkVersion rootProject.ext.ndkVersion
+  compileSdkVersion rootProject.ext.compileSdkVersion
+
+  defaultConfig {
+    minSdkVersion 24
+    targetSdkVersion rootProject.ext.targetSdkVersion
+    consumerProguardFiles "proguard-rules.pro"
+    externalNativeBuild {
+      cmake {
+        arguments "-DANDROID_STL=c++_shared"
+        abiFilters "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
+      }
+    }
+    ndk {
+      abiFilters "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
+    }
+  }
+
+  externalNativeBuild {
+    cmake {
+      path "CMakeLists.txt"
+      version "3.22.1"
+    }
+  }
+
+  sourceSets.main.java.srcDirs += "src/main/generated"
+
+  buildFeatures {
+    prefab true
+  }
+
+  compileOptions {
+    sourceCompatibility JavaVersion.VERSION_17
+    targetCompatibility JavaVersion.VERSION_17
+  }
+}
+
+react {
+  jsRootDir = file("../src/")
+  libraryName = "WhispMlsSpec"
+  codegenJavaPackageName = "chat.whisp.mls"
+}
+
+dependencies {
+  implementation "com.facebook.react:react-android"
+  implementation project(":expo-modules-core")
+  implementation project(":react-native-compressor")
+  implementation "androidx.work:work-runtime-ktx:2.11.1"
+  implementation "androidx.exifinterface:exifinterface:1.4.2"
+  implementation "net.java.dev.jna:jna:5.17.0@aar"
+  implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2"
+}

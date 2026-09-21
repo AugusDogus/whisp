@@ -74,6 +74,7 @@ function friend(): RouterOutputs["friends"]["list"][number] {
     partnerLastActivityTimestamp: null,
     lastSentOpened: true,
     lastMimeType: "image/jpeg",
+    lastMessageId: null,
   };
 }
 afterEach(() => {
@@ -314,4 +315,34 @@ test("disposing an account cancels delayed cache reads and writes", async () => 
   await writing;
   expect(await restoring).toBeUndefined();
   expect(storage.read()).toBe("new-account-cache");
+});
+
+test("restart preserves photo/video status without retaining descriptors or media keys", async () => {
+  const storage = disk();
+  const saved = client();
+  saved.setQueryData(["whisp-media-kind", "photo-id"], "photo");
+  saved.setQueryData(["whisp-media-kind", "video-id"], "video");
+  saved.setQueryData(["whisp-media-kind", "unsafe-id"], {
+    key: "secret-media-key",
+    mimeType: "image/jpeg",
+  });
+  await persistQueryClientSave({
+    queryClient: saved,
+    ...cache("account-a", storage.storage).options,
+  });
+  expect(storage.read()).not.toContain("secret-media-key");
+  const restored = client();
+  await persistQueryClientRestore({
+    queryClient: restored,
+    ...cache("account-a", storage.storage).options,
+  });
+  expect(
+    restored.getQueryData<"photo" | "video">(["whisp-media-kind", "photo-id"]),
+  ).toBe("photo");
+  expect(
+    restored.getQueryData<"photo" | "video">(["whisp-media-kind", "video-id"]),
+  ).toBe("video");
+  expect(
+    restored.getQueryData<"photo" | "video">(["whisp-media-kind", "unsafe-id"]),
+  ).toBeUndefined();
 });

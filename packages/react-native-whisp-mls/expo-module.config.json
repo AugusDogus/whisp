@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": {
+    "podspecPath": "WhispMls.podspec",
+    "modules": ["WhispSendModule"],
+    "appDelegateSubscribers": ["WhispSendAppDelegateSubscriber"]
+  },
+  "android": { "modules": ["chat.whisp.mls.WhispSendModule"] }
+}

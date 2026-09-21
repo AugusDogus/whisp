@@ -53,7 +53,7 @@ function GroupListRow({
                 style={{ backgroundColor: color }}
               />
               <Text className="text-xs font-semibold" style={{ color }}>
-                New Whisp
+                New whisp
               </Text>
               {group.lastMessageAt && (
                 <Text className="text-xs text-muted">
@@ -116,10 +116,17 @@ export function FriendsList({
 }) {
   return (
     <FlatList
+      style={{ flex: 1 }}
+      contentContainerStyle={{ flexGrow: 1 }}
+      alwaysBounceVertical
       data={rows}
       keyExtractor={(item) => item.id}
       refreshControl={
-        <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
+        <RefreshControl
+          refreshing={isRefreshing}
+          onRefresh={onRefresh}
+          tintColor={colorScheme === "dark" ? "#ccc" : "#555"}
+        />
       }
       ListHeaderComponent={
         groupRows.length > 0 && onPressGroupRow ? (

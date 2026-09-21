@@ -5,7 +5,12 @@ import type { MediaKind } from "~/utils/media-kind";
 import type { OutboxState } from "~/utils/outbox-status";
 
 export type FriendsListFriend = RouterOutputs["friends"]["list"][number];
-export type FriendRowInput = Omit<FriendsListFriend, "discordProfile">;
+export type FriendRowInput = Omit<
+  FriendsListFriend,
+  "discordProfile" | "lastMessageId"
+> & {
+  lastMessageId?: string | null;
+};
 export type GroupRow = RouterOutputs["groups"]["list"][number];
 export type InboxMessage = RouterOutputs["messages"]["inbox"][number];
 
@@ -23,7 +28,7 @@ export interface FriendRow {
   partnerLastActivityTimestamp: Date | null;
   hoursRemaining: number | null;
   lastMessageStatus: MessageStatus;
-  lastMediaKind: MediaKind;
+  lastMediaKind: MediaKind | null;
   lastMessageAt: Date | null;
   outboxState: OutboxState | null;
   outboxUpdatedAt: Date | null;

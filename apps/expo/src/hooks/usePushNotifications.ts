@@ -55,8 +55,7 @@ export function usePushNotifications(isAuthenticated: boolean) {
         data.type === "friend_accept"
       ) {
         console.log("Invalidating friends queries before navigation");
-        void utils.friends.list.invalidate();
-        void utils.friends.incomingRequests.invalidate();
+        void utils.friends.invalidate();
       }
 
       // Handle navigation based on notification type
@@ -199,8 +198,7 @@ export function usePushNotifications(isAuthenticated: boolean) {
           console.log(
             "Invalidating friends queries for friend activity notification",
           );
-          void utils.friends.list.invalidate();
-          void utils.friends.incomingRequests.invalidate();
+          void utils.friends.invalidate();
         }
       });
 
@@ -223,8 +221,7 @@ export function usePushNotifications(isAuthenticated: boolean) {
     isAuthenticated,
     handleNotificationResponse,
     utils.messages.inbox,
-    utils.friends.list,
-    utils.friends.incomingRequests,
+    utils.friends,
   ]);
 
   // Register token only after authentication AND permissions are granted

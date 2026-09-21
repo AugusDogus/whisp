@@ -22,7 +22,7 @@
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
     "lint:ws": "bun x sherif@latest",
-    "postinstall": "bun lint:ws",
+    "postinstall": "bun lint:ws && node packages/react-native-whisp-mls/scripts/eas-build.mjs",
     "typecheck": "turbo run typecheck",
     "check": "turbo run typecheck && oxlint --fix && oxfmt --write",
     "ui-add": "turbo run ui-add",
@@ -70,6 +70,7 @@
   ],
   "patchedDependencies": {
     "react-native-vision-camera@4.7.3": "patches/react-native-vision-camera@4.7.3.patch",
-    "expo-image@3.0.10": "patches/expo-image@3.0.10.patch"
+    "expo-image@3.0.10": "patches/expo-image@3.0.10.patch",
+    "expo-dev-launcher@6.0.18": "patches/expo-dev-launcher@6.0.18.patch"
   }
 }

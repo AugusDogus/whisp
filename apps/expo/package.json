@@ -17,10 +17,10 @@
     "dev": "bun with-env expo start",
     "dev:android": "bun with-env expo start --android",
     "dev:ios": "bun with-env expo start --ios",
-    "android": "expo run:android",
-    "ios": "expo run:ios",
-    "test": "bun test src",
-    "typecheck": "tsc --noEmit"
+    "android": "bun run --cwd ../../packages/react-native-whisp-mls build:android && expo run:android",
+    "ios": "bun run --cwd ../../packages/react-native-whisp-mls build:ios && expo run:ios",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test src"
   },
   "dependencies": {
     "@better-auth/expo": "1.6.33",
@@ -88,6 +88,7 @@
     "react-native-uploadthing-background": "workspace:*",
     "react-native-vision-camera": "^4.7.2",
     "react-native-volume-manager": "^2.0.8",
+    "react-native-whisp-mls": "workspace:*",
     "react-native-worklets": "0.5.1",
     "sonner-native": "^0.21.1",
     "superjson": "2.2.2",

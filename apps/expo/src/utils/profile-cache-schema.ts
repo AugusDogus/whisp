@@ -44,6 +44,7 @@ const friends = z.array(
     partnerLastActivityTimestamp: z.date().nullable(),
     lastSentOpened: z.boolean().nullable(),
     lastMimeType: z.string().nullable(),
+    lastMessageId: z.string().nullable().default(null),
   }),
 ) satisfies z.ZodType<RouterOutputs["friends"]["list"]>;
 
@@ -52,6 +53,10 @@ const savedState = z.object({
   isInvalidated: z.boolean(),
 });
 const savedQuery = z.union([
+  z.object({
+    queryKey: z.tuple([z.literal("whisp-media-kind"), z.string()]),
+    state: savedState.extend({ data: z.enum(["photo", "video"]) }),
+  }),
   z.object({
     queryKey: z.tuple([
       z.tuple([z.literal("friends"), z.literal("list")]),

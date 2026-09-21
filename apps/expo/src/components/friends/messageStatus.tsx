@@ -14,7 +14,7 @@ export type MessageStatus =
 
 export function getStatusText(
   status: MessageStatus,
-  mediaKind: MediaKind = "photo",
+  mediaKind: MediaKind | null = null,
 ): string {
   switch (status) {
     case "sent":
@@ -22,7 +22,7 @@ export function getStatusText(
     case "opened":
       return "Opened";
     case "received":
-      return mediaKind === "video" ? "New Video" : "New Whisp";
+      return mediaKind === "video" ? "New Video" : "New whisp";
     case "received_opened":
       return "Received";
     default:
@@ -40,10 +40,10 @@ export function getStatusText(
  */
 export function MessageStatusIcon({
   status,
-  mediaKind = "photo",
+  mediaKind = null,
 }: {
   status: MessageStatus;
-  mediaKind?: MediaKind;
+  mediaKind?: MediaKind | null;
 }) {
   const activeColor = mediaKindColor(mediaKind);
   switch (status) {

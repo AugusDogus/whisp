@@ -18,6 +18,14 @@ import { QueryProvider } from "~/components/query-provider";
 import { usePushNotifications } from "~/hooks/usePushNotifications";
 import { authClient } from "~/utils/auth";
 import { POSTHOG_API_KEY, POSTHOG_HOST } from "~/utils/constants";
+import { reconcileNativeSends } from "~/utils/media-upload";
+import { prepareEncryptionDevice } from "~/utils/mls-device";
+import {
+  configureNativeSends,
+  resumeNativeSends,
+  subscribeNativeSends,
+} from "~/utils/native-send";
+import { observeNativeSends } from "~/utils/native-send-observer";
 import {
   listBackgroundUploadTasks,
   markBackgroundUploadTaskObserved,
@@ -52,6 +60,60 @@ Sentry.init({
 function AppContent() {
   const { data: session } = authClient.useSession();
   const queryClient = useQueryClient();
+  const sessionCookie = authClient.getCookie();
+
+  useEffect(() => {
+    if (!session?.user.id) return;
+    let stopped = false;
+    let provisioning = false;
+    async function replenish() {
+      if (stopped || provisioning || AppState.currentState !== "active") return;
+      provisioning = true;
+      try {
+        await prepareEncryptionDevice();
+      } catch {
+        console.warn(
+          "Encryption key provisioning failed. It will retry while whisp is open.",
+        );
+      } finally {
+        provisioning = false;
+      }
+    }
+    void replenish();
+    // Retry failed offline provisioning and refill keys consumed by other
+    // devices without requiring a session change or a process restart.
+    const timer = setInterval(() => {
+      void replenish();
+    }, 60_000);
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") void replenish();
+    });
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+      subscription.remove();
+    };
+  }, [session?.user.id]);
+
+  useEffect(() => {
+    return observeNativeSends({
+      isCurrent: () => sessionCookie === authClient.getCookie(),
+      isActive: () => AppState.currentState === "active",
+      configure: configureNativeSends,
+      resume: resumeNativeSends,
+      reconcile: () => reconcileNativeSends(queryClient),
+      subscribeStatus: subscribeNativeSends,
+      subscribeActivation: (activate) =>
+        AppState.addEventListener("change", (state) => {
+          if (state === "active") activate();
+        }),
+      onError: () => {
+        console.warn(
+          "Queued send status is unavailable. Queued media is preserved and will retry.",
+        );
+      },
+    });
+  }, [queryClient, session?.user.id, sessionCookie]);
 
   // Request notification permissions immediately (before auth)
   // but only register token after authentication

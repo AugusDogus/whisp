@@ -130,6 +130,17 @@ export default function ProfileScreen() {
 
           {/* Cards */}
           <View className="mt-8 gap-3 pb-4">
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => navigation.navigate("Settings")}
+              className="bg-surface flex-row items-center gap-3 rounded-xl p-4 active:opacity-70"
+            >
+              <View className="bg-default size-10 items-center justify-center rounded-full">
+                <Ionicons name="settings-outline" size={20} color={iconColor} />
+              </View>
+              <Text className="flex-1 text-base font-semibold">Settings</Text>
+              <Ionicons name="chevron-forward" size={18} color={iconColor} />
+            </Pressable>
             {/* Discord */}
             <Pressable
               onPress={() => {
@@ -228,6 +239,15 @@ export default function ProfileScreen() {
               </View>
             </View>
 
+            {__DEV__ ? (
+              <Button
+                variant="secondary"
+                onPress={() => navigation.navigate("MlsTest")}
+              >
+                MLS bridge test
+              </Button>
+            ) : null}
+
             {isBackgroundUploadTestEnabled ? (
               <Pressable
                 onPress={() => navigation.navigate("BackgroundUploadTest")}
@@ -269,11 +289,11 @@ export default function ProfileScreen() {
               <Dialog.Content>
                 <Dialog.Title>Delete Account</Dialog.Title>
                 <Dialog.Description>
-                  Are you sure you want to delete your Whisp account? This will
+                  Are you sure you want to delete your whisp account? This will
                   permanently delete all your messages, friend connections, and
                   account data. This action cannot be undone.
                   {"\n\n"}
-                  Note: This only deletes your Whisp account. Your Discord
+                  Note: This only deletes your whisp account. Your Discord
                   account will remain active.
                 </Dialog.Description>
                 <View className="flex-row justify-end gap-3 pt-4">

@@ -1,12 +1,27 @@
 import { useEffect, useRef, useState } from "react";
-import { Modal, TouchableWithoutFeedback, View } from "react-native";
+import {
+  ActivityIndicator,
+  AppState,
+  Modal,
+  Text,
+  TouchableWithoutFeedback,
+  View,
+} from "react-native";
 
-import type { AVPlaybackStatus, Video as VideoType } from "expo-av";
 import { ResizeMode, Video } from "expo-av";
 import { Image } from "expo-image";
 
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner-native";
+
 import type { ViewerState } from "~/hooks/useMessageViewerState";
 import { isVideoMime } from "~/utils/media-kind";
+import { openWhisp, type OpenedWhisp } from "~/utils/mls-media";
+
+type MediaState =
+  | { kind: "loading" }
+  | { kind: "error"; message: string }
+  | { kind: "ready"; deliveryId: string; media: OpenedWhisp };
 
 export function MessageViewerModal({
   viewer,
@@ -19,24 +34,79 @@ export function MessageViewerModal({
   onRequestClose: () => void;
   onTap: () => void;
 }) {
-  const videoRef = useRef<VideoType>(null);
-
-  // Track load/progress for the currently-viewed media so we can render a
-  // story-style progress bar (and avoid a "stuck" empty segment).
-  const currentViewerMessage = viewer?.queue[viewer.index] ?? null;
-  const currentViewerKey =
-    currentViewerMessage?.deliveryId ?? currentViewerMessage?.messageId ?? null;
-  const [viewerMediaLoaded, setViewerMediaLoaded] = useState(false);
-  const [viewerMediaProgress, setViewerMediaProgress] = useState(0);
-  const [viewerMediaErrored, setViewerMediaErrored] = useState(false);
-
+  const queryClient = useQueryClient();
+  const message = viewer?.queue[viewer.index] ?? null;
+  const [state, setState] = useState<MediaState>({ kind: "loading" });
+  const [progress, setProgress] = useState(0);
+  const acknowledged = useRef(new Set<string>());
+  const close = useRef(onRequestClose);
+  close.current = onRequestClose;
   useEffect(() => {
-    // Reset when advancing to a different message.
-    setViewerMediaLoaded(false);
-    setViewerMediaProgress(0);
-    setViewerMediaErrored(false);
-  }, [currentViewerKey]);
+    if (!viewer) return;
+    const subscription = AppState.addEventListener("change", (next) => {
+      if (next !== "active") close.current();
+    });
+    return () => subscription.remove();
+  }, [viewer]);
+  useEffect(() => {
+    setState({ kind: "loading" });
+    setProgress(0);
+    if (!message) return;
+    let cancelled = false;
+    let opened: OpenedWhisp | undefined;
+    void openWhisp(message)
+      .then(async (media) => {
+        opened = media;
+        if (cancelled) {
+          await media.dispose();
+          return;
+        }
+        setState({ kind: "ready", deliveryId: message.deliveryId, media });
+      })
+      .catch((error: unknown) => {
+        if (!cancelled)
+          setState({
+            kind: "error",
+            message:
+              error instanceof Error
+                ? error.message
+                : "This whisp could not be decrypted. Close the viewer and retry. It remains unread.",
+          });
+      });
+    return () => {
+      cancelled = true;
+      if (opened)
+        void opened.dispose().catch(() => {
+          console.warn(
+            "Temporary whisp cleanup failed; it will be retried on next launch.",
+          );
+        });
+    };
+  }, [message]);
 
+  const ready =
+    state.kind === "ready" && state.deliveryId === message?.deliveryId
+      ? state
+      : null;
+  const onLoaded = () => {
+    if (!ready || acknowledged.current.has(ready.deliveryId)) return;
+    acknowledged.current.add(ready.deliveryId);
+    void ready.media
+      .acknowledge()
+      .then(() => {
+        void queryClient.invalidateQueries({
+          queryKey: [["messages", "inbox"]],
+        });
+        void queryClient.invalidateQueries({ queryKey: [["groups"]] });
+        void queryClient.invalidateQueries({ queryKey: [["friends", "list"]] });
+      })
+      .catch(() => {
+        acknowledged.current.delete(ready.deliveryId);
+        toast.error(
+          "The read receipt could not be saved. This whisp may appear unread until you reopen it.",
+        );
+      });
+  };
   return (
     <Modal
       visible={Boolean(viewer)}
@@ -44,146 +114,109 @@ export function MessageViewerModal({
       animationType="fade"
       onRequestClose={onRequestClose}
     >
-      <TouchableWithoutFeedback onPress={onTap}>
+      <TouchableWithoutFeedback
+        onPress={onTap}
+        accessibilityRole="button"
+        accessibilityLabel="Next whisp"
+      >
         <View className="flex-1 bg-black">
-          {viewer && (
-            <View
-              pointerEvents="none"
-              style={{
-                position: "absolute",
-                top: insetsTop + 10,
-                left: 12,
-                right: 12,
-                zIndex: 50,
-                flexDirection: "row",
-                alignItems: "center",
-              }}
-            >
-              {viewer.queue.map((msg, idx) => {
-                const fill =
-                  idx < viewer.index
-                    ? 1
-                    : idx > viewer.index
-                      ? 0
-                      : // While loading, show a small fill so the bar isn't "invisible".
-                        // For video, this will be driven by playback status once loaded.
-                        viewerMediaLoaded
-                        ? viewerMediaProgress
-                        : viewerMediaErrored
-                          ? 1
-                          : 0.12;
-
-                return (
-                  <View
-                    key={msg?.deliveryId ?? msg?.messageId ?? `seg-${idx}`}
-                    style={{
-                      flex: 1,
-                      height: 3,
-                      borderRadius: 2,
-                      overflow: "hidden",
-                      backgroundColor: "rgba(255,255,255,0.28)",
-                      marginRight: idx === viewer.queue.length - 1 ? 0 : 4,
-                    }}
-                  >
-                    <View
-                      style={{
-                        height: "100%",
-                        width: `${Math.min(1, Math.max(0, fill)) * 100}%`,
-                        backgroundColor: "rgba(255,255,255,0.92)",
-                      }}
-                    />
-                  </View>
-                );
-              })}
+          <View
+            pointerEvents="none"
+            style={{
+              position: "absolute",
+              top: insetsTop + 10,
+              left: 12,
+              right: 12,
+              zIndex: 50,
+              flexDirection: "row",
+              gap: 4,
+            }}
+          >
+            {viewer?.queue.map((item, index) => (
+              <View
+                key={item?.deliveryId ?? index}
+                style={{
+                  flex: 1,
+                  height: 3,
+                  borderRadius: 2,
+                  overflow: "hidden",
+                  backgroundColor: "rgba(255,255,255,0.28)",
+                }}
+              >
+                <View
+                  style={{
+                    height: "100%",
+                    width: `${index < viewer.index ? 100 : index > viewer.index ? 0 : Math.max(0.12, progress) * 100}%`,
+                    backgroundColor: "white",
+                  }}
+                />
+              </View>
+            ))}
+          </View>
+          {state.kind === "error" ? (
+            <View className="flex-1 items-center justify-center px-8">
+              <Text
+                className="text-center text-white"
+                accessibilityRole="alert"
+              >
+                {state.message}
+              </Text>
             </View>
+          ) : !ready ? (
+            <View className="flex-1 items-center justify-center">
+              <ActivityIndicator
+                color="white"
+                accessibilityLabel="Decrypting whisp"
+              />
+            </View>
+          ) : isVideoMime(ready.media.mimeType) ? (
+            <Video
+              key={ready.deliveryId}
+              source={{ uri: ready.media.uri }}
+              style={{ width: "100%", height: "100%" }}
+              resizeMode={ResizeMode.COVER}
+              shouldPlay
+              isLooping
+              onReadyForDisplay={onLoaded}
+              onPlaybackStatusUpdate={(status) => {
+                if (status.isLoaded && status.durationMillis)
+                  setProgress(
+                    Math.min(1, status.positionMillis / status.durationMillis),
+                  );
+              }}
+              onError={() =>
+                setState({
+                  kind: "error",
+                  message:
+                    "This video could not be played. Close the viewer and retry. It remains unread.",
+                })
+              }
+            />
+          ) : (
+            <Image
+              key={ready.deliveryId}
+              source={{ uri: ready.media.uri }}
+              style={{ width: "100%", height: "100%" }}
+              contentFit="cover"
+              cachePolicy="none"
+              placeholder={
+                ready.media.thumbhash
+                  ? { thumbhash: ready.media.thumbhash }
+                  : undefined
+              }
+              onLoad={() => {
+                setProgress(1);
+                onLoaded();
+              }}
+              onError={() =>
+                setState({
+                  kind: "error",
+                  message:
+                    "This image could not be displayed. Close the viewer and retry. It remains unread.",
+                })
+              }
+            />
           )}
-
-          {viewer?.queue[viewer.index]
-            ? (() => {
-                const m = viewer.queue[viewer.index];
-                if (!m) return null;
-                const isVideo = isVideoMime(m.mimeType);
-                console.log("Rendering message:", {
-                  isVideo,
-                  mimeType: m.mimeType,
-                  fileUrl: m.fileUrl,
-                  hasThumbhash: !!m.thumbhash,
-                });
-                return isVideo ? (
-                  <View style={{ width: "100%", height: "100%" }}>
-                    {/* Show thumbhash as background while video loads */}
-                    {m.thumbhash && (
-                      <Image
-                        placeholder={{ thumbhash: m.thumbhash }}
-                        style={{
-                          width: "100%",
-                          height: "100%",
-                          position: "absolute",
-                        }}
-                        contentFit="cover"
-                      />
-                    )}
-                    {/* Video renders on top */}
-                    <Video
-                      ref={videoRef}
-                      source={{ uri: m.fileUrl }}
-                      style={{ width: "100%", height: "100%" }}
-                      resizeMode={ResizeMode.COVER}
-                      shouldPlay
-                      isLooping={true}
-                      useNativeControls={false}
-                      onPlaybackStatusUpdate={(status: AVPlaybackStatus) => {
-                        if (!status.isLoaded) return;
-                        const duration = status.durationMillis ?? 0;
-                        if (duration <= 0) return;
-                        const progress = status.positionMillis / duration;
-                        setViewerMediaProgress(
-                          Math.min(1, Math.max(0, progress)),
-                        );
-                      }}
-                      onLoad={async () => {
-                        setViewerMediaLoaded(true);
-                        // Ensure video plays once loaded
-                        console.log("Video loaded, attempting to play");
-                        try {
-                          const status =
-                            await videoRef.current?.getStatusAsync();
-                          console.log("Video status:", status);
-                          await videoRef.current?.playAsync();
-                          console.log("Video play called");
-                        } catch (err) {
-                          console.error("Error playing video:", err);
-                        }
-                      }}
-                      onError={(error) => {
-                        setViewerMediaErrored(true);
-                        setViewerMediaLoaded(true);
-                        setViewerMediaProgress(1);
-                        console.error("Video error:", error);
-                      }}
-                    />
-                  </View>
-                ) : (
-                  <Image
-                    source={{ uri: m.fileUrl }}
-                    style={{ width: "100%", height: "100%" }}
-                    contentFit="cover"
-                    placeholder={
-                      m.thumbhash ? { thumbhash: m.thumbhash } : undefined
-                    }
-                    onLoad={() => {
-                      setViewerMediaLoaded(true);
-                      setViewerMediaProgress(1);
-                    }}
-                    onError={() => {
-                      setViewerMediaErrored(true);
-                      setViewerMediaLoaded(true);
-                      setViewerMediaProgress(1);
-                    }}
-                  />
-                );
-              })()
-            : null}
         </View>
       </TouchableWithoutFeedback>
     </Modal>
