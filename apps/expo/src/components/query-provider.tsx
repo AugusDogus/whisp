@@ -10,6 +10,7 @@ import { authClient } from "~/utils/auth";
 import { getBaseUrl } from "~/utils/base-url";
 import { createProfileCache, createQueryClient } from "~/utils/profile-cache";
 import { profileCacheStorage } from "~/utils/profile-cache-storage";
+import { clearWhispCiphertexts } from "~/utils/whisp-ciphertext";
 
 function AccountQueries({
   scope,
@@ -28,8 +29,14 @@ function AccountQueries({
     return () => {
       stop();
       queryClient.clear();
+      if (scope)
+        void clearWhispCiphertexts(scope).catch(() => {
+          console.warn(
+            "Encrypted prefetch cleanup failed. Files will be cleared when Whisp restarts.",
+          );
+        });
     };
-  }, [cache, queryClient]);
+  }, [cache, queryClient, scope]);
 
   return (
     <PersistQueryClientProvider

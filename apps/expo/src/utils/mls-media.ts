@@ -5,9 +5,19 @@ import * as FS from "expo-file-system/legacy";
 
 import type { AppRouter } from "@acme/api";
 
+import { getBaseUrl } from "./base-url";
 import { mimeToMediaKind } from "./media-kind";
-import { forgetDescriptor, syncConversation } from "./mls-conversation";
-import { replenishKeys, withEncryptionDevice } from "./mls-device";
+import {
+  forgetDescriptor,
+  readConversationDescriptor,
+} from "./mls-conversation";
+import {
+  assertEncryptionDeviceCurrent,
+  getEncryptionDevice,
+  registerDevice,
+  withEncryptionDevice,
+} from "./mls-device";
+import { acquireWhispCiphertext } from "./whisp-ciphertext";
 
 const ENCRYPTED_MIME = "application/vnd.whisp.mls.v1";
 
@@ -63,26 +73,38 @@ type WhispMessage = {
 
 async function prepareWhisp(message: WhispMessage, signal?: AbortSignal) {
   if (signal?.aborted) throw new Error("Inbox metadata sync canceled.");
-  return withEncryptionDevice(async (device) => {
-    if (signal?.aborted) throw new Error("Inbox metadata sync canceled.");
-    const api = device.api;
-    await replenishKeys(device);
-    const delivery = await api.mls.delivery.query({
+  const device = await getEncryptionDevice();
+  if (signal?.aborted) throw new Error("Inbox metadata sync canceled.");
+  await registerDevice(device);
+  if (signal?.aborted) throw new Error("Inbox metadata sync canceled.");
+  // Authorization is required even when the authenticated descriptor is already
+  // local. Network latency must not hold the device-wide private-state lease.
+  const delivery = await device.api.mls.delivery.query(
+    {
       deviceId: device.deviceId,
       deliveryId: message.deliveryId,
-    });
-    if (delivery.kind === "legacy") {
-      if (message.mimeType === ENCRYPTED_MIME)
-        throw new Error(
-          "This encrypted whisp is missing its delivery keys. It has not been marked read.",
-        );
-      return { kind: "legacy" as const, device };
-    }
-    const conversation = await syncConversation(
+    },
+    { signal },
+  );
+  if (delivery.kind === "legacy") {
+    if (message.mimeType === ENCRYPTED_MIME)
+      throw new Error(
+        "This encrypted whisp is missing its delivery keys. It has not been marked read.",
+      );
+    await assertEncryptionDeviceCurrent(device);
+    return { kind: "legacy" as const, device };
+  }
+  if (delivery.messageId !== message.messageId)
+    throw new Error(
+      "The encrypted whisp does not match this delivery. It remains unread.",
+    );
+  return withEncryptionDevice(async () => {
+    if (signal?.aborted) throw new Error("Inbox metadata sync canceled.");
+    const descriptor = await readConversationDescriptor(
       device,
       delivery.conversationId,
+      message.messageId,
     );
-    const descriptor = conversation?.descriptors[message.messageId];
     if (!descriptor)
       throw new Error(
         "This whisp has no valid media key on this device. Open it on an original recipient device, or ask the sender to resend it. It remains unread.",
@@ -102,7 +124,7 @@ async function prepareWhisp(message: WhispMessage, signal?: AbortSignal) {
       descriptor,
       conversationId: delivery.conversationId,
     };
-  });
+  }, device);
 }
 
 /** Read only authenticated metadata. Never download media or acknowledge a view. */
@@ -114,12 +136,11 @@ export async function readWhispMediaKind(
   if (message.mimeType !== ENCRYPTED_MIME)
     return mimeToMediaKind(message.mimeType);
   const prepared = await prepareWhisp(message, signal);
-  return withEncryptionDevice(async () => {
-    if (signal?.aborted) throw new Error("Inbox metadata sync canceled.");
-    return mimeToMediaKind(
-      prepared.kind === "mls" ? prepared.descriptor.mimeType : message.mimeType,
-    );
-  }, prepared.device);
+  await assertEncryptionDeviceCurrent(prepared.device);
+  if (signal?.aborted) throw new Error("Inbox metadata sync canceled.");
+  return mimeToMediaKind(
+    prepared.kind === "mls" ? prepared.descriptor.mimeType : message.mimeType,
+  );
 }
 
 export async function openWhisp(message: WhispMessage): Promise<OpenedWhisp> {
@@ -134,33 +155,33 @@ export async function openWhisp(message: WhispMessage): Promise<OpenedWhisp> {
     const directory = `${FS.cacheDirectory}whisp-decrypted/`;
     await FS.makeDirectoryAsync(directory, { intermediates: true });
     const name = newId();
-    const encrypted = `${directory}${name}.age`;
     const plaintext = `${directory}${name}.${descriptor.mimeType === "video/mp4" ? "mp4" : "jpg"}`;
+    const encrypted = await acquireWhispCiphertext(
+      message,
+      JSON.stringify([getBaseUrl(), device.userId]),
+    );
     try {
-      const download = await FS.downloadAsync(message.fileUrl, encrypted);
-      if (download.status !== 200)
-        throw new Error(
-          "The encrypted media could not be downloaded. Retry this whisp.",
+      try {
+        await decryptAttachment(
+          localPath(encrypted.uri),
+          localPath(plaintext),
+          descriptor.key,
         );
-      await decryptAttachment(
-        localPath(encrypted),
-        localPath(plaintext),
-        descriptor.key,
-      );
+      } finally {
+        await encrypted.release();
+      }
       uri = plaintext;
       mimeType = descriptor.mimeType;
       thumbhash = descriptor.thumbhash;
     } catch (error) {
       await FS.deleteAsync(plaintext, { idempotent: true });
       throw error;
-    } finally {
-      await FS.deleteAsync(encrypted, { idempotent: true });
     }
   }
   // Media work runs without the ratchet lock. Do not display its result after
   // an account switch or local identity reset during the download.
   try {
-    await withEncryptionDevice(async () => {}, device);
+    await assertEncryptionDeviceCurrent(device);
   } catch (error) {
     if (prepared.kind === "mls")
       await FS.deleteAsync(uri, { idempotent: true });
@@ -188,16 +209,21 @@ export async function openWhisp(message: WhispMessage): Promise<OpenedWhisp> {
     acknowledge: () => {
       if (disposal)
         return Promise.reject(new Error("This whisp is already closed."));
-      receipt ??= withEncryptionDevice(async (currentDevice) => {
+      receipt ??= (async () => {
+        await assertEncryptionDeviceCurrent(device);
         await api.messages.markRead.mutate({ deliveryId: message.deliveryId });
         if (prepared.kind === "mls") {
-          await forgetDescriptor(
-            currentDevice,
-            prepared.conversationId,
-            message.messageId,
+          await withEncryptionDevice(
+            (currentDevice) =>
+              forgetDescriptor(
+                currentDevice,
+                prepared.conversationId,
+                message.messageId,
+              ),
+            device,
           );
         }
-      }, device);
+      })();
       return receipt;
     },
   };
