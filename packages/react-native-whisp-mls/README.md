@@ -83,8 +83,8 @@ Warm sends reuse the configured local identity and atomically check the server's
 conversation revision before publishing. They sync only on a revision conflict;
 older servers keep the sync-first flow. A first upload goes directly to
 authorization, while resumed or ambiguous transfers check delivery before retrying.
-UploadThing need not return callback data: the native worker separately confirms
-that the delivery committed before reporting success.
+UploadThing waits for its completion callback to avoid extra status polling;
+the native worker still confirms durable delivery before reporting success.
 
 Each job copies and flushes its source before enqueue succeeds. Checkpoints
 survive process death. Draft creation uses the job's stable ID; recovery settles
