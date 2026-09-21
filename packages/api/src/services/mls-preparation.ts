@@ -1,6 +1,10 @@
 /* eslint-disable unicorn/no-array-sort -- Every sorted array is newly allocated. */
 import { eq, inArray } from "@acme/db";
-import { MlsConversation, MlsDraft } from "@acme/db/schema";
+import {
+  MlsConversation,
+  MlsDraft,
+  MlsDraftConversation,
+} from "@acme/db/schema";
 
 import {
   mlsConflict,
@@ -74,6 +78,12 @@ export async function prepareMlsDraft(
         .from(MlsConversation)
         .where(inArray(MlsConversation.id, draft.conversationIds))
     : [];
+  const published = draft
+    ? await tx
+        .select({ conversationId: MlsDraftConversation.conversationId })
+        .from(MlsDraftConversation)
+        .where(eq(MlsDraftConversation.draftId, draftId))
+    : [];
   const scopes = input.groupId
     ? [
         {
@@ -90,7 +100,11 @@ export async function prepareMlsDraft(
     // Keep retries on their original session, including a published operation
     // whose response was lost. A paused, never-joined draft may move to recovery.
     const prior = previous.find((c) => hasConversationScope(c, scope.scope));
-    if (prior && canSend(prior, input.deviceId)) {
+    if (
+      prior &&
+      (canSend(prior, input.deviceId) ||
+        published.some((entry) => entry.conversationId === prior.id))
+    ) {
       conversationIds.push(prior.id);
       continue;
     }
