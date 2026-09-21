@@ -209,7 +209,11 @@ describe("persistent MLS conversations", () => {
       process.env.ALLOW_SELF_MESSAGES = "false";
       await expect(
         sender.prepare({ deviceId: senderDevice, recipients: ["alice"] }),
-      ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+      ).rejects.toMatchObject({
+        code: "PRECONDITION_FAILED",
+        message:
+          "Sending to yourself is disabled on this server. Your whisp is still queued. Reopen Whisp after self-send is enabled to retry.",
+      });
       process.env.ALLOW_SELF_MESSAGES = "true";
       const draft = await sender.prepare({
         deviceId: senderDevice,

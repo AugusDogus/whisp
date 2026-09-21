@@ -117,10 +117,12 @@ jobs:
             --build-env DATABASE_URL="$DATABASE_URL" \
             --build-env DATABASE_TOKEN="$DATABASE_TOKEN" \
             --build-env PREVIEW_PR_NUMBER="$PR_NUMBER" \
+            --build-env ALLOW_SELF_MESSAGES=true \
             --build-env UPLOADTHING_TOKEN="$UPLOADTHING_TOKEN" \
             --env DATABASE_URL="$DATABASE_URL" \
             --env DATABASE_TOKEN="$DATABASE_TOKEN" \
             --env PREVIEW_PR_NUMBER="$PR_NUMBER" \
+            --env ALLOW_SELF_MESSAGES=true \
             --env UPLOADTHING_TOKEN="$UPLOADTHING_TOKEN")
           # Agent sessions wrap the deployment; ordinary CI emits it directly.
           url=$(jq -er '(.deployment // .).url | strings | select(startswith("https://"))' <<< "$deployment")
