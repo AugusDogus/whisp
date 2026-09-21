@@ -27,6 +27,7 @@ import {
   hasConversationScope,
   prepareMlsDraft,
 } from "../services/mls-preparation";
+import { retainedMlsMessages } from "../services/mls-retention";
 import { protectedProcedure } from "../trpc";
 
 const id = z.uuid();
@@ -148,6 +149,14 @@ export const mlsConversationsRouter = {
         conversation,
         welcome: input.after < (welcome?.sequence ?? 0) ? welcome : null,
         events,
+        retainedMessageIds:
+          (events.at(-1)?.sequence ?? after) >= conversation.revision
+            ? await retainedMlsMessages(
+                ctx.db,
+                conversation.id,
+                ctx.session.user.id,
+              )
+            : undefined,
       };
     }),
   acknowledgeWelcome: protectedProcedure
@@ -501,27 +510,11 @@ export const mlsConversationsRouter = {
         input.conversationId,
         ctx.session.user.id,
       );
-      const rows = await ctx.db
-        .select({ draft: MlsDraft, delivery: MessageDelivery })
-        .from(MlsDraftConversation)
-        .innerJoin(MlsDraft, eq(MlsDraft.id, MlsDraftConversation.draftId))
-        .leftJoin(
-          MessageDelivery,
-          and(
-            eq(MessageDelivery.messageId, MlsDraft.id),
-            eq(MessageDelivery.recipientId, ctx.session.user.id),
-          ),
-        )
-        .where(eq(MlsDraftConversation.conversationId, input.conversationId));
-      return rows
-        .filter(({ draft, delivery }) =>
-          delivery
-            ? !delivery.readAt
-            : !draft.completedAt &&
-              draft.expiresAt > new Date() &&
-              draft.recipients.includes(ctx.session.user.id),
-        )
-        .map(({ draft }) => draft.id);
+      return retainedMlsMessages(
+        ctx.db,
+        input.conversationId,
+        ctx.session.user.id,
+      );
     }),
   delivery: protectedProcedure
     .input(z.object({ deviceId: id, deliveryId: z.string().min(1) }))
@@ -560,12 +553,19 @@ export const mlsConversationsRouter = {
       const conversation = conversations.find((c) =>
         hasConversationScope(c, scope),
       );
-      if (conversation)
+      if (conversation) {
+        await authorizedConversation(
+          ctx.db,
+          conversation.id,
+          ctx.session.user.id,
+        );
         return {
           kind: "mls" as const,
+          messageId: delivery.messageId,
           conversationId: conversation.id,
           groupId: draft.groupId,
         };
+      }
       mlsConflict(
         "The encrypted delivery is missing its conversation. It has not been marked read.",
       );
