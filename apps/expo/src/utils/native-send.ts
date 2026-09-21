@@ -1,9 +1,14 @@
+import type { EncryptionDevice } from "./mls-device";
+
 import { nativeSend, newId } from "react-native-whisp-mls";
 
 import { z } from "zod/v4";
 
 import { authClient } from "./auth";
+import { getBaseUrl } from "./base-url";
 import {
+  assertEncryptionDeviceCurrent,
+  EncryptionDeviceChangedError,
   EncryptionSignInRequiredError,
   withEncryptionDevice,
 } from "./mls-device";
@@ -20,8 +25,27 @@ const jobSchema = z.object({
 });
 export type SendJob = z.infer<typeof jobSchema>;
 
-export async function configureNativeSends() {
-  const cookie = authClient.getCookie();
+let configured:
+  | (Pick<EncryptionDevice, "cookie" | "root" | "deviceId"> & {
+      baseUrl: string;
+    })
+  | undefined;
+let configurationQueue: Promise<unknown> = Promise.resolve();
+
+// Keep native account configuration and enqueue invocation in order. The native
+// source copy runs outside this queue so it cannot delay account changes.
+function serializeConfiguration<T>(operation: () => Promise<T>): Promise<T> {
+  const result = configurationQueue.then(operation);
+  configurationQueue = result.catch(() => undefined);
+  return result;
+}
+
+async function configure(
+  cookie: string | null | undefined,
+): Promise<string | undefined> {
+  if (cookie !== authClient.getCookie())
+    throw new EncryptionDeviceChangedError();
+  configured = undefined;
   if (!cookie) {
     await nativeSend.configure(null);
     return;
@@ -34,12 +58,27 @@ export async function configureNativeSends() {
         "The account changed. Retry sending on the original account.",
       );
     await nativeSend.configure(nativeDeviceConfig(device));
+    if (cookie !== authClient.getCookie())
+      throw new EncryptionDeviceChangedError();
+    configured = {
+      cookie: device.cookie,
+      root: device.root,
+      deviceId: device.deviceId,
+      baseUrl: getBaseUrl(),
+    };
     return device.deviceId;
   }).catch(async (error: unknown) => {
     if (!(error instanceof EncryptionSignInRequiredError)) throw error;
     if (cookie !== authClient.getCookie()) throw error;
     await nativeSend.configure(null);
+    return undefined;
   });
+}
+
+/** Explicit lifecycle refresh always rechecks authentication, including expiry. */
+export function configureNativeSends() {
+  const cookie = authClient.getCookie();
+  return serializeConfiguration(() => configure(cookie));
 }
 
 export async function enqueueNativeSend(input: {
@@ -53,21 +92,37 @@ export async function enqueueNativeSend(input: {
       "The captured media is unavailable locally. Capture it again.",
     );
   const cookie = authClient.getCookie();
-  const deviceId = await configureNativeSends();
-  if (!cookie || cookie !== authClient.getCookie())
-    throw new Error(
-      "The account changed. Retry sending on the original account.",
-    );
-  return nativeSend.enqueue(
-    JSON.stringify({
-      id: newId(),
-      deviceId,
-      source: decodeURIComponent(input.uri.slice(7)),
-      kind: input.type,
-      recipients: input.recipients,
-      groupId: input.groupId ?? null,
-    }),
-  );
+  const { enqueued } = await serializeConfiguration(async () => {
+    if (!cookie || cookie !== authClient.getCookie())
+      throw new EncryptionDeviceChangedError();
+    let deviceId: string | undefined;
+    if (configured?.cookie === cookie && configured.baseUrl === getBaseUrl()) {
+      try {
+        await assertEncryptionDeviceCurrent(configured);
+        deviceId = configured.deviceId;
+      } catch (error) {
+        if (!(error instanceof EncryptionDeviceChangedError)) throw error;
+        configured = undefined;
+      }
+    }
+    deviceId ??= await configure(cookie);
+    if (cookie !== authClient.getCookie())
+      throw new EncryptionDeviceChangedError();
+    if (!deviceId) throw new EncryptionSignInRequiredError();
+    return {
+      enqueued: nativeSend.enqueue(
+        JSON.stringify({
+          id: newId(),
+          deviceId,
+          source: decodeURIComponent(input.uri.slice(7)),
+          kind: input.type,
+          recipients: input.recipients,
+          groupId: input.groupId ?? null,
+        }),
+      ),
+    };
+  });
+  return enqueued;
 }
 export async function listNativeSends() {
   return z.array(jobSchema).parse(JSON.parse(await nativeSend.list()));

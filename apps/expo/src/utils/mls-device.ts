@@ -25,6 +25,14 @@ export class EncryptionSignInRequiredError extends Error {
   }
 }
 
+export class EncryptionDeviceChangedError extends Error {
+  constructor() {
+    super(
+      "The account or encryption device changed. Retry this operation on the original account.",
+    );
+  }
+}
+
 const manifestSchema = z.object({ deviceId: z.uuid() });
 export type EncryptionDevice = {
   cookie: string;
@@ -88,13 +96,13 @@ export function withEncryptionDevice<T>(
 }
 
 function deviceChanged() {
-  return new Error(
-    "The account or encryption device changed. Retry this operation on the original account.",
-  );
+  return new EncryptionDeviceChangedError();
 }
 
 /** Check results after non-mutating media work without waiting for the ratchet. */
-export async function assertEncryptionDeviceCurrent(device: EncryptionDevice) {
+export async function assertEncryptionDeviceCurrent(
+  device: Pick<EncryptionDevice, "cookie" | "root" | "deviceId">,
+) {
   if ((authClient.getCookie() ?? "") !== device.cookie) throw deviceChanged();
   const manifest = `${device.root}device.json`;
   if (!(await FS.getInfoAsync(manifest)).exists) throw deviceChanged();
