@@ -43,8 +43,16 @@ enum SendError: LocalizedError {
   }
 }
 final class SendCancellation {
-  private let lock = NSLock()
+  private let condition = NSCondition()
   private var stopped = false
-  func cancel() { lock.lock(); stopped = true; lock.unlock() }
-  var isCancelled: Bool { lock.lock(); defer { lock.unlock() }; return stopped }
+  func cancel() { condition.lock(); stopped = true; condition.broadcast(); condition.unlock() }
+  var isCancelled: Bool { condition.lock(); defer { condition.unlock() }; return stopped }
+  func wait(seconds: TimeInterval) -> Bool {
+    condition.lock(); defer { condition.unlock() }
+    let deadline = Date(timeIntervalSinceNow: seconds)
+    while !stopped {
+      if !condition.wait(until: deadline) { break }
+    }
+    return !stopped
+  }
 }

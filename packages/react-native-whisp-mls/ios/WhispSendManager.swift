@@ -100,6 +100,7 @@ final class WhispSendManager: NSObject, URLSessionTaskDelegate {
             }
           }
           var finished = false
+          var confirmationRetries = 0
           while !finished {
             if cancellation.isCancelled { return false }
             if try SendVault.get() != config { return false }
@@ -114,7 +115,14 @@ final class WhispSendManager: NSObject, URLSessionTaskDelegate {
             case let .upload(transfer):
               try enqueueTransfer(transfer, settings: settings, cancellation: cancellation)
               finished = true; complete = false
-            case .confirm: retryWhenForeground(); finished = true; complete = false
+            case .confirm:
+              // Allow a briefly delayed upload callback to arrive before OS backoff.
+              if confirmationRetries < 3 {
+                guard cancellation.wait(seconds: 0.25 * pow(2, Double(confirmationRetries))) else { return false }
+                confirmationRetries += 1
+              } else {
+                retryWhenForeground(); finished = true; complete = false
+              }
             case .sent, .failed: finished = true
             case .continue: break
             case let .paused(failure):

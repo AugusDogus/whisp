@@ -127,10 +127,16 @@ async fn foreground_and_background_leases_exclude_each_other() {
 #[test]
 fn native_send_recovers_accepted_append_without_a_second_application() {
     for self_send in [false, true] {
-        recovered_send(self_send);
+        for modern_server in [false, true] {
+            recovered_send(self_send, modern_server, true);
+        }
     }
 }
-fn recovered_send(self_send: bool) {
+#[test]
+fn native_send_avoids_redundant_requests_but_rechecks_resumed_uploads() {
+    recovered_send(true, true, false);
+}
+fn recovered_send(self_send: bool, modern_server: bool, lose_append_response: bool) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let f = Fixture::new(&format!("http://{}", listener.local_addr().unwrap()));
     let conversation = new_id();
@@ -157,6 +163,8 @@ fn recovered_send(self_send: bool) {
     let retained_id = f.id.clone();
     let appended = Arc::new(Mutex::new(Vec::<Value>::new()));
     let requests = appended.clone();
+    let routes = Arc::new(Mutex::new(Vec::<String>::new()));
+    let server_routes = routes.clone();
     let stop = Arc::new(AtomicBool::new(false));
     let stopped = stop.clone();
     let delivered = Arc::new(AtomicBool::new(false));
@@ -202,12 +210,26 @@ fn recovered_send(self_send: bool) {
             let mut body = vec![0; length];
             reader.read_exact(&mut body).unwrap();
             let input: Value = serde_json::from_slice(&body).unwrap_or(Value::Null);
+            server_routes.lock().unwrap().push(route.clone());
             let result = match route.as_str() {
-                "/api/trpc/mls.register" => json!({"ok":true}),
-                "/api/trpc/mls.prepare" => json!({"conversations":[{"id":conversation}]}),
+                "/api/trpc/mls.register" => {
+                    assert!(!modern_server, "Preparation already validated the device");
+                    json!({"ok":true})
+                }
+                "/api/trpc/mls.prepare" => {
+                    assert!(input["json"]["signatureKey"].is_string());
+                    let mut response = json!({"conversations":[{"id":conversation}]});
+                    if modern_server {
+                        response["deviceIdentityValidated"] = json!(true);
+                    }
+                    response
+                }
                 "/api/trpc/mls.sync" => {
                     let mut response =
                         json!({"conversation":{"revision":revision},"welcome":null,"events":[]});
+                    if modern_server {
+                        response["descriptorPublished"] = json!(revision != 0);
+                    }
                     if self_send {
                         response["retainedMessageIds"] = if server_delivered.load(Ordering::SeqCst)
                         {
@@ -222,7 +244,10 @@ fn recovered_send(self_send: bool) {
                     assert!(!self_send, "Inline retention must not make another request");
                     json!([retained_id])
                 }
-                "/api/trpc/mls.descriptorPublished" => json!(revision != 0),
+                "/api/trpc/mls.descriptorPublished" => {
+                    assert!(!modern_server, "Sync already returned the receipt");
+                    json!(revision != 0)
+                }
                 "/api/trpc/mls.begin" => {
                     json!({"operationId":operation,"members":roster,"packages":if self_send { json!([]) } else { json!([{
                         "deviceId":receiver_id,"userId":"bob","signatureKey":roster[1]["signatureKey"],"keyPackageId":new_id(),"data":package
@@ -231,8 +256,11 @@ fn recovered_send(self_send: bool) {
                 "/api/trpc/mls.append" => {
                     requests.lock().unwrap().push(input["json"].clone());
                     revision = if self_send { 2 } else { 3 };
-                    // Commit was accepted, but the connection dies before its response.
-                    continue;
+                    if lose_append_response {
+                        // Commit was accepted, but the connection dies before its response.
+                        continue;
+                    }
+                    json!({"revision":revision})
                 }
                 "/api/trpc/mls.settle" => json!({"revision":revision}),
                 "/api/uploadthing" => {
@@ -256,16 +284,29 @@ fn recovered_send(self_send: bool) {
     fs::write(f.dir().join("compressed"), b"private media").unwrap();
     f.advance();
     f.advance();
-    assert!(matches!(
-        advance_send_job(f.config.clone(), f.id.clone()).unwrap(),
-        SendStep::Paused {
-            failure: SendFailure {
-                disposition: SendDisposition::Retry,
-                ..
+    if lose_append_response {
+        assert!(matches!(
+            advance_send_job(f.config.clone(), f.id.clone()).unwrap(),
+            SendStep::Paused {
+                failure: SendFailure {
+                    disposition: SendDisposition::Retry,
+                    ..
+                }
             }
-        }
-    ));
+        ));
+    }
     assert_eq!(f.advance()["stage"], "continue");
+    if modern_server && !lose_append_response {
+        assert_eq!(
+            *routes.lock().unwrap(),
+            [
+                "/api/trpc/mls.prepare",
+                "/api/trpc/mls.sync",
+                "/api/trpc/mls.begin",
+                "/api/trpc/mls.append",
+            ]
+        );
+    }
     if self_send {
         let runtime = tokio::runtime::Runtime::new().unwrap();
         let state_path = f
@@ -303,8 +344,18 @@ fn recovered_send(self_send: bool) {
         f.root.join("verification.age"),
     )
     .unwrap();
-    assert_eq!(f.advance()["stage"], "continue"); // authorize upload
+    let before_authorize = routes.lock().unwrap().len();
+    assert_eq!(f.advance()["stage"], "upload"); // authorize and return durable transfer
+    assert_eq!(
+        &routes.lock().unwrap()[before_authorize..],
+        ["/api/trpc/mls.uploadStatus", "/api/uploadthing",]
+    );
+    // A worker restarted with the stored URL must still reconcile delivery.
     assert_eq!(f.advance()["stage"], "upload");
+    assert_eq!(
+        routes.lock().unwrap().last().unwrap(),
+        "/api/trpc/mls.uploadStatus"
+    );
     complete_send_upload(f.config.clone(), f.id.clone(), true).unwrap();
     assert_eq!(f.advance()["stage"], "confirm"); // bytes uploaded is not delivery
     assert!(f.dir().join("ciphertext.age").exists());

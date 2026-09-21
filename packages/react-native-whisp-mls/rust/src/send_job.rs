@@ -295,7 +295,7 @@ fn advance(c: &SendConfig, job: &mut Job, expired: bool) -> Result<SendStep, Mls
                 )?,
                 c.storage_key.clone(),
             )?;
-            api.call::<Value>("register", true, json!({"deviceId":c.device_id,"signatureKey":encode_base64(identity.signature_key()?)}))?;
+            let signature_key = encode_base64(identity.signature_key()?);
             #[derive(Deserialize)]
             struct Conversation {
                 id: String,
@@ -303,14 +303,38 @@ fn advance(c: &SendConfig, job: &mut Job, expired: bool) -> Result<SendStep, Mls
             #[derive(Deserialize)]
             struct Prepared {
                 conversations: Vec<Conversation>,
+                #[serde(default, rename = "deviceIdentityValidated")]
+                device_identity_validated: bool,
             }
-            let mut input = json!({"deviceId":c.device_id,"draftId":id});
+            let mut input =
+                json!({"deviceId":c.device_id,"draftId":id,"signatureKey":signature_key});
             if let Some(group) = &job.group_id {
                 input["groupId"] = json!(group);
             } else {
                 input["recipients"] = json!(job.recipients);
             }
-            let prepared: Prepared = api.call("prepare", true, input)?;
+            let prepared: Prepared = match api.call("prepare", true, input.clone()) {
+                // Older servers ignore signatureKey. Unregistered devices need
+                // the former registration sequence; revocations still fail.
+                Err(MlsError::Request { status: 412, .. }) => {
+                    api.call::<Value>(
+                        "register",
+                        true,
+                        json!({"deviceId":c.device_id,"signatureKey":signature_key}),
+                    )?;
+                    api.call("prepare", true, input)?
+                }
+                result => result?,
+            };
+            if !prepared.device_identity_validated {
+                // Old prepare responses do not validate the supplied key. Keep
+                // the former identity check before publishing any descriptor.
+                api.call::<Value>(
+                    "register",
+                    true,
+                    json!({"deviceId":c.device_id,"signatureKey":signature_key}),
+                )?;
+            }
             for conversation in prepared.conversations {
                 conversation::send(&api, &conversation.id, descriptor)?;
             }
@@ -371,6 +395,18 @@ fn advance(c: &SendConfig, job: &mut Job, expired: bool) -> Result<SendStep, Mls
         remove(&dir.join("source"))?;
         remove(&dir.join("compressed"))?;
         remove(&dir.join("compressed.partial"))?;
+    }
+    // Authorization just confirmed a pending draft. Return its durable transfer
+    // immediately instead of requiring a second uploadStatus round trip. A
+    // restarted worker still enters Phase::Upload above and rechecks delivery.
+    if let Phase::Upload { url } = &job.phase {
+        return Ok(SendStep::Upload {
+            transfer: SendUpload {
+                url: url.clone(),
+                file: dir.join("ciphertext.age").to_string_lossy().into_owned(),
+                id,
+            },
+        });
     }
     Ok(SendStep::Continue)
 }
