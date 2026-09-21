@@ -15,6 +15,7 @@ import type { AppRouter } from "@acme/api";
 
 import type { InboxMessage } from "~/components/friends/types";
 
+import { localMediaUri } from "./media-uri";
 import { getOutboxStatusSnapshot } from "./outbox-status";
 
 // Exercise the real client orchestration and serialization queue. Native crypto
@@ -1261,6 +1262,24 @@ function enqueuePhoto() {
     recipients: [...capturedPhoto.recipients],
   });
 }
+
+test("iOS camera URLs reach the native queue as decoded filesystem paths", async () => {
+  let enqueued: unknown;
+  nativeEnqueue = async (input) => {
+    enqueued = JSON.parse(input);
+    return messageId;
+  };
+  await enqueueNativeSend({
+    uri: localMediaUri("file:///private/var/mobile/tmp/photo%20%231.jpg"),
+    type: "photo",
+    recipients: ["alice"],
+  });
+  expect(enqueued).toMatchObject({
+    source: "/private/var/mobile/tmp/photo #1.jpg",
+    kind: "photo",
+    recipients: ["alice"],
+  });
+});
 
 test("warm native enqueue reuses configuration without a session lookup", async () => {
   await configureNativeSends();

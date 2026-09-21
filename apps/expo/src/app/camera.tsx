@@ -66,6 +66,7 @@ import {
   useSafeAreaPadding,
   useScreenHeight,
 } from "~/utils/constants";
+import { localMediaUri } from "~/utils/media-uri";
 
 const ReanimatedCamera = Reanimated.createAnimatedComponent(Camera);
 Reanimated.addWhitelistedNativeProps({
@@ -193,7 +194,7 @@ export default function CameraPage(): React.ReactElement {
         // Hint the preview image cache to reduce first render delay
         if (type === "photo") {
           // expo-image respects file:// URIs; fire-and-forget prefetch
-          void Image.prefetch(`file://${media.path}`).catch((err) => {
+          void Image.prefetch(localMediaUri(media.path)).catch((err) => {
             console.debug("[Media] image prefetch failed", err);
           });
         }

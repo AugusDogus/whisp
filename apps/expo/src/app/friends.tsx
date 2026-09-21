@@ -45,6 +45,7 @@ import type { MainTabParamList, RootStackParamList } from "~/navigation/types";
 import { trpc } from "~/utils/api";
 import { authClient } from "~/utils/auth";
 import { uploadMedia } from "~/utils/media-upload";
+import { localMediaUri } from "~/utils/media-uri";
 import type { OutboxStatus } from "~/utils/outbox-status";
 import {
   getOutboxStatusSnapshot,
@@ -288,7 +289,7 @@ export default function FriendsScreen() {
             markWhispUploading(recipients);
           }
 
-          let finalUri = `file://${mediaParams.path}`;
+          let finalUri = localMediaUri(mediaParams.path);
           if (mediaParams.rasterizationPromise) {
             try {
               const rasterizedUri = await mediaParams.rasterizationPromise;
