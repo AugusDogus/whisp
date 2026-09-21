@@ -10,6 +10,7 @@ import {
   writePrivateFile,
 } from "react-native-whisp-mls";
 
+import * as Device from "expo-device";
 import * as SecureStore from "expo-secure-store";
 
 import * as FS from "expo-file-system/legacy";
@@ -87,7 +88,7 @@ function accountStorage(userId: string) {
   };
 }
 
-/** Destructive local recovery, called only after the Profile confirmation. */
+/** Destructive local recovery, called only after the encryption recovery confirmation. */
 export function resetEncryptionDevice() {
   const result = queue.then(async () => {
     initializeMls();
@@ -166,7 +167,7 @@ async function loadDevice<T>(
     const existing = await FS.getInfoAsync(manifestPath);
     if (!storageKey && existing.exists)
       throw new Error(
-        "This device's encryption key is missing. Reset encryption in Profile to receive new whisps. Existing whisps cannot be recovered here.",
+        "This device's encryption key is missing. Open Settings > Security > Encryption recovery to receive new whisps. Existing whisps cannot be recovered here.",
       );
     if (!storageKey) {
       storageKey = generateStorageKey();
@@ -214,6 +215,9 @@ export async function registerDevice(device: EncryptionDevice) {
     await api.mls.register.mutate({
       deviceId: device.deviceId,
       signatureKey: encodeBase64(client.signatureKey()),
+      name: (
+        Device.modelName?.trim() || `${Device.osName ?? "Mobile"} device`
+      ).slice(0, 100),
     });
   } finally {
     client.uniffiDestroy();

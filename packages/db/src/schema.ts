@@ -281,6 +281,7 @@ export const Waitlist = sqliteTable("waitlist", (t) => ({
 // devices cannot receive future whisps. The server never stores private keys.
 export const MlsDevice = sqliteTable("mls_device", (t) => ({
   id: t.text().primaryKey(),
+  name: t.text(),
   userId: t
     .text()
     .notNull()

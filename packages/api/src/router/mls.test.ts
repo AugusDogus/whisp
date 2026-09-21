@@ -42,6 +42,11 @@ await client.executeMultiple(
     new URL("../../../db/drizzle/0002_mls.sql", import.meta.url),
   ).text(),
 );
+await client.executeMultiple(
+  await Bun.file(
+    new URL("../../../db/drizzle/0003_mls_device_names.sql", import.meta.url),
+  ).text(),
+);
 beforeEach(async () => {
   await client.executeMultiple(
     "DELETE FROM mls_draft; DELETE FROM mls_conversation; DELETE FROM mls_key_package; DELETE FROM mls_device; DELETE FROM friendship; DELETE FROM group_member; DELETE FROM message_delivery; DELETE FROM user; INSERT INTO user VALUES ('alice'), ('bob'), ('mallory');",
@@ -74,6 +79,48 @@ async function prepare(groupId?: string) {
   if (!conversation) throw new Error("Missing test conversation");
   return { ...draft, conversationId: conversation.id };
 }
+
+test("new devices store a bounded model name", async () => {
+  const deviceId = crypto.randomUUID();
+  await sender.register({ deviceId, signatureKey, name: "  Pixel 8 Pro  " });
+  expect(
+    (await sender.devices()).find((device) => device.id === deviceId),
+  ).toMatchObject({ name: "Pixel 8 Pro" });
+  for (const name of [" ", "x".repeat(101)]) {
+    await expect(
+      sender.register({ deviceId, signatureKey, name }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  }
+});
+
+test("device names update without replacing keys and survive older clients", async () => {
+  await sender.register({
+    deviceId: senderDevice,
+    signatureKey,
+    name: "Pixel 8 Pro",
+  });
+  expect(await sender.devices()).toMatchObject([
+    { name: "Pixel 8 Pro", signatureKey },
+  ]);
+  await sender.register({ deviceId: senderDevice, signatureKey });
+  expect(await sender.devices()).toMatchObject([{ name: "Pixel 8 Pro" }]);
+  await expect(
+    outsider.register({
+      deviceId: senderDevice,
+      signatureKey,
+      name: "Other phone",
+    }),
+  ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+  expect(await sender.devices()).toMatchObject([{ name: "Pixel 8 Pro" }]);
+  await sender.register({
+    deviceId: senderDevice,
+    signatureKey,
+    name: "Pixel 9",
+  });
+  expect(await sender.devices()).toMatchObject([
+    { name: "Pixel 9", signatureKey },
+  ]);
+});
 async function begin(conversationId: string, revision = 0) {
   const operation = await sender.begin({
     deviceId: senderDevice,

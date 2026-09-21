@@ -18,7 +18,6 @@ import { Dialog } from "heroui-native/dialog";
 import { Switch } from "heroui-native/switch";
 
 import { DiscordProfileCard } from "~/components/discord-profile-card";
-import { EncryptionDevices } from "~/components/EncryptionDevices";
 import { PreviewSettings } from "~/components/preview-settings";
 import { SafeAreaView } from "~/components/styled";
 import { Text } from "~/components/ui/text";
@@ -129,12 +128,19 @@ export default function ProfileScreen() {
             )}
           </View>
 
-          <View className="mt-6">
-            <EncryptionDevices />
-          </View>
-
           {/* Cards */}
           <View className="mt-8 gap-3 pb-4">
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => navigation.navigate("Settings")}
+              className="bg-surface flex-row items-center gap-3 rounded-xl p-4 active:opacity-70"
+            >
+              <View className="bg-default size-10 items-center justify-center rounded-full">
+                <Ionicons name="settings-outline" size={20} color={iconColor} />
+              </View>
+              <Text className="flex-1 text-base font-semibold">Settings</Text>
+              <Ionicons name="chevron-forward" size={18} color={iconColor} />
+            </Pressable>
             {/* Discord */}
             <Pressable
               onPress={() => {
