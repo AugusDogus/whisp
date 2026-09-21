@@ -1,6 +1,10 @@
 import type { SendJob } from "./native-send";
 
-import { QueryClient } from "@tanstack/react-query";
+import { createElement } from "react";
+import { act, create } from "react-test-renderer";
+import type { ReactTestRenderer } from "react-test-renderer";
+
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createTRPCClient, TRPCClientError } from "@trpc/client";
 import { observable } from "@trpc/server/observable";
 import { afterAll, beforeEach, expect, mock, test } from "bun:test";
@@ -8,6 +12,8 @@ import { setTimeout as delay } from "node:timers/promises";
 import { z } from "zod/v4";
 
 import type { AppRouter } from "@acme/api";
+
+import type { InboxMessage } from "~/components/friends/types";
 
 import { getOutboxStatusSnapshot } from "./outbox-status";
 
@@ -45,6 +51,20 @@ let syncDescriptors = async () => JSON.stringify(descriptors);
 let nativeEnqueue: () => Promise<string> = async () => messageId;
 let download: () => Promise<void> = async () => {};
 let handlers: Record<string, (input: unknown) => unknown> = {};
+
+class NativeTransportError extends Error {
+  static instanceOf(error: unknown): error is NativeTransportError {
+    return error instanceof NativeTransportError;
+  }
+}
+class NativeRequestError extends Error {
+  constructor(readonly inner: { status: number }) {
+    super("Native request failed");
+  }
+  static instanceOf(error: unknown): error is NativeRequestError {
+    return error instanceof NativeRequestError;
+  }
+}
 
 class NativeClient {
   groupIdValue = "";
@@ -173,6 +193,13 @@ mock.module("expo-file-system/legacy", () => ({
   },
 }));
 mock.module("react-native-whisp-mls", () => ({
+  MlsError: {
+    instanceOf: (error: unknown) =>
+      error instanceof NativeTransportError ||
+      error instanceof NativeRequestError,
+    Transport: NativeTransportError,
+    Request: NativeRequestError,
+  },
   syncNativeConversation: () => syncDescriptors(),
   forgetNativeDescriptor: async (
     _config: string,
@@ -218,7 +245,9 @@ mock.module("react-native-whisp-mls", () => ({
 mock.module("./base-url", () => ({ getBaseUrl: () => "https://whisp.test" }));
 const { withEncryptionDevice, prepareEncryptionDevice } =
   await import("./mls-device");
-const { openWhisp, readWhispMediaKind } = await import("./mls-media");
+const { openWhisp, readWhispMediaKind, retryWhispMediaKind } =
+  await import("./mls-media");
+const { useInboxMediaKinds } = await import("~/hooks/useInboxMediaKinds");
 
 const { enqueueNativeSend, configureNativeSends } =
   await import("./native-send");
@@ -322,6 +351,117 @@ function gate() {
 async function seedDescriptor() {
   descriptors[messageId] = descriptor;
 }
+
+for (const scenario of [
+  "arrival",
+  "return from send",
+  "cancel and return",
+  "network recovers",
+  "native network recovers",
+] as const) {
+  test(`inbox media types update without refresh after ${scenario}`, async () => {
+    await selfConversation();
+    await seedDescriptor();
+    const blocked = gate();
+    let syncAttempts = 0;
+    syncDescriptors = async () => {
+      if (scenario === "native network recovers" && ++syncAttempts <= 3)
+        throw new NativeTransportError();
+      await blocked.promise;
+      return JSON.stringify(descriptors);
+    };
+    if (scenario === "network recovers") {
+      let attempts = 0;
+      const inventory = handlers["mls.inventory"];
+      handlers["mls.inventory"] = (input) => {
+        if (++attempts <= 3) throw new TypeError("Network request failed");
+        return inventory?.(input);
+      };
+    }
+    const client = new QueryClient({
+      defaultOptions: { queries: { retryDelay: 0 } },
+    });
+    let result: ReturnType<typeof useInboxMediaKinds> | undefined;
+    let renderer: ReactTestRenderer | undefined;
+    function Harness({
+      inbox,
+      enabled,
+    }: {
+      inbox: InboxMessage[];
+      enabled: boolean;
+    }) {
+      result = useInboxMediaKinds(inbox, enabled);
+      return null;
+    }
+    function render(inbox: InboxMessage[], enabled = true) {
+      return createElement(
+        QueryClientProvider,
+        { client },
+        createElement(Harness, { inbox, enabled }),
+      );
+    }
+    try {
+      await act(async () => {
+        renderer = create(render([]));
+      });
+      const inbox: InboxMessage[] = [
+        {
+          ...message,
+          createdAt: new Date(),
+          groupId: undefined,
+          thumbhash: undefined,
+        },
+      ];
+      await act(async () => {
+        renderer?.update(render(inbox, scenario !== "return from send"));
+      });
+      if (scenario === "cancel and return") {
+        await act(async () => renderer?.update(render(inbox, false)));
+      }
+      await act(async () => renderer?.update(render(inbox)));
+      expect(result?.mediaKinds.size).toBe(0);
+      await act(async () => {
+        blocked.release();
+        await delay(50);
+      });
+      expect(result?.mediaKinds.get(message.deliveryId)).toBe("video");
+    } finally {
+      blocked.release();
+      await act(async () => renderer?.unmount());
+      client.clear();
+    }
+  });
+}
+
+test("metadata keeps retrying transient requests but stops on permanent failures", () => {
+  for (const status of [408, 429, 500, 503]) {
+    expect(retryWhispMediaKind(10, new NativeRequestError({ status }))).toBe(
+      true,
+    );
+    expect(
+      retryWhispMediaKind(
+        10,
+        new TRPCClientError("Request failed", {
+          meta: { response: new Response(null, { status }) },
+        }),
+      ),
+    ).toBe(true);
+  }
+  for (const status of [400, 401, 403, 404]) {
+    expect(retryWhispMediaKind(1, new NativeRequestError({ status }))).toBe(
+      false,
+    );
+    expect(
+      retryWhispMediaKind(
+        1,
+        new TRPCClientError("Request rejected", {
+          meta: { response: new Response(null, { status }) },
+        }),
+      ),
+    ).toBe(false);
+  }
+  expect(retryWhispMediaKind(1, new Error("Invalid media key"))).toBe(false);
+});
 
 test("inbox metadata resolves photo and video types without consuming the whisp", async () => {
   await selfConversation();

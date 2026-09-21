@@ -1,12 +1,41 @@
-import { decryptAttachment, newId } from "react-native-whisp-mls";
+import { decryptAttachment, MlsError, newId } from "react-native-whisp-mls";
 
+import { isTRPCClientError } from "@trpc/client";
 import * as FS from "expo-file-system/legacy";
+
+import type { AppRouter } from "@acme/api";
 
 import { mimeToMediaKind } from "./media-kind";
 import { forgetDescriptor, syncConversation } from "./mls-conversation";
 import { replenishKeys, withEncryptionDevice } from "./mls-device";
 
 const ENCRYPTED_MIME = "application/vnd.whisp.mls.v1";
+
+function retryableStatus(status: number | undefined) {
+  return (
+    status === 408 || status === 429 || (status !== undefined && status >= 500)
+  );
+}
+
+/** Keep transient metadata failures recoverable while the inbox is observed. */
+export function retryWhispMediaKind(failureCount: number, error: Error) {
+  if (MlsError.instanceOf(error)) {
+    if (MlsError.Transport.instanceOf(error)) return true;
+    if (MlsError.Request.instanceOf(error))
+      return retryableStatus(error.inner.status) || failureCount < 1;
+  }
+  if (isTRPCClientError<AppRouter>(error)) {
+    const response = error.meta?.response;
+    if (
+      error.cause instanceof TypeError ||
+      retryableStatus(error.data?.httpStatus) ||
+      (response instanceof Response && retryableStatus(response.status))
+    )
+      return true;
+  }
+  return failureCount < 1;
+}
+
 function localPath(uri: string) {
   if (!uri.startsWith("file://"))
     throw new Error(
