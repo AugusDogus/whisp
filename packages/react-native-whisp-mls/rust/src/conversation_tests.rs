@@ -37,6 +37,9 @@ fn descriptor_cache_requires_authenticated_settled_device_state() {
         }],
         descriptors: BTreeMap::from([(message.clone(), descriptor)]),
         welcome_key_package_id: None,
+        last_key_update: None,
+        sent_since_key_update: 0,
+        outgoing: BTreeMap::new(),
     };
     assert!(
         cached_descriptor(&config, &conversation, &message)
@@ -59,7 +62,7 @@ fn descriptor_cache_requires_authenticated_settled_device_state() {
             .is_none()
     );
 
-    record.pending = Some(Pending {
+    record.pending = Some(Pending::Commit {
         operation_id: uuid::Uuid::new_v4().to_string(),
         next: state.clone(),
     });
@@ -145,6 +148,9 @@ fn warm_send_uses_atomic_begin_and_prunes_retired_descriptors() {
                 members: vec![member.clone()],
                 descriptors: BTreeMap::from([(retired.message_id.clone(), retired)]),
                 welcome_key_package_id: None,
+                last_key_update: None,
+                sent_since_key_update: 0,
+                outgoing: BTreeMap::new(),
             }),
             pending: None,
         },
@@ -202,7 +208,7 @@ fn warm_send_uses_atomic_begin_and_prunes_retired_descriptors() {
             .unwrap();
         }
     });
-    send(&Api::new(&config).unwrap(), &id, &descriptor, true).unwrap();
+    send(&Api::new(&config).unwrap(), &id, &descriptor, true, false).unwrap();
     let record = load(&config, &id).unwrap().unwrap();
     assert!(record.pending.is_none());
     let state = record.current.unwrap();
@@ -211,7 +217,7 @@ fn warm_send_uses_atomic_begin_and_prunes_retired_descriptors() {
     assert!(state.descriptors.contains_key(&descriptor.message_id));
     // A different device viewed the whisp while the job was paused. A receipt
     // retry must retire the local key even though no new append is needed.
-    send(&Api::new(&config).unwrap(), &id, &descriptor, true).unwrap();
+    send(&Api::new(&config).unwrap(), &id, &descriptor, true, false).unwrap();
     server.join().unwrap();
     assert!(
         load(&config, &id)

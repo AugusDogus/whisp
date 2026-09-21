@@ -12,6 +12,9 @@ use std::{
     fs,
 };
 
+#[path = "conversation_application.rs"]
+mod application;
+
 #[derive(Clone, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Member {
@@ -51,12 +54,27 @@ struct State {
     descriptors: BTreeMap<String, Descriptor>,
     #[serde(default)]
     welcome_key_package_id: Option<String>,
+    #[serde(default)]
+    last_key_update: Option<u64>,
+    #[serde(default)]
+    sent_since_key_update: u32,
+    // Only accepted own messages beyond the contiguous event cursor. OpenMLS
+    // cannot decrypt its own applications, so sync must match these exact bytes.
+    #[serde(default)]
+    outgoing: BTreeMap<u64, application::SentApplication>,
 }
 #[derive(Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct Pending {
-    operation_id: String,
-    next: State,
+#[serde(untagged)]
+enum Pending {
+    // Keep the legacy journal representation readable across native upgrades.
+    Commit {
+        #[serde(rename = "operationId")]
+        operation_id: String,
+        next: State,
+    },
+    Application {
+        application: application::PendingApplication,
+    },
 }
 #[derive(Default, Deserialize, Serialize)]
 struct Record {
@@ -169,28 +187,41 @@ fn retire(api: &Api, id: &str, current: &mut State) -> Result<(), MlsError> {
     }
     Ok(())
 }
-fn recover(api: &Api, id: &str) -> Result<Option<State>, MlsError> {
+fn recover(api: &Api, id: &str) -> Result<(Option<State>, Option<application::Outcome>), MlsError> {
     let Some(mut record) = load(api.config, id)? else {
-        return Ok(None);
+        return Ok((None, None));
     };
+    let mut outcome = None;
     if let Some(pending) = record.pending.take() {
-        let result: Revision = api.call(
-            "settle",
-            true,
-            json!({"deviceId":api.config.device_id,"operationId":pending.operation_id}),
-        )?;
-        if let Some(revision) = result.revision {
-            if revision != pending.next.cursor {
-                return Err(MlsError::protocol("pending MLS revision verification"));
+        match pending {
+            Pending::Commit { operation_id, next } => {
+                let result: Revision = api.call(
+                    "settle",
+                    true,
+                    json!({"deviceId":api.config.device_id,"operationId":operation_id}),
+                )?;
+                if let Some(revision) = result.revision {
+                    if revision != next.cursor {
+                        return Err(MlsError::protocol("pending MLS revision verification"));
+                    }
+                    record.current = Some(next);
+                }
+                save(api.config, id, &record)?;
             }
-            record.current = Some(pending.next);
+            Pending::Application { application } => {
+                let current = record.current.ok_or_else(|| {
+                    MlsError::protocol("missing advanced application ratchet state")
+                })?;
+                let (current, result) = application::publish(api, id, current, application)?;
+                record.current = Some(current);
+                outcome = Some(result);
+            }
         }
-        save(api.config, id, &record)?;
     }
     if let Some(current) = &mut record.current {
         retire(api, id, current)?;
     }
-    Ok(record.current)
+    Ok((record.current, outcome))
 }
 
 fn load(c: &SendConfig, id: &str) -> Result<Option<Record>, MlsError> {
@@ -294,7 +325,7 @@ fn sync(
     draft_id: Option<&str>,
 ) -> Result<(Option<State>, Option<bool>), MlsError> {
     let c = api.config;
-    let mut state = recover(api, id)?;
+    let (mut state, _) = recover(api, id)?;
     loop {
         let mut input = json!({"deviceId":c.device_id,"conversationId":id,"after":state.as_ref().map_or(0, |s| s.cursor)});
         if let Some(draft) = draft_id {
@@ -330,6 +361,9 @@ fn sync(
                 members: welcome.members,
                 descriptors: state.map_or_else(BTreeMap::new, |s| s.descriptors),
                 welcome_key_package_id: Some(welcome.key_package_id),
+                last_key_update: None,
+                sent_since_key_update: 0,
+                outgoing: BTreeMap::new(),
             };
             save(
                 c,
@@ -370,6 +404,18 @@ fn sync(
                         message_id,
                         group_id,
                     } => {
+                        if sender_device_id == c.device_id {
+                            if sender_id != c.user_id {
+                                return Err(MlsError::protocol("own MLS sender authentication"));
+                            }
+                            let sent =
+                                current.outgoing.remove(&event.sequence).ok_or_else(|| {
+                                    MlsError::protocol("missing durable own application receipt")
+                                })?;
+                            sent.verify(&client, &data, &message_id, &group_id)?;
+                            current.cursor = event.sequence;
+                            continue;
+                        }
                         let ReceivedMessage::Application { sender, plaintext } =
                             client.process(decode_base64(data)?)?
                         else {
@@ -496,12 +542,32 @@ pub(crate) fn send(
     id: &str,
     descriptor: &Descriptor,
     supports_atomic_begin: bool,
+    supports_application_publish: bool,
 ) -> Result<(), MlsError> {
     let c = api.config;
+    let (mut current, recovered) = recover(api, id)?;
+    if let Some(application::Outcome::Published { draft_id }) = &recovered
+        && draft_id == &descriptor.message_id
+    {
+        return Ok(());
+    }
+    if supports_application_publish
+        && !matches!(recovered, Some(application::Outcome::Cancelled))
+        && let Some(state) = current.as_ref()
+        && application::can_send(state)?
+    {
+        let (advanced, pending) = application::stage(c, id, state, descriptor)?;
+        let (state, outcome) = application::publish(api, id, advanced, pending)?;
+        if matches!(outcome, application::Outcome::Published { .. }) {
+            return Ok(());
+        }
+        // The rejection is durably tombstoned on the server. Preserve the
+        // consumed sender generation and use the membership/refresh path.
+        current = Some(state);
+    }
     let (current, operation) = if supports_atomic_begin {
         // Settling a staged append and retiring a Welcome must precede any
         // publication check. An unchanged durable state needs no network sync.
-        let mut current = recover(api, id)?;
         let result = match begin_send(api, id, &descriptor.message_id, &current) {
             Err(MlsError::Request { status: 409, .. }) => {
                 // Another sender advanced the group, or this device still needs
@@ -619,13 +685,18 @@ pub(crate) fn send(
         members: operation.members,
         descriptors,
         welcome_key_package_id: None,
+        last_key_update: Some(application::now()?),
+        sent_since_key_update: 1,
+        outgoing: current
+            .as_ref()
+            .map_or_else(BTreeMap::new, |s| s.outgoing.clone()),
     };
     save(
         c,
         id,
         &Record {
             current,
-            pending: Some(Pending {
+            pending: Some(Pending::Commit {
                 operation_id: operation.operation_id.clone(),
                 next: next.clone(),
             }),
@@ -686,7 +757,7 @@ pub async fn forget_native_descriptor(
     tokio::task::spawn_blocking(move || {
         let config = SendConfig::parse(&config)?;
         let api = Api::new(&config)?;
-        if let Some(mut current) = recover(&api, &conversation_id)? {
+        if let (Some(mut current), _) = recover(&api, &conversation_id)? {
             if current.descriptors.remove(&message_id).is_none() {
                 return Ok(());
             }
@@ -708,3 +779,7 @@ pub async fn forget_native_descriptor(
 #[cfg(test)]
 #[path = "conversation_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "conversation_application_tests.rs"]
+mod application_tests;
