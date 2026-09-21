@@ -70,6 +70,12 @@ export async function resolveRecipients(
     mlsConflict(
       "Sending to yourself is disabled on this server. Your whisp is still queued. Reopen Whisp after self-send is enabled to retry.",
     );
+  if (
+    allowSelfMessages &&
+    recipients.length === 1 &&
+    recipients[0] === senderId
+  )
+    return recipients;
   const friends = await database
     .select()
     .from(Friendship)
@@ -113,6 +119,13 @@ export async function conversationRoster(
           and(inArray(MlsDevice.userId, users), isNull(MlsDevice.revokedAt)),
         )
     : [];
+  return validateRoster(users, devices);
+}
+
+function validateRoster(
+  users: string[],
+  devices: (typeof MlsDevice.$inferSelect)[],
+) {
   if (users.some((userId) => !devices.some((d) => d.userId === userId)))
     mlsConflict(
       "A member has not registered an encryption device. Ask them to open the latest Whisp app, then retry.",
@@ -133,15 +146,27 @@ export async function validateDraft(
   senderId: string,
   draftId: string,
 ) {
-  const [draft] = await database
-    .select()
+  const [row] = await database
+    .select({ draft: MlsDraft, device: MlsDevice })
     .from(MlsDraft)
+    .leftJoin(
+      MlsDevice,
+      and(
+        eq(MlsDevice.id, MlsDraft.senderDeviceId),
+        eq(MlsDevice.userId, senderId),
+        isNull(MlsDevice.revokedAt),
+      ),
+    )
     .where(and(eq(MlsDraft.id, draftId), eq(MlsDraft.senderId, senderId)));
+  const draft = row?.draft;
   if (!draft || draft.failure || draft.expiresAt <= new Date())
     mlsConflict(
       "This encrypted upload expired or is incomplete. Send the whisp again.",
     );
-  await requireDevice(database, senderId, draft.senderDeviceId);
+  if (!row?.device)
+    mlsConflict(
+      "This encryption device is unavailable. Register this device before sending or opening whisps.",
+    );
   const current = await resolveRecipients(database, senderId, {
     recipients: draft.recipients,
     groupId: draft.groupId ?? undefined,
@@ -150,30 +175,79 @@ export async function validateDraft(
     mlsConflict(
       "Group membership changed while uploading. Send again to encrypt for the current members.",
     );
-  // Historical encrypted data cannot be recalled. Reject delivery if the active
-  // roster changed after sealing, even if no device has committed that change yet.
+  // Read sealed receipts and current rosters in batches. Every conversation
+  // still validates its own users and device limit before delivery is accepted.
+  const rows = await database
+    .select({ conversation: MlsConversation, sealed: MlsDraftConversation })
+    .from(MlsConversation)
+    .leftJoin(
+      MlsDraftConversation,
+      and(
+        eq(MlsDraftConversation.conversationId, MlsConversation.id),
+        eq(MlsDraftConversation.draftId, draft.id),
+      ),
+    )
+    .where(inArray(MlsConversation.id, draft.conversationIds));
+  const groupIds = [
+    ...new Set(
+      rows.flatMap(({ conversation }) =>
+        conversation.groupId ? [conversation.groupId] : [],
+      ),
+    ),
+  ];
+  const members = groupIds.length
+    ? await database
+        .select()
+        .from(GroupMember)
+        .where(inArray(GroupMember.groupId, groupIds))
+    : [];
+  const conversations = new Map(
+    rows.map((entry) => [
+      entry.conversation.id,
+      {
+        ...entry,
+        users: entry.conversation.groupId
+          ? [
+              ...new Set(
+                members
+                  .filter(
+                    (member) => member.groupId === entry.conversation.groupId,
+                  )
+                  .map((member) => member.userId),
+              ),
+            ].sort()
+          : entry.conversation.users,
+      },
+    ]),
+  );
+  const allUsers = [
+    ...new Set([...conversations.values()].flatMap((entry) => entry.users)),
+  ];
+  const devices = allUsers.length
+    ? await database
+        .select()
+        .from(MlsDevice)
+        .where(
+          and(inArray(MlsDevice.userId, allUsers), isNull(MlsDevice.revokedAt)),
+        )
+    : [];
+  // Historical ciphertext cannot be recalled. Reject delivery if the active
+  // roster changed after sealing, even before another device commits the change.
   for (const conversationId of draft.conversationIds) {
-    const [conversation] = await database
-      .select()
-      .from(MlsConversation)
-      .where(eq(MlsConversation.id, conversationId));
-    if (!conversation)
+    const entry = conversations.get(conversationId);
+    if (!entry)
       mlsConflict(
         "The encrypted conversation is unavailable. Refresh and retry.",
       );
-    const [sealed] = await database
-      .select()
-      .from(MlsDraftConversation)
-      .where(eq(MlsDraftConversation.id, `${draft.id}:${conversationId}`));
-    if (!sealed)
+    if (!entry.sealed)
       mlsConflict(
         "This whisp is not encrypted for every conversation yet. Retry the send.",
       );
-    const roster = await conversationRoster(
-      database,
-      await conversationUsers(database, conversation),
+    const roster = validateRoster(
+      entry.users,
+      devices.filter((device) => entry.users.includes(device.userId)),
     );
-    if (JSON.stringify(roster) !== JSON.stringify(sealed.members))
+    if (JSON.stringify(roster) !== JSON.stringify(entry.sealed.members))
       mlsConflict(
         "Recipient devices changed while uploading. Send the whisp again.",
       );
