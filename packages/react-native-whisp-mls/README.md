@@ -43,6 +43,29 @@ already joined keep their original session, and old deliveries still resolve
 to their original ciphertext log. Recovery does not grant access to past epochs.
 Losing all private device state still prevents decrypting past whisps.
 
+## Opening and send performance
+
+Opening always reauthorizes the delivery with the server. If the descriptor is
+already in authenticated private storage, it does not resync the conversation.
+Registration and key maintenance coalesce outside the ratchet lease. Only local
+private-state changes and ordered MLS synchronization hold that lease. The HTTP
+transport shares connections without sharing account cookies, and unchanged
+conversation sync avoids rewriting snapshots. Sync includes descriptor retention
+IDs, with a fallback to the separate retention endpoint. Deploy the API before
+the updated mobile client: delivery authorization now includes the message ID,
+and the client rejects missing or mismatched IDs before using a cached descriptor.
+
+Focused direct and group inboxes prefetch at most three ciphertext files, up to
+32 MiB each, for two minutes. Explicit opens reuse those transfers and may download
+larger files. Prefetch never decrypts, authorizes a view, or sends read receipts.
+Files are removed after use, account changes, eviction, or restart. Native send
+status events wake foreground reconciliation immediately, with a 30-second
+recovery poll (older native binaries keep their two-second polling fallback).
+
+Run `cargo run --release --manifest-path rust/Cargo.toml --example media_benchmark`
+from this package for reproducible attachment timings. These measure local crypto
+and file I/O, not server latency, compression, upload, or download time.
+
 ## Native send jobs
 
 JavaScript enqueues a captured file and observes the persistent outbox. An Expo

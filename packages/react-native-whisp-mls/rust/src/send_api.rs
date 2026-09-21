@@ -2,7 +2,23 @@ use crate::MlsError;
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
-use std::{io::Read, time::Duration};
+use std::{io::Read, sync::OnceLock, time::Duration};
+
+fn http_client() -> Result<Client, MlsError> {
+    // Clones share connection pools and TLS sessions. Credentials stay on each
+    // request, never in default headers or a cookie jar shared between accounts.
+    static CLIENT: OnceLock<Client> = OnceLock::new();
+    if let Some(client) = CLIENT.get() {
+        return Ok(client.clone());
+    }
+    let client = Client::builder()
+        .timeout(Duration::from_secs(30))
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .map_err(|_| MlsError::protocol("send HTTP client creation"))?;
+    let _ = CLIENT.set(client.clone());
+    Ok(CLIENT.get().cloned().unwrap_or(client))
+}
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -45,11 +61,7 @@ impl<'a> Api<'a> {
     pub fn new(config: &'a SendConfig) -> Result<Self, MlsError> {
         Ok(Self {
             config,
-            client: Client::builder()
-                .timeout(Duration::from_secs(30))
-                .redirect(reqwest::redirect::Policy::none())
-                .build()
-                .map_err(|_| MlsError::protocol("send HTTP client creation"))?,
+            client: http_client()?,
         })
     }
     pub fn call<T: DeserializeOwned>(
@@ -157,4 +169,75 @@ fn successful_response(
         status,
         recovery: message,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{
+        io::{BufRead, BufReader, Write},
+        net::TcpListener,
+        thread,
+    };
+
+    #[test]
+    fn pooled_connections_keep_each_requests_credentials_isolated() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let base_url = format!("http://{}", listener.local_addr().unwrap());
+        let server = thread::spawn(move || {
+            // Both independently constructed APIs must reuse this connection.
+            let (mut socket, _) = listener.accept().unwrap();
+            socket
+                .set_read_timeout(Some(Duration::from_secs(3)))
+                .unwrap();
+            let mut reader = BufReader::new(socket.try_clone().unwrap());
+            for expected in ["session=alice", "session=bob"] {
+                let mut line = String::new();
+                reader.read_line(&mut line).unwrap();
+                assert!(line.starts_with("GET /api/trpc/mls.test"));
+                let mut cookies = Vec::new();
+                loop {
+                    line.clear();
+                    reader.read_line(&mut line).unwrap();
+                    if line == "\r\n" {
+                        break;
+                    }
+                    if let Some((key, value)) = line.split_once(':')
+                        && key.eq_ignore_ascii_case("cookie")
+                    {
+                        cookies.push(value.trim().to_string());
+                    }
+                }
+                assert_eq!(cookies, [expected]);
+                let body = r#"{"result":{"data":{"json":true}}}"#;
+                write!(socket, "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nSet-Cookie: ignored=server-value\r\n\r\n{body}", body.len()).unwrap();
+                socket.flush().unwrap();
+            }
+        });
+        let mut config = SendConfig {
+            root: "/unused".into(),
+            user_id: "alice".into(),
+            device_id: uuid::Uuid::new_v4().to_string(),
+            storage_key: String::new(),
+            cookie: "session=alice".into(),
+            base_url,
+            uploadthing_version: String::new(),
+            allow_insecure_http: true,
+        };
+        assert!(
+            Api::new(&config)
+                .unwrap()
+                .call::<bool>("test", false, json!({}))
+                .unwrap()
+        );
+        config.user_id = "bob".into();
+        config.cookie = "session=bob".into();
+        assert!(
+            Api::new(&config)
+                .unwrap()
+                .call::<bool>("test", false, json!({}))
+                .unwrap()
+        );
+        server.join().unwrap();
+    }
 }
