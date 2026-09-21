@@ -31,29 +31,75 @@ export type EncryptionDevice = {
 };
 let queue: Promise<unknown> = Promise.resolve();
 const cleaned = new Set<string>();
+let maintenance:
+  | { cookie: string | null | undefined; promise: Promise<void> }
+  | undefined;
+let registrations:
+  | { cookie: string; devices: Map<string, Promise<void>> }
+  | undefined;
+let deviceLoad:
+  | { cookie: string | null | undefined; promise: Promise<EncryptionDevice> }
+  | undefined;
+
+/** Share only an in-flight load across inbox rows; never cache a settled identity. */
+export function getEncryptionDevice() {
+  const cookie = authClient.getCookie();
+  if (deviceLoad?.cookie === cookie) return deviceLoad.promise;
+  const promise = withEncryptionDevice(async (device) => device).finally(() => {
+    if (deviceLoad?.promise === promise) deviceLoad = undefined;
+  });
+  deviceLoad = { cookie, promise };
+  return promise;
+}
 
 /** Serialize private-state changes, including concurrent provisioning and receives. */
 export function withEncryptionDevice<T>(
   operation: (device: EncryptionDevice) => Promise<T>,
-  expected?: Pick<EncryptionDevice, "userId" | "deviceId">,
+  expected?: EncryptionDevice,
 ): Promise<T> {
   const cookie = authClient.getCookie();
-  const result = queue.then(() =>
-    loadDevice(async (device) => {
-      if (
-        cookie !== authClient.getCookie() ||
-        (expected &&
-          (device.userId !== expected.userId ||
-            device.deviceId !== expected.deviceId))
-      )
-        throw new Error(
-          "The account or encryption device changed. Retry this operation on the original account.",
-        );
-      return operation(device);
-    }),
-  );
+  const result = queue.then(async () => {
+    if (cookie !== authClient.getCookie()) throw deviceChanged();
+    if (!expected)
+      return loadDevice(async (device) => {
+        if (cookie !== authClient.getCookie()) throw deviceChanged();
+        return operation(device);
+      });
+    // A known device needs its current identity checked, not another session
+    // request, SecureStore read, directory setup, and client configuration.
+    const lease = await acquireDeviceLease(
+      decodeURIComponent(expected.root.slice(7)),
+    );
+    try {
+      await assertEncryptionDeviceCurrent(expected);
+      return await operation(expected);
+    } finally {
+      lease.release();
+    }
+  });
   queue = result.catch(() => undefined);
   return result;
+}
+
+function deviceChanged() {
+  return new Error(
+    "The account or encryption device changed. Retry this operation on the original account.",
+  );
+}
+
+/** Check results after non-mutating media work without waiting for the ratchet. */
+export async function assertEncryptionDeviceCurrent(device: EncryptionDevice) {
+  if ((authClient.getCookie() ?? "") !== device.cookie) throw deviceChanged();
+  const manifest = `${device.root}device.json`;
+  if (!(await FS.getInfoAsync(manifest)).exists) throw deviceChanged();
+  const saved = manifestSchema.parse(
+    JSON.parse(await FS.readAsStringAsync(manifest)),
+  );
+  if (
+    saved.deviceId !== device.deviceId ||
+    (authClient.getCookie() ?? "") !== device.cookie
+  )
+    throw deviceChanged();
 }
 
 export async function writeAtomic(path: string, data: string) {
@@ -112,13 +158,14 @@ export function resetEncryptionDevice() {
       }
       await FS.deleteAsync(root, { idempotent: true });
       await SecureStore.deleteItemAsync(keyName);
+      maintenance = undefined;
+      deviceLoad = undefined;
     } finally {
       lease.release();
     }
-    await loadDevice(replenishKeys);
   });
   queue = result.catch(() => undefined);
-  return result;
+  return result.then(prepareEncryptionDevice);
 }
 
 async function loadDevice<T>(
@@ -208,7 +255,24 @@ async function loadDevice<T>(
   }
 }
 
-export async function registerDevice(device: EncryptionDevice) {
+/** Coalesce cold-start registration; delivery authorization still runs every time. */
+export function registerDevice(device: EncryptionDevice) {
+  if ((authClient.getCookie() ?? "") !== device.cookie)
+    return Promise.reject(deviceChanged());
+  if (registrations?.cookie !== device.cookie)
+    registrations = { cookie: device.cookie, devices: new Map() };
+  const registry = registrations.devices;
+  const existing = registry.get(device.deviceId);
+  if (existing) return existing;
+  const pending = publishDeviceRegistration(device).catch((error) => {
+    registry.delete(device.deviceId);
+    throw error;
+  });
+  registry.set(device.deviceId, pending);
+  return pending;
+}
+
+async function publishDeviceRegistration(device: EncryptionDevice) {
   const api = device.api;
   const client = await restoreClient(device);
   try {
@@ -225,47 +289,60 @@ export async function registerDevice(device: EncryptionDevice) {
 }
 
 export async function replenishKeys(device: EncryptionDevice) {
+  await assertEncryptionDeviceCurrent(device);
   await registerDevice(device);
   const api = device.api;
-  const retained = new Set(
-    await api.mls.retainedKeys.query({ deviceId: device.deviceId }),
-  );
-  // Unpublished files younger than an hour may belong to a failed publish retry.
-  for (const filename of await FS.readDirectoryAsync(
-    `${device.root}packages/`,
-  )) {
-    const info = await FS.getInfoAsync(`${device.root}packages/${filename}`);
-    if (
-      info.exists &&
-      !retained.has(filename.replace(/\.age$/, "")) &&
-      info.modificationTime < Date.now() / 1000 - 3600
-    ) {
-      await FS.deleteAsync(info.uri, { idempotent: true });
+  const [retainedIds, available] = await Promise.all([
+    api.mls.retainedKeys.query({ deviceId: device.deviceId }),
+    api.mls.inventory.query({ deviceId: device.deviceId }),
+  ]);
+  const packages = await withEncryptionDevice(async () => {
+    const retained = new Set(retainedIds);
+    // Available keys are retained even when claimed during these requests. The
+    // grace period also protects unpublished files from interrupted maintenance.
+    for (const filename of await FS.readDirectoryAsync(
+      `${device.root}packages/`,
+    )) {
+      const info = await FS.getInfoAsync(`${device.root}packages/${filename}`);
+      if (
+        info.exists &&
+        !retained.has(filename.replace(/\.age$/, "")) &&
+        info.modificationTime < Date.now() / 1000 - 3600
+      )
+        await FS.deleteAsync(info.uri, { idempotent: true });
     }
-  }
-  const available = await api.mls.inventory.query({
-    deviceId: device.deviceId,
-  });
-  if (available.length >= 16) return;
-  const packages = [];
-  for (let i = available.length; i < 32; i++) {
-    const participant = await restoreClient(device);
-    const id = newId();
-    try {
-      const data = encodeBase64(participant.keyPackage());
-      // Persist the private init key BEFORE publishing the public KeyPackage.
-      await writeAtomic(
-        `${device.root}packages/${id}.age`,
-        encodeBase64(participant.exportState(device.storageKey)),
-      );
-      packages.push({ id, data });
-    } finally {
-      participant.uniffiDestroy();
+    const generated: { id: string; data: string }[] = [];
+    if (available.length >= 16) return generated;
+    for (let i = available.length; i < 32; i++) {
+      const participant = await restoreClient(device);
+      const id = newId();
+      try {
+        const data = encodeBase64(participant.keyPackage());
+        // Persist the private init key BEFORE publishing the public KeyPackage.
+        await writeAtomic(
+          `${device.root}packages/${id}.age`,
+          encodeBase64(participant.exportState(device.storageKey)),
+        );
+        generated.push({ id, data });
+      } finally {
+        participant.uniffiDestroy();
+      }
     }
-  }
+    return generated;
+  }, device);
+  if (packages.length === 0) return;
+  await assertEncryptionDeviceCurrent(device);
   await api.mls.publish.mutate({ deviceId: device.deviceId, packages });
 }
 
 export function prepareEncryptionDevice() {
-  return withEncryptionDevice(replenishKeys);
+  const cookie = authClient.getCookie();
+  if (maintenance?.cookie === cookie) return maintenance.promise;
+  const promise = getEncryptionDevice()
+    .then(replenishKeys)
+    .finally(() => {
+      if (maintenance?.promise === promise) maintenance = undefined;
+    });
+  maintenance = { cookie, promise };
+  return promise;
 }

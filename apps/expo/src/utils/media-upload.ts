@@ -111,6 +111,7 @@ export async function reconcileNativeSends(queryClient: QueryClient) {
   const jobs = await listNativeSends();
   if (cookie !== authClient.getCookie()) return;
   for (const job of jobs) {
+    if (cookie !== authClient.getCookie()) return;
     const status = `${job.status}:${job.error ?? ""}`;
     if (observed.get(job.id) !== status) {
       observed.set(job.id, status);
@@ -137,6 +138,7 @@ export async function reconcileNativeSends(queryClient: QueryClient) {
   }
   // A completed older send must not hide another queued send to the same person.
   for (const job of jobs) {
+    if (cookie !== authClient.getCookie()) return;
     if ((job.status !== "uploading" && job.status !== "blocked") || job.groupId)
       continue;
     markWhispPending(

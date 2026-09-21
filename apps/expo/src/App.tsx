@@ -20,7 +20,12 @@ import { authClient } from "~/utils/auth";
 import { POSTHOG_API_KEY, POSTHOG_HOST } from "~/utils/constants";
 import { reconcileNativeSends } from "~/utils/media-upload";
 import { prepareEncryptionDevice } from "~/utils/mls-device";
-import { configureNativeSends, resumeNativeSends } from "~/utils/native-send";
+import {
+  configureNativeSends,
+  resumeNativeSends,
+  subscribeNativeSends,
+} from "~/utils/native-send";
+import { observeNativeSends } from "~/utils/native-send-observer";
 import {
   listBackgroundUploadTasks,
   markBackgroundUploadTaskObserved,
@@ -55,6 +60,7 @@ Sentry.init({
 function AppContent() {
   const { data: session } = authClient.useSession();
   const queryClient = useQueryClient();
+  const sessionCookie = authClient.getCookie();
 
   useEffect(() => {
     if (!session?.user.id) return;
@@ -90,47 +96,24 @@ function AppContent() {
   }, [session?.user.id]);
 
   useEffect(() => {
-    let stopped = false;
-    let polling = false;
-    async function refresh() {
-      if (stopped || polling || AppState.currentState !== "active") return;
-      polling = true;
-      try {
-        await reconcileNativeSends(queryClient);
-      } catch {
+    return observeNativeSends({
+      isCurrent: () => sessionCookie === authClient.getCookie(),
+      isActive: () => AppState.currentState === "active",
+      configure: configureNativeSends,
+      resume: resumeNativeSends,
+      reconcile: () => reconcileNativeSends(queryClient),
+      subscribeStatus: subscribeNativeSends,
+      subscribeActivation: (activate) =>
+        AppState.addEventListener("change", (state) => {
+          if (state === "active") activate();
+        }),
+      onError: () => {
         console.warn(
-          "Queued send status is unavailable. It will retry on the next refresh.",
+          "Queued send status is unavailable. Queued media is preserved and will retry.",
         );
-      } finally {
-        polling = false;
-      }
-    }
-    void configureNativeSends()
-      .then(resumeNativeSends)
-      .then(refresh)
-      .catch(() => {
-        console.warn("Native sends are paused. Sign in and retry to resume.");
-      });
-    const timer = setInterval(() => {
-      void refresh();
-    }, 2000);
-    const subscription = AppState.addEventListener("change", (state) => {
-      if (state === "active")
-        void configureNativeSends()
-          .then(resumeNativeSends)
-          .then(refresh)
-          .catch(() => {
-            console.warn(
-              "Native sends could not resume. Queued media is preserved.",
-            );
-          });
+      },
     });
-    return () => {
-      stopped = true;
-      clearInterval(timer);
-      subscription.remove();
-    };
-  }, [queryClient, session?.user.id]);
+  }, [queryClient, session?.user.id, sessionCookie]);
 
   // Request notification permissions immediately (before auth)
   // but only register token after authentication

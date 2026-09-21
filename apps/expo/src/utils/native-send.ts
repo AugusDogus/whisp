@@ -74,5 +74,7 @@ export async function listNativeSends() {
   return z.array(jobSchema).parse(JSON.parse(await nativeSend.list()));
 }
 export const resumeNativeSends = () => nativeSend.resume();
+export const subscribeNativeSends = (listener: () => void) =>
+  nativeSend.subscribe(listener);
 
 export const acknowledgeNativeSend = (id: string) => nativeSend.acknowledge(id);
