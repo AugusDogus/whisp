@@ -13,20 +13,36 @@ its members' registered devices. Sending to several friends encrypts the media
 once and sends its secret descriptor through each existing direct conversation.
 Other direct recipients are not exposed through a shared MLS roster.
 
-Before sending, the client catches up with the ordered conversation log,
-removes departed/revoked devices, adds new devices using reserved one-time
-KeyPackages and Welcomes, and commits a fresh self-update. It then encrypts
-an application message containing the media key, type, optional thumbhash, sender,
-message ID, and group context. It verifies the complete MLS roster against
-the authenticated device directory after every membership commit.
+Ordinary sends reuse the current MLS epoch. Each application uses a fresh key
+from the MLS sender ratchet, without a group commit or operation reservation.
+The client atomically flushes the advanced ratchet and exact ciphertext before
+publication. A timeout retries those same bytes. Definitively rejected attempts
+consume their generation; recovery never restores the pre-encryption snapshot.
+The server stores immutable accepted or cancelled attempt receipts, preventing
+a delayed request from publishing after its ciphertext was abandoned.
 
-The client durably stages candidate state before submitting commits and the
-application message. The server accepts the complete batch only at its expected
-revision. An operation ID makes retries idempotent. On interruption, the client
-settles the operation transactionally: accepted state is promoted; a cancelled
-operation cannot be accepted by a delayed network request. Conflicting sends
-sync and retry with fresh update-path secrets. Secret-tree state and cached
-media descriptors advance together in one encrypted local record.
+Application publication validates the current device, conversation, draft and
+complete device roster. Its MLS epoch is separate from the event sequence, so
+simultaneous applications from different devices can both succeed. The local
+cursor advances only through contiguous events. Own echoes beyond a gap must
+match durably recorded ciphertext and context exactly; other applications are
+authenticated by OpenMLS. Secret-tree state and cached media descriptors advance
+together in one encrypted local record.
+
+Membership changes, first sends and periodic self-updates use the existing
+compare-and-append operation. The client synchronizes the ordered log, removes
+departed/revoked devices, adds devices using one-time KeyPackages and Welcomes,
+and verifies the full MLS roster. Each device refreshes its own key contribution
+after 100 consumed application generations or 24 hours, checked before sending.
+Rejected attempts count; peer updates do not reset the schedule. Legacy snapshots
+and backward clock changes require a refresh. This permits a longer
+post-compromise recovery window than updating on every message.
+
+Commit candidates are staged separately. On interruption, the client settles the
+operation transactionally: accepted state is promoted; a cancelled operation
+cannot be accepted by a delayed request. A failed candidate can be discarded
+because its next attempt uses fresh update-path secrets. This rollback rule never
+applies to ordinary application sends.
 Joining also durably records private KeyPackage retirement, so deletion and
 Welcome acknowledgment resume after interruption even when the cursor advanced.
 
@@ -79,9 +95,10 @@ receives use the same Rust conversation implementation. An OS file lock guards
 shared ratchet state across JSI and background workers; media work stays outside
 that lock. Android loads one shared Rust library through JSI and UniFFI/JNA.
 
-Warm sends reuse the configured local identity and atomically check the server's
-conversation revision before publishing. They sync only on a revision conflict;
-older servers keep the sync-first flow. A first upload goes directly to
+Warm sends reuse the configured local identity and publish directly in the
+current epoch. Membership or epoch conflicts take the synchronization and commit
+path. Servers advertise application publication support; older servers keep the
+previous commit flow. A first upload goes directly to
 authorization, while resumed or ambiguous transfers check delivery before retrying.
 UploadThing waits for its completion callback to avoid extra status polling;
 the native worker still confirms durable delivery before reporting success.
@@ -198,14 +215,19 @@ open MLS whisps. Android prebuild requires the project's `google-services.json`
 or `GOOGLE_SERVICES_JSON`. iOS builds produce the XCFramework referenced by
 the podspec. The development-only Profile bridge test remains a local diagnostic.
 
-The deployment migration runner applies `packages/db/drizzle/0002_mls.sql`
-before building the API. It adds the MLS tables through the registered Drizzle
-history. Local databases use `bun db:migrate`. Coordinate native-client and
-server releases: the upload route
+The deployment migration runner applies the registered Drizzle migrations
+before building the API. Application publication adds a separate epoch counter
+and durable attempt receipts. A database trigger counts inserted commits so
+older API deployments sharing the database also maintain the epoch correctly.
+Drizzle does not model this trigger; future table-rebuild migrations must preserve
+or recreate `mls_event_epoch` from migration `0004_mls_application_epochs.sql`.
+Deploy migrations and API before the rebuilt native client. Local databases use
+`bun db:migrate`. Coordinate native-client and server releases: the upload route
 rejects old plaintext clients, and recipients need to open the new app to
 register devices before anyone can send them an encrypted whisp.
 
-The conversation ciphertext log is retained for offline epoch catch-up. Media
+The conversation ciphertext log and application retry receipts are retained for
+offline catch-up and recovery, including after upload drafts expire. Media
 drafts and delivery records follow the existing cleanup lifecycle. Do not delete
 log entries while devices may still need them; bounded archival requires a
 separate device-expiration policy. Normal local file deletion does not promise

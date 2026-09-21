@@ -310,6 +310,8 @@ fn advance(c: &SendConfig, job: &mut Job, expired: bool) -> Result<SendStep, Mls
                 device_identity_validated: bool,
                 #[serde(default, rename = "supportsAtomicBegin")]
                 supports_atomic_begin: bool,
+                #[serde(default, rename = "supportsApplicationPublish")]
+                supports_application_publish: bool,
             }
             let mut input =
                 json!({"deviceId":c.device_id,"draftId":id,"signatureKey":signature_key});
@@ -346,6 +348,7 @@ fn advance(c: &SendConfig, job: &mut Job, expired: bool) -> Result<SendStep, Mls
                     &conversation.id,
                     descriptor,
                     prepared.supports_atomic_begin,
+                    prepared.supports_application_publish,
                 )?;
             }
             job.phase = Phase::AuthorizeFresh;

@@ -128,26 +128,63 @@ async fn foreground_and_background_leases_exclude_each_other() {
 fn native_send_recovers_accepted_append_without_a_second_application() {
     for self_send in [false, true] {
         for modern_server in [false, true] {
-            recovered_send(self_send, modern_server, false, true);
+            recovered_send(
+                self_send,
+                modern_server,
+                false,
+                true,
+                ApplicationSend::Disabled,
+            );
             if modern_server {
-                recovered_send(self_send, modern_server, true, true);
+                recovered_send(
+                    self_send,
+                    modern_server,
+                    true,
+                    true,
+                    ApplicationSend::Disabled,
+                );
             }
         }
     }
 }
 #[test]
 fn native_send_avoids_redundant_requests_but_rechecks_resumed_uploads() {
-    recovered_send(true, true, false, false);
-    recovered_send(true, true, true, false);
+    recovered_send(true, true, false, false, ApplicationSend::Disabled);
+    recovered_send(true, true, true, false, ApplicationSend::Disabled);
 }
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum ApplicationSend {
+    Disabled,
+    Publish,
+    ReplayCheckpoint,
+    ExpirePending,
+}
+
+#[test]
+fn native_second_send_uses_application_capability_without_another_commit() {
+    recovered_send(false, true, true, false, ApplicationSend::Publish);
+}
+
+#[test]
+fn foreground_receive_settles_application_after_pending_send_job_expires() {
+    recovered_send(false, true, true, false, ApplicationSend::ExpirePending);
+}
+
+#[test]
+fn native_send_recovers_application_ack_before_job_checkpoint_without_duplicate_commit() {
+    recovered_send(false, true, true, false, ApplicationSend::ReplayCheckpoint);
+}
+
 fn recovered_send(
     self_send: bool,
     modern_server: bool,
     atomic_begin: bool,
     lose_append_response: bool,
+    application_send: ApplicationSend,
 ) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let f = Fixture::new(&format!("http://{}", listener.local_addr().unwrap()));
+    let mut f = Fixture::new(&format!("http://{}", listener.local_addr().unwrap()));
+    let first_id = f.id.clone();
     let conversation = new_id();
     let conversation_for_receive = conversation.clone();
     let operation = new_id();
@@ -172,6 +209,8 @@ fn recovered_send(
     let retained_id = f.id.clone();
     let appended = Arc::new(Mutex::new(Vec::<Value>::new()));
     let requests = appended.clone();
+    let applications = Arc::new(Mutex::new(Vec::<Value>::new()));
+    let server_applications = applications.clone();
     let routes = Arc::new(Mutex::new(Vec::<String>::new()));
     let server_routes = routes.clone();
     let stop = Arc::new(AtomicBool::new(false));
@@ -181,6 +220,7 @@ fn recovered_send(
     listener.set_nonblocking(true).unwrap();
     let server = thread::spawn(move || {
         let mut revision = 0;
+        let mut application_revision = None;
         let mut conflict = atomic_begin && lose_append_response;
         while !stopped.load(Ordering::SeqCst) {
             let (mut socket, _) = match listener.accept() {
@@ -232,6 +272,8 @@ fn recovered_send(
                     if modern_server {
                         response["deviceIdentityValidated"] = json!(true);
                         response["supportsAtomicBegin"] = json!(atomic_begin);
+                        response["supportsApplicationPublish"] =
+                            json!(application_send != ApplicationSend::Disabled);
                     }
                     response
                 }
@@ -288,6 +330,27 @@ fn recovered_send(
                     }
                     json!({"revision":revision})
                 }
+                "/api/trpc/mls.publishApplication" => {
+                    assert_ne!(application_send, ApplicationSend::Disabled);
+                    server_applications
+                        .lock()
+                        .unwrap()
+                        .push(input["json"].clone());
+                    if application_revision.is_some()
+                        && application_send == ApplicationSend::ReplayCheckpoint
+                    {
+                        json!({"kind":"cancelled"})
+                    } else {
+                        if application_revision.is_none() {
+                            revision += 1;
+                            application_revision = Some(revision);
+                            if application_send == ApplicationSend::ExpirePending {
+                                continue; // Accepted, but its response was lost.
+                            }
+                        }
+                        json!({"kind":"published","revision":application_revision.unwrap(),"epoch":input["json"]["epoch"],"retainedMessageIds":[input["json"]["draftId"]]})
+                    }
+                }
                 "/api/trpc/mls.settle" => json!({"revision":revision}),
                 "/api/uploadthing" => {
                     json!([{"url":"https://upload.example.test/signed-ciphertext"}])
@@ -339,7 +402,7 @@ fn recovered_send(
             ]
         };
         assert_eq!(*routes.lock().unwrap(), expected);
-        if atomic_begin {
+        if atomic_begin && application_send == ApplicationSend::Disabled {
             // The append and ratchet were saved, but the send job still points
             // to Publish after a crash. No pending operation remains to settle.
             fs::write(f.dir().join("job.age"), publish_checkpoint).unwrap();
@@ -436,12 +499,100 @@ fn recovered_send(
             runtime
                 .block_on(read_native_descriptor(
                     f.config.clone(),
-                    conversation_for_receive,
+                    conversation_for_receive.clone(),
                     f.id.clone()
                 ))
                 .unwrap()
                 .is_none()
         );
+    }
+    if application_send != ApplicationSend::Disabled {
+        delivered.store(false, Ordering::SeqCst);
+        f.id = new_id();
+        f.enqueue();
+        fs::write(f.dir().join("compressed"), b"second private media").unwrap();
+        assert_eq!(f.advance()["stage"], "continue");
+        assert_eq!(f.advance()["stage"], "continue");
+        fs::copy(
+            f.dir().join("ciphertext.age"),
+            f.root.join("verification-second.age"),
+        )
+        .unwrap();
+        let second_publish_checkpoint = fs::read_to_string(f.dir().join("job.age")).unwrap();
+        let before_second = routes.lock().unwrap().len();
+        let published = f.advance();
+        assert_eq!(
+            &routes.lock().unwrap()[before_second..],
+            ["/api/trpc/mls.prepare", "/api/trpc/mls.publishApplication"]
+        );
+        if application_send == ApplicationSend::ExpirePending {
+            assert_eq!(published["stage"], "paused");
+            let configuration: Value = serde_json::from_str(&f.config).unwrap();
+            let storage_key = configuration["storageKey"].as_str().unwrap().to_owned();
+            let job: Value = serde_json::from_str(
+                &open_local(
+                    decode_base64(fs::read_to_string(f.dir().join("job.age")).unwrap()).unwrap(),
+                    storage_key,
+                )
+                .unwrap(),
+            )
+            .unwrap();
+            replace_phase(&f, job["phase"].clone(), 0);
+            assert_eq!(f.advance()["stage"], "failed");
+            assert!(!f.dir().join("ciphertext.age").exists());
+            acknowledge_send_job(f.config.clone(), f.id.clone()).unwrap();
+            assert!(!f.dir().exists());
+            let before_receive = routes.lock().unwrap().len();
+            tokio::runtime::Runtime::new()
+                .unwrap()
+                .block_on(sync_native_conversation(
+                    f.config.clone(),
+                    conversation_for_receive.clone(),
+                ))
+                .unwrap();
+            assert_eq!(
+                &routes.lock().unwrap()[before_receive..],
+                [
+                    "/api/trpc/mls.publishApplication",
+                    "/api/trpc/mls.sync",
+                    "/api/trpc/mls.retainedMessages"
+                ]
+            );
+            let replayed = applications.lock().unwrap();
+            assert_eq!(replayed.len(), 2);
+            assert_eq!(replayed[0], replayed[1]);
+        } else {
+            assert_eq!(published["stage"], "continue");
+            if application_send == ApplicationSend::ReplayCheckpoint {
+                fs::write(f.dir().join("job.age"), second_publish_checkpoint).unwrap();
+                let before_retry = routes.lock().unwrap().len();
+                assert_eq!(f.advance()["stage"], "continue");
+                assert_eq!(
+                    &routes.lock().unwrap()[before_retry..],
+                    [
+                        "/api/trpc/mls.prepare",
+                        "/api/trpc/mls.publishApplication",
+                        "/api/trpc/mls.beginSend"
+                    ]
+                );
+                let attempts = applications.lock().unwrap();
+                assert_eq!(attempts.len(), 2);
+                assert_ne!(attempts[0]["ciphertext"], attempts[1]["ciphertext"]);
+            }
+            let before_authorize = routes.lock().unwrap().len();
+            assert_eq!(f.advance()["stage"], "upload");
+            assert_eq!(
+                &routes.lock().unwrap()[before_authorize..],
+                ["/api/uploadthing"]
+            );
+            complete_send_upload(f.config.clone(), f.id.clone(), true).unwrap();
+            assert_eq!(f.advance()["stage"], "confirm");
+            delivered.store(true, Ordering::SeqCst);
+            assert_eq!(f.advance()["stage"], "continue");
+            assert_eq!(f.advance()["stage"], "sent");
+            assert!(!f.dir().join("ciphertext.age").exists());
+            acknowledge_send_job(f.config.clone(), f.id.clone()).unwrap();
+        }
     }
     stop.store(true, Ordering::SeqCst);
     server.join().unwrap();
@@ -466,7 +617,7 @@ fn recovered_send(
         panic!("expected descriptor")
     };
     let descriptor: Value = serde_json::from_slice(&plaintext).unwrap();
-    assert_eq!(descriptor["messageId"], f.id);
+    assert_eq!(descriptor["messageId"], first_id);
     decrypt_attachment_sync(
         f.root
             .join("verification.age")
@@ -477,6 +628,34 @@ fn recovered_send(
     )
     .unwrap();
     assert_eq!(fs::read(f.root.join("received")).unwrap(), b"private media");
+    if application_send != ApplicationSend::Disabled {
+        let applications = applications.lock().unwrap();
+        let ciphertext = applications[0]["ciphertext"].as_str().unwrap();
+        let ReceivedMessage::Application { plaintext, .. } = receiver
+            .process(decode_base64(ciphertext.into()).unwrap())
+            .unwrap()
+        else {
+            panic!("Expected second application descriptor");
+        };
+        let descriptor: Value = serde_json::from_slice(&plaintext).unwrap();
+        assert_eq!(descriptor["messageId"], f.id);
+        decrypt_attachment_sync(
+            f.root
+                .join("verification-second.age")
+                .to_string_lossy()
+                .into_owned(),
+            f.root
+                .join("received-second")
+                .to_string_lossy()
+                .into_owned(),
+            descriptor["key"].as_str().unwrap().into(),
+        )
+        .unwrap();
+        assert_eq!(
+            fs::read(f.root.join("received-second")).unwrap(),
+            b"second private media"
+        );
+    }
 }
 
 #[tokio::test]
