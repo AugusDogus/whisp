@@ -39,7 +39,7 @@ test("the EAS preview profile selects a separate identity and deep-link scheme",
   process.env.EXPO_PUBLIC_API_URL = "https://whisp-pr-17.example.com";
   delete process.env.GOOGLE_SERVICES_JSON;
   const config = configure(context);
-  expect(config.name).toBe("Whisp Preview");
+  expect(config.name).toBe("whisp preview");
   expect(config.android?.package).toBe("whisp.chat.preview");
   expect(config.ios?.bundleIdentifier).toBe("whisp.chat.preview");
   expect(config.scheme).toBe("whisp-preview");

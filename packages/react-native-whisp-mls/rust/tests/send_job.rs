@@ -964,7 +964,7 @@ fn blocked_send_preserves_recovery_reason_and_waits_for_explicit_retry() {
         .as_millis() as u64;
     replace_phase(&f, json!({"stage":"confirm"}), current);
     let reason =
-        "A member device has no unused encryption keys. Ask them to open Whisp, then retry.";
+        "A member device has no unused encryption keys. Ask them to open whisp, then retry.";
     let server = respond_once(
         listener,
         412,

@@ -68,7 +68,7 @@ export async function resolveRecipients(
   const allowSelfMessages = process.env.ALLOW_SELF_MESSAGES === "true";
   if (recipients.includes(senderId) && !allowSelfMessages)
     mlsConflict(
-      "Sending to yourself is disabled on this server. Your whisp is still queued. Reopen Whisp after self-send is enabled to retry.",
+      "Sending to yourself is disabled on this server. Your whisp is still queued. Reopen whisp after self-send is enabled to retry.",
     );
   if (
     allowSelfMessages &&
@@ -128,7 +128,7 @@ function validateRoster(
 ) {
   if (users.some((userId) => !devices.some((d) => d.userId === userId)))
     mlsConflict(
-      "A member has not registered an encryption device. Ask them to open the latest Whisp app, then retry.",
+      "A member has not registered an encryption device. Ask them to open the latest whisp app, then retry.",
     );
   if (devices.length > 200)
     mlsConflict("This conversation exceeds 200 encryption devices.");

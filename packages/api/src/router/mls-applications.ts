@@ -93,7 +93,7 @@ export const mlsApplicationsRouter = {
         if (attempt) {
           if (attempt.epoch !== input.epoch)
             mlsConflict(
-              "This ciphertext was submitted with a different MLS epoch. Preserve the queued send and reopen Whisp.",
+              "This ciphertext was submitted with a different MLS epoch. Preserve the queued send and reopen whisp.",
             );
           if (attempt.revision === null) return { kind: "cancelled" } as const;
           return {

@@ -73,7 +73,7 @@ function AppContent() {
         await prepareEncryptionDevice();
       } catch {
         console.warn(
-          "Encryption key provisioning failed. It will retry while Whisp is open.",
+          "Encryption key provisioning failed. It will retry while whisp is open.",
         );
       } finally {
         provisioning = false;

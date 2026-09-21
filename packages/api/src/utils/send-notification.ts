@@ -145,7 +145,7 @@ export async function notifyNewMessage(
     return { success: false, reason: "disabled" };
   }
 
-  const title = "New Whisp";
+  const title = "New whisp";
   const body = group
     ? `${senderName} sent a whisp to ${group.groupName}`
     : `${senderName} sent you a whisp`;

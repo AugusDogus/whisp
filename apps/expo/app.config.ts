@@ -26,7 +26,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   }
   return {
     ...config,
-    name: isPreview ? "Whisp Preview" : "whisp",
+    name: isPreview ? "whisp preview" : "whisp",
     slug: "whisp",
     scheme: isPreview ? "whisp-preview" : "whisp",
     version: "0.1.0",
@@ -52,9 +52,9 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         UIBackgroundModes: ["processing", "remote-notification"],
         BGTaskSchedulerPermittedIdentifiers: ["whisp.chat.send"],
         NSCameraUsageDescription:
-          "Whisp needs access to your Camera to capture and send photos and videos to your friends.",
+          "whisp needs access to your Camera to capture and send photos and videos to your friends.",
         NSMicrophoneUsageDescription:
-          "Whisp needs access to your Microphone to record videos with sound.",
+          "whisp needs access to your Microphone to record videos with sound.",
       },
     },
     android: {

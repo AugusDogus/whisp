@@ -9,7 +9,7 @@ function directory() {
     const FS = await import("expo-file-system/legacy");
     if (!FS.cacheDirectory)
       throw new Error(
-        "Private file storage is unavailable. Restart Whisp and retry.",
+        "Private file storage is unavailable. Restart whisp and retry.",
       );
     const root = `${FS.cacheDirectory}whisp-ciphertext/`;
     // No persisted index or keys: discard orphaned ciphertext after a restart.

@@ -1030,7 +1030,7 @@ function queuedSend(
 
 test("interrupted sends stay pending until automatic recovery reports delivery", async () => {
   const client = new QueryClient();
-  const job = queuedSend("uploading", "Connection lost. Whisp will retry.");
+  const job = queuedSend("uploading", "Connection lost. whisp will retry.");
   nativeJobs = [job];
   await reconcileNativeSends(client);
   expect(getOutboxStatusSnapshot()[job.recipients[0]]?.state).toBe("retrying");
@@ -1045,7 +1045,7 @@ test("interrupted sends stay pending until automatic recovery reports delivery",
 
 test("blocked sends stay paused and keep their recovery reason", async () => {
   const client = new QueryClient();
-  const reason = "Ask the recipient to open Whisp, then reopen Whisp to retry.";
+  const reason = "Ask the recipient to open whisp, then reopen whisp to retry.";
   const job = queuedSend("blocked", reason);
   nativeJobs = [job];
   await reconcileNativeSends(client);

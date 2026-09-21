@@ -34,10 +34,10 @@ enum SendError: LocalizedError {
   case vault, invalidCheckpoint, compression, stopped, storage
   var errorDescription: String? {
     switch self {
-    case .vault: return "Unlock Whisp and sign in to resume queued sends."
+    case .vault: return "Unlock whisp and sign in to resume queued sends."
     case .invalidCheckpoint: return "The native send checkpoint could not be read. The queued whisp is preserved."
     case .compression: return "Media compression failed. The original capture remains queued."
-    case .stopped: return "Sending paused. Open Whisp to resume."
+    case .stopped: return "Sending paused. Open whisp to resume."
     case .storage: return "The send could not be saved. Free device storage and retry."
     }
   }

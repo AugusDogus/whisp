@@ -289,11 +289,11 @@ export default function ProfileScreen() {
               <Dialog.Content>
                 <Dialog.Title>Delete Account</Dialog.Title>
                 <Dialog.Description>
-                  Are you sure you want to delete your Whisp account? This will
+                  Are you sure you want to delete your whisp account? This will
                   permanently delete all your messages, friend connections, and
                   account data. This action cannot be undone.
                   {"\n\n"}
-                  Note: This only deletes your Whisp account. Your Discord
+                  Note: This only deletes your whisp account. Your Discord
                   account will remain active.
                 </Dialog.Description>
                 <View className="flex-row justify-end gap-3 pt-4">

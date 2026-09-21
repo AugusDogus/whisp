@@ -223,6 +223,6 @@ export function createCiphertextCache(storage: Storage) {
 }
 function reportCleanup() {
   console.warn(
-    "An encrypted prefetch file could not be removed. It will be cleared when Whisp restarts.",
+    "An encrypted prefetch file could not be removed. It will be cleared when whisp restarts.",
   );
 }

@@ -133,20 +133,20 @@ fn successful_response(
         return Ok(response);
     }
     let fallback = match status {
-        401 => "Sign in again, then reopen Whisp to resume this send.",
+        401 => "Sign in again, then reopen whisp to resume this send.",
         403 => {
             "This account cannot complete this send. Check your device and conversation membership before retrying."
         }
         404 | 410 => {
             "This send's server record expired or is no longer available. Send the whisp again."
         }
-        409 => "The conversation changed during this send. Whisp will sync and retry.",
+        409 => "The conversation changed during this send. whisp will sync and retry.",
         412 => {
-            "This send needs updated encryption keys or membership. Open Whisp on the recipient devices, then retry."
+            "This send needs updated encryption keys or membership. Open whisp on the recipient devices, then retry."
         }
         400 | 413 | 422 => "The server rejected this upload. Capture and send the whisp again.",
         _ => {
-            "The send service is temporarily unavailable. Whisp will retry; the queued whisp is preserved."
+            "The send service is temporarily unavailable. whisp will retry; the queued whisp is preserved."
         }
     };
     // Only public, actionable 4xx messages are shown. Never persist raw HTTP

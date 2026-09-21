@@ -69,7 +69,7 @@ final class WhispSendManager: NSObject, URLSessionTaskDelegate {
     request.earliestBeginDate = Date(timeIntervalSinceNow: 60)
     // OS may reject extra scheduling requests. Durable jobs also resume at launch.
     do { try BGTaskScheduler.shared.submit(request) }
-    catch { NSLog("Whisp send scheduling deferred until the next app activation.") }
+    catch { NSLog("whisp send scheduling deferred until the next app activation.") }
   }
   private func run(_ cancellation: SendCancellation, retryBlocked: Bool = false) -> Bool {
     lock.lock(); activeCancellation = cancellation; lock.unlock()

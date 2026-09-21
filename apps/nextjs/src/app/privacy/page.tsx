@@ -19,7 +19,7 @@ export default function PrivacyPage() {
             <section>
               <h2 className="mb-3 text-xl font-semibold">1. Introduction</h2>
               <p>
-                Whisp is committed to protecting your privacy. This Privacy
+                whisp is committed to protecting your privacy. This Privacy
                 Policy explains how we collect, use, disclose, and safeguard
                 your information when you use our ephemeral messaging service.
                 We are a privacy-first platform, and we have designed our
@@ -36,7 +36,7 @@ export default function PrivacyPage() {
                 2.1 Discord Authentication Data
               </h3>
               <p className="mb-3">
-                When you sign in to Whisp using Discord, we collect the
+                When you sign in to whisp using Discord, we collect the
                 following information from your Discord account:
               </p>
               <ul className="ml-6 list-outside list-disc space-y-2">
@@ -50,7 +50,7 @@ export default function PrivacyPage() {
                 2.2 Usage Data and Analytics
               </h3>
               <p className="mb-3">
-                We collect information about how you use Whisp, including:
+                We collect information about how you use whisp, including:
               </p>
               <ul className="ml-6 list-outside list-disc space-y-2">
                 <li>
@@ -80,7 +80,7 @@ export default function PrivacyPage() {
                 2.4 Content Data
               </h3>
               <p>
-                When you send photos or videos through Whisp, we temporarily
+                When you send photos or videos through whisp, we temporarily
                 store this content on our servers only for the purpose of
                 delivering it to the intended recipient. This content is
                 permanently and automatically deleted from our servers
@@ -95,7 +95,7 @@ export default function PrivacyPage() {
               </h2>
               <p className="mb-3">We use the information we collect to:</p>
               <ul className="ml-6 list-outside list-disc space-y-2">
-                <li>Provide, maintain, and improve the Whisp service</li>
+                <li>Provide, maintain, and improve the whisp service</li>
                 <li>Authenticate your identity and manage your account</li>
                 <li>Deliver messages and media to your intended recipients</li>
                 <li>Analyze usage patterns to improve user experience</li>
@@ -119,7 +119,7 @@ export default function PrivacyPage() {
                 4. Data Storage and Deletion
               </h2>
               <p className="mb-3">
-                Whisp is built with privacy as a core principle. Here&apos;s how
+                whisp is built with privacy as a core principle. Here&apos;s how
                 we handle your data:
               </p>
 
@@ -127,10 +127,10 @@ export default function PrivacyPage() {
                 4.1 Ephemeral Content
               </h3>
               <p>
-                All photos and videos sent through Whisp are automatically and
+                All photos and videos sent through whisp are automatically and
                 permanently deleted from our servers immediately after they are
                 viewed by the recipient. Once deleted, this content cannot be
-                recovered by anyone, including Whisp. We do not maintain backups
+                recovered by anyone, including whisp. We do not maintain backups
                 of ephemeral content.
               </p>
 
@@ -162,7 +162,7 @@ export default function PrivacyPage() {
                 5. Third-Party Services
               </h2>
               <p className="mb-3">
-                Whisp uses Discord for authentication. When you sign in with
+                whisp uses Discord for authentication. When you sign in with
                 Discord, you are subject to Discord&apos;s Privacy Policy and
                 Terms of Service. We encourage you to review Discord&apos;s
                 privacy practices. We do not share your information with any
@@ -176,7 +176,7 @@ export default function PrivacyPage() {
                 6. Children&apos;s Privacy
               </h2>
               <p>
-                Whisp is intended for users who are at least 13 years of age. We
+                whisp is intended for users who are at least 13 years of age. We
                 do not knowingly collect personal information from children
                 under 13. If we become aware that a user is under 13, we will
                 terminate their account and delete their information. If you
@@ -238,7 +238,7 @@ export default function PrivacyPage() {
                 Your information may be transferred to and processed in
                 countries other than your country of residence. These countries
                 may have data protection laws that are different from the laws
-                of your country. By using Whisp, you consent to the transfer of
+                of your country. By using whisp, you consent to the transfer of
                 your information to these countries.
               </p>
             </section>
@@ -251,7 +251,7 @@ export default function PrivacyPage() {
                 We may update this Privacy Policy from time to time. We will
                 notify you of any material changes by posting the new Privacy
                 Policy on this page and updating the &quot;Last Updated&quot;
-                date. Your continued use of Whisp after such changes constitutes
+                date. Your continued use of whisp after such changes constitutes
                 your acceptance of the updated Privacy Policy.
               </p>
             </section>

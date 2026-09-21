@@ -142,7 +142,7 @@ export async function reconcileNativeSends(queryClient: QueryClient) {
           message: job.error ?? undefined,
         });
       else if (job.status === "blocked")
-        toast.info(job.error ?? "This send is paused. Reopen Whisp to retry.");
+        toast.info(job.error ?? "This send is paused. Reopen whisp to retry.");
     }
     if (job.status === "sent" || job.status === "failed")
       await acknowledgeNativeSend(job.id);
