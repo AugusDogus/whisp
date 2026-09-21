@@ -624,6 +624,27 @@ test("native retries reuse a draft and cannot reuse another device's send ID", a
   ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
 });
 
+test("retrying a published draft never changes its session after membership changes", async () => {
+  const draft = await prepare();
+  const pending = await begin(draft.conversationId);
+  await sender.append({ ...pending.request, draftId: draft.draftId });
+  await db
+    .update(schema.MlsConversation)
+    .set({
+      members: pending.operation.members.filter(
+        (m) => m.deviceId !== senderDevice,
+      ),
+    })
+    .where(eq(schema.MlsConversation.id, draft.conversationId));
+  const retry = await sender.prepare({
+    deviceId: senderDevice,
+    draftId: draft.draftId,
+    recipients: ["bob"],
+  });
+  expect(retry.conversations).toEqual([{ id: draft.conversationId }]);
+  expect(await db.select().from(schema.MlsConversation)).toHaveLength(1);
+});
+
 test("native recovery detects a published descriptor without appending twice", async () => {
   const draft = await prepare();
   const input = {
