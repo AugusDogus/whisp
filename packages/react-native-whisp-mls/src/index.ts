@@ -5,6 +5,7 @@ export { runMlsSmokeTest, type MlsSmokeTestResult } from "./smoke-test";
 export {
   acquireDeviceLease,
   syncNativeConversation,
+  readNativeDescriptor,
   forgetNativeDescriptor,
   writePrivateFile,
   generateStorageKey,
