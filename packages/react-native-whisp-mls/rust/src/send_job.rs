@@ -31,6 +31,9 @@ enum Phase {
     Compress,
     Encrypt,
     Publish { descriptor: Descriptor },
+    // No transfer has been handed to a platform worker yet. Retried transfers
+    // use Authorize, whose status check reconciles ambiguous upload outcomes.
+    AuthorizeFresh,
     Authorize,
     Upload { url: String },
     Confirm,
@@ -305,6 +308,8 @@ fn advance(c: &SendConfig, job: &mut Job, expired: bool) -> Result<SendStep, Mls
                 conversations: Vec<Conversation>,
                 #[serde(default, rename = "deviceIdentityValidated")]
                 device_identity_validated: bool,
+                #[serde(default, rename = "supportsAtomicBegin")]
+                supports_atomic_begin: bool,
             }
             let mut input =
                 json!({"deviceId":c.device_id,"draftId":id,"signatureKey":signature_key});
@@ -336,9 +341,22 @@ fn advance(c: &SendConfig, job: &mut Job, expired: bool) -> Result<SendStep, Mls
                 )?;
             }
             for conversation in prepared.conversations {
-                conversation::send(&api, &conversation.id, descriptor)?;
+                conversation::send(
+                    &api,
+                    &conversation.id,
+                    descriptor,
+                    prepared.supports_atomic_begin,
+                )?;
             }
-            job.phase = Phase::Authorize;
+            job.phase = Phase::AuthorizeFresh;
+        }
+        Phase::AuthorizeFresh => {
+            let size = fs::metadata(dir.join("ciphertext.age"))
+                .map_err(|_| MlsError::protocol("ciphertext metadata read"))?
+                .len();
+            job.phase = Phase::Upload {
+                url: api.presign(&id, size)?,
+            };
         }
         Phase::Authorize | Phase::Upload { .. } | Phase::Confirm => {
             #[derive(Deserialize)]
@@ -396,8 +414,8 @@ fn advance(c: &SendConfig, job: &mut Job, expired: bool) -> Result<SendStep, Mls
         remove(&dir.join("compressed"))?;
         remove(&dir.join("compressed.partial"))?;
     }
-    // Authorization just confirmed a pending draft. Return its durable transfer
-    // immediately instead of requiring a second uploadStatus round trip. A
+    // Return a newly authorized transfer immediately, after making it durable.
+    // It does not need another uploadStatus round trip. A
     // restarted worker still enters Phase::Upload above and rechecks delivery.
     if let Phase::Upload { url } = &job.phase {
         return Ok(SendStep::Upload {

@@ -415,19 +415,7 @@ fn sync(
                     json!({"deviceId":c.device_id,"conversationId":id}),
                 )?,
             };
-            let retained: HashSet<_> = retained.into_iter().collect();
-            let previous_count = current.descriptors.len();
-            current.descriptors.retain(|key, _| retained.contains(key));
-            if current.descriptors.len() != previous_count {
-                save(
-                    c,
-                    id,
-                    &Record {
-                        current: Some(current.clone()),
-                        pending: None,
-                    },
-                )?;
-            }
+            retain_descriptors(c, id, &mut current, retained)?;
             return Ok((Some(current), result.descriptor_published));
         }
         if empty {
@@ -436,6 +424,28 @@ fn sync(
         state = Some(current);
     }
 }
+fn retain_descriptors(
+    c: &SendConfig,
+    id: &str,
+    current: &mut State,
+    retained: Vec<String>,
+) -> Result<(), MlsError> {
+    let retained: HashSet<_> = retained.into_iter().collect();
+    let previous_count = current.descriptors.len();
+    current.descriptors.retain(|key, _| retained.contains(key));
+    if current.descriptors.len() != previous_count {
+        save(
+            c,
+            id,
+            &Record {
+                current: Some(current.clone()),
+                pending: None,
+            },
+        )?;
+    }
+    Ok(())
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Package {
@@ -453,23 +463,90 @@ struct Operation {
     packages: Vec<Package>,
 }
 
-pub(crate) fn send(api: &Api, id: &str, descriptor: &Descriptor) -> Result<(), MlsError> {
+#[derive(Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+enum BeginSend {
+    #[serde(rename_all = "camelCase")]
+    Published { retained_message_ids: Vec<String> },
+    #[serde(rename_all = "camelCase")]
+    Operation {
+        operation: Operation,
+        retained_message_ids: Vec<String>,
+    },
+}
+
+fn begin_send(
+    api: &Api,
+    id: &str,
+    draft_id: &str,
+    current: &Option<State>,
+) -> Result<BeginSend, MlsError> {
+    api.call(
+        "beginSend",
+        true,
+        json!({
+            "deviceId":api.config.device_id, "conversationId":id,
+            "draftId":draft_id, "revision":current.as_ref().map_or(0, |s| s.cursor),
+        }),
+    )
+}
+
+pub(crate) fn send(
+    api: &Api,
+    id: &str,
+    descriptor: &Descriptor,
+    supports_atomic_begin: bool,
+) -> Result<(), MlsError> {
     let c = api.config;
-    let (current, published) = sync(api, id, Some(&descriptor.message_id))?;
-    // Sync runs after recovery, including accepted append responses that were
-    // lost. Older backends omit the receipt and need the separate query.
-    let published = match published {
-        Some(published) => published,
-        None => api.call::<bool>(
-            "descriptorPublished",
-            false,
-            json!({"deviceId":c.device_id,"draftId":descriptor.message_id,"conversationId":id}),
-        )?,
+    let (current, operation) = if supports_atomic_begin {
+        // Settling a staged append and retiring a Welcome must precede any
+        // publication check. An unchanged durable state needs no network sync.
+        let mut current = recover(api, id)?;
+        let result = match begin_send(api, id, &descriptor.message_id, &current) {
+            Err(MlsError::Request { status: 409, .. }) => {
+                // Another sender advanced the group, or this device still needs
+                // its Welcome. Synchronize once, then retry the atomic check.
+                (current, _) = sync(api, id, Some(&descriptor.message_id))?;
+                begin_send(api, id, &descriptor.message_id, &current)?
+            }
+            result => result?,
+        };
+        match result {
+            BeginSend::Published {
+                retained_message_ids,
+            } => {
+                if let Some(state) = &mut current {
+                    retain_descriptors(c, id, state, retained_message_ids)?;
+                }
+                return Ok(());
+            }
+            BeginSend::Operation {
+                operation,
+                retained_message_ids,
+            } => {
+                if let Some(state) = &mut current {
+                    retain_descriptors(c, id, state, retained_message_ids)?;
+                }
+                (current, operation)
+            }
+        }
+    } else {
+        let (current, published) = sync(api, id, Some(&descriptor.message_id))?;
+        // Older backends omit the receipt and need the separate query.
+        let published = match published {
+            Some(published) => published,
+            None => api.call::<bool>(
+                "descriptorPublished",
+                false,
+                json!({"deviceId":c.device_id,"draftId":descriptor.message_id,"conversationId":id}),
+            )?,
+        };
+        if published {
+            return Ok(());
+        }
+        let operation: Operation = api.call("begin", true, json!({"deviceId":c.device_id,"conversationId":id,"revision":current.as_ref().map_or(0, |s| s.cursor)}))?;
+        (current, operation)
     };
-    if published {
-        return Ok(());
-    }
-    let operation: Operation = api.call("begin", true, json!({"deviceId":c.device_id,"conversationId":id,"revision":current.as_ref().map_or(0, |s| s.cursor)}))?;
     pin(c, &operation.members)?;
     let client = match &current {
         Some(s) => restore(c, &s.snapshot)?,
