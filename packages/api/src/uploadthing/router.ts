@@ -38,14 +38,21 @@ export function createUploadRouter({ getSession }: CreateDeps) {
   const uploadRouter = {
     // Keep the route name so existing background-task reconciliation still works.
     // Old clients are rejected by the required encrypted draft input.
-    imageUploader: f({ blob: { maxFileSize: "1GB", maxFileCount: 1 } })
+    // Native sends confirm durable delivery through uploadStatus. The transfer
+    // need not wait for callback response data or post-delivery streak updates.
+    imageUploader: f(
+      { blob: { maxFileSize: "1GB", maxFileCount: 1 } },
+      { awaitServerData: false },
+    )
       .input(z.object({ draftId: z.uuid() }).strict())
       .middleware(async ({ input, files }) => {
         const session = await getSession();
         if (!session) throw new UploadThingError("Unauthorized");
         const scope = PreviewScope.fromEnvironment(process.env);
-        await PreviewUploads.assertOpen(db, scope);
-        const draft = await validateDraft(db, session.user.id, input.draftId);
+        const [, draft] = await Promise.all([
+          PreviewUploads.assertOpen(db, scope),
+          validateDraft(db, session.user.id, input.draftId),
+        ]);
         if (draft.completedAt)
           throw new UploadThingError("This whisp has already been uploaded.");
         return {

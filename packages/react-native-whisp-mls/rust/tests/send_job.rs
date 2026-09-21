@@ -128,15 +128,24 @@ async fn foreground_and_background_leases_exclude_each_other() {
 fn native_send_recovers_accepted_append_without_a_second_application() {
     for self_send in [false, true] {
         for modern_server in [false, true] {
-            recovered_send(self_send, modern_server, true);
+            recovered_send(self_send, modern_server, false, true);
+            if modern_server {
+                recovered_send(self_send, modern_server, true, true);
+            }
         }
     }
 }
 #[test]
 fn native_send_avoids_redundant_requests_but_rechecks_resumed_uploads() {
-    recovered_send(true, true, false);
+    recovered_send(true, true, false, false);
+    recovered_send(true, true, true, false);
 }
-fn recovered_send(self_send: bool, modern_server: bool, lose_append_response: bool) {
+fn recovered_send(
+    self_send: bool,
+    modern_server: bool,
+    atomic_begin: bool,
+    lose_append_response: bool,
+) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let f = Fixture::new(&format!("http://{}", listener.local_addr().unwrap()));
     let conversation = new_id();
@@ -172,6 +181,7 @@ fn recovered_send(self_send: bool, modern_server: bool, lose_append_response: bo
     listener.set_nonblocking(true).unwrap();
     let server = thread::spawn(move || {
         let mut revision = 0;
+        let mut conflict = atomic_begin && lose_append_response;
         while !stopped.load(Ordering::SeqCst) {
             let (mut socket, _) = match listener.accept() {
                 Ok(s) => s,
@@ -221,6 +231,7 @@ fn recovered_send(self_send: bool, modern_server: bool, lose_append_response: bo
                     let mut response = json!({"conversations":[{"id":conversation}]});
                     if modern_server {
                         response["deviceIdentityValidated"] = json!(true);
+                        response["supportsAtomicBegin"] = json!(atomic_begin);
                     }
                     response
                 }
@@ -248,10 +259,25 @@ fn recovered_send(self_send: bool, modern_server: bool, lose_append_response: bo
                     assert!(!modern_server, "Sync already returned the receipt");
                     json!(revision != 0)
                 }
-                "/api/trpc/mls.begin" => {
-                    json!({"operationId":operation,"members":roster,"packages":if self_send { json!([]) } else { json!([{
-                        "deviceId":receiver_id,"userId":"bob","signatureKey":roster[1]["signatureKey"],"keyPackageId":new_id(),"data":package
-                    }]) }})
+                "/api/trpc/mls.begin" | "/api/trpc/mls.beginSend" => {
+                    assert_eq!(route.ends_with("beginSend"), atomic_begin);
+                    if atomic_begin && conflict {
+                        conflict = false;
+                        write!(socket, "HTTP/1.1 409 Conflict\r\nConnection: close\r\nContent-Length: 0\r\n\r\n").unwrap();
+                        continue;
+                    }
+                    if atomic_begin && revision != 0 {
+                        json!({"kind":"published", "retainedMessageIds":if self_send { json!([retained_id]) } else { json!([]) }})
+                    } else {
+                        let operation = json!({"operationId":operation,"members":roster,"packages":if self_send { json!([]) } else { json!([{
+                            "deviceId":receiver_id,"userId":"bob","signatureKey":roster[1]["signatureKey"],"keyPackageId":new_id(),"data":package
+                        }]) }});
+                        if atomic_begin {
+                            json!({"kind":"operation","operation":operation,"retainedMessageIds":[]})
+                        } else {
+                            operation
+                        }
+                    }
                 }
                 "/api/trpc/mls.append" => {
                     requests.lock().unwrap().push(input["json"].clone());
@@ -284,6 +310,7 @@ fn recovered_send(self_send: bool, modern_server: bool, lose_append_response: bo
     fs::write(f.dir().join("compressed"), b"private media").unwrap();
     f.advance();
     f.advance();
+    let publish_checkpoint = fs::read_to_string(f.dir().join("job.age")).unwrap();
     if lose_append_response {
         assert!(matches!(
             advance_send_job(f.config.clone(), f.id.clone()).unwrap(),
@@ -297,13 +324,41 @@ fn recovered_send(self_send: bool, modern_server: bool, lose_append_response: bo
     }
     assert_eq!(f.advance()["stage"], "continue");
     if modern_server && !lose_append_response {
-        assert_eq!(
-            *routes.lock().unwrap(),
-            [
+        let expected = if atomic_begin {
+            vec![
+                "/api/trpc/mls.prepare",
+                "/api/trpc/mls.beginSend",
+                "/api/trpc/mls.append",
+            ]
+        } else {
+            vec![
                 "/api/trpc/mls.prepare",
                 "/api/trpc/mls.sync",
                 "/api/trpc/mls.begin",
                 "/api/trpc/mls.append",
+            ]
+        };
+        assert_eq!(*routes.lock().unwrap(), expected);
+        if atomic_begin {
+            // The append and ratchet were saved, but the send job still points
+            // to Publish after a crash. No pending operation remains to settle.
+            fs::write(f.dir().join("job.age"), publish_checkpoint).unwrap();
+            let before_retry = routes.lock().unwrap().len();
+            assert_eq!(f.advance()["stage"], "continue");
+            assert_eq!(
+                &routes.lock().unwrap()[before_retry..],
+                ["/api/trpc/mls.prepare", "/api/trpc/mls.beginSend"]
+            );
+        }
+    }
+    if atomic_begin && lose_append_response {
+        assert_eq!(
+            &routes.lock().unwrap()[..4],
+            [
+                "/api/trpc/mls.prepare",
+                "/api/trpc/mls.beginSend",
+                "/api/trpc/mls.sync",
+                "/api/trpc/mls.beginSend"
             ]
         );
     }
@@ -348,7 +403,7 @@ fn recovered_send(self_send: bool, modern_server: bool, lose_append_response: bo
     assert_eq!(f.advance()["stage"], "upload"); // authorize and return durable transfer
     assert_eq!(
         &routes.lock().unwrap()[before_authorize..],
-        ["/api/trpc/mls.uploadStatus", "/api/uploadthing",]
+        ["/api/uploadthing"]
     );
     // A worker restarted with the stored URL must still reconcile delivery.
     assert_eq!(f.advance()["stage"], "upload");
@@ -841,4 +896,16 @@ fn server_delivery_failure_reason_reaches_the_outbox() {
     server.join().unwrap();
     let jobs: Value = serde_json::from_str(&list_send_jobs(f.config.clone()).unwrap()).unwrap();
     assert_eq!(jobs[0]["error"], reason);
+}
+
+#[test]
+fn expired_fresh_authorization_cleans_up_without_contacting_the_server() {
+    let f = Fixture::new("http://127.0.0.1:1");
+    f.enqueue();
+    replace_phase(&f, json!({"stage":"authorizeFresh"}), 0);
+    fs::write(f.dir().join("ciphertext.age"), b"expired ciphertext").unwrap();
+    assert_eq!(f.advance()["stage"], "failed");
+    assert!(!f.dir().join("ciphertext.age").exists());
+    assert!(!f.dir().join("source").exists());
+    assert!(f.dir().join("job.age").exists());
 }

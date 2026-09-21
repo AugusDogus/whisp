@@ -2,7 +2,7 @@
 import { TRPCError, type TRPCRouterRecord } from "@trpc/server";
 import { z } from "zod/v4";
 
-import { and, asc, desc, eq, gt, inArray, isNull } from "@acme/db";
+import { and, asc, desc, eq, gt, inArray } from "@acme/db";
 import {
   MessageDelivery,
   MlsConversation,
@@ -23,6 +23,7 @@ import {
   type MlsDatabase,
 } from "../services/mls";
 import { registerMlsDevice, signatureKey } from "../services/mls-device";
+import { beginMlsOperation } from "../services/mls-operation";
 import {
   directScope,
   hasConversationScope,
@@ -126,6 +127,7 @@ export const mlsConversationsRouter = {
         return {
           ...prepared,
           deviceIdentityValidated: input.signatureKey !== undefined,
+          supportsAtomicBegin: true,
         };
       }),
     ),
@@ -229,72 +231,70 @@ export const mlsConversationsRouter = {
           input.conversationId,
           ctx.session.user.id,
         );
-        if (conversation.revision !== input.revision)
-          throw new TRPCError({
-            code: "CONFLICT",
-            message: "The conversation advanced. Sync and retry the send.",
-          });
+        return beginMlsOperation(tx, conversation, input);
+      }),
+    ),
+  beginSend: protectedProcedure
+    .input(
+      z.object({
+        deviceId: id,
+        conversationId: id,
+        draftId: id,
+        revision: z.number().int().nonnegative(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) =>
+      ctx.db.transaction(async (tx) => {
+        await requireDevice(tx, ctx.session.user.id, input.deviceId);
+        const conversation = await authorizedConversation(
+          tx,
+          input.conversationId,
+          ctx.session.user.id,
+        );
+        const [entry] = await tx
+          .select({ draft: MlsDraft, receipt: MlsDraftConversation.id })
+          .from(MlsDraft)
+          .leftJoin(
+            MlsDraftConversation,
+            and(
+              eq(MlsDraftConversation.draftId, MlsDraft.id),
+              eq(MlsDraftConversation.conversationId, conversation.id),
+            ),
+          )
+          .where(
+            and(
+              eq(MlsDraft.id, input.draftId),
+              eq(MlsDraft.senderId, ctx.session.user.id),
+              eq(MlsDraft.senderDeviceId, input.deviceId),
+            ),
+          );
         if (
-          conversation.revision > 0 &&
-          !conversation.members.some((m) => m.deviceId === input.deviceId)
+          !entry ||
+          entry.draft.expiresAt <= new Date() ||
+          entry.draft.failure ||
+          !entry.draft.conversationIds.includes(conversation.id)
         )
           mlsConflict(
-            "This device must receive a Welcome from an existing conversation member before sending.",
+            "This upload draft does not belong to the encrypted conversation or has expired. Send the whisp again.",
           );
-        const desired = await conversationRoster(
+        // Check publication before revision: a saved append whose job checkpoint
+        // was interrupted must not reserve another operation or encrypt again.
+        if (entry.receipt)
+          return {
+            kind: "published",
+            retainedMessageIds: await retainedMlsMessages(
+              tx,
+              conversation.id,
+              ctx.session.user.id,
+            ),
+          } as const;
+        const operation = await beginMlsOperation(tx, conversation, input);
+        const retainedMessageIds = await retainedMlsMessages(
           tx,
-          await conversationUsers(tx, conversation),
+          conversation.id,
+          ctx.session.user.id,
         );
-        const operationId = crypto.randomUUID();
-        await tx.insert(MlsOperation).values({
-          id: operationId,
-          conversationId: conversation.id,
-          deviceId: input.deviceId,
-          baseRevision: input.revision,
-          members: desired,
-          expiresAt: new Date(Date.now() + 600_000),
-        });
-        const packages = [];
-        for (const device of desired) {
-          if (
-            device.deviceId === input.deviceId ||
-            conversation.members.some((m) => m.deviceId === device.deviceId)
-          )
-            continue;
-          const [key] = await tx
-            .select()
-            .from(MlsKeyPackage)
-            .where(
-              and(
-                eq(MlsKeyPackage.deviceId, device.deviceId),
-                isNull(MlsKeyPackage.operationId),
-                gt(MlsKeyPackage.expiresAt, new Date()),
-              ),
-            )
-            .limit(1);
-          if (!key)
-            mlsConflict(
-              "A member device has no unused encryption keys. Ask them to open Whisp, then retry.",
-            );
-          const claimed = await tx
-            .update(MlsKeyPackage)
-            .set({ operationId })
-            .where(
-              and(
-                eq(MlsKeyPackage.id, key.id),
-                isNull(MlsKeyPackage.operationId),
-              ),
-            )
-            .returning();
-          if (claimed.length !== 1)
-            throw new TRPCError({
-              code: "CONFLICT",
-              message:
-                "An encryption key was reserved concurrently. Retry the send.",
-            });
-          packages.push({ ...device, keyPackageId: key.id, data: key.data });
-        }
-        return { operationId, members: desired, packages };
+        return { kind: "operation", operation, retainedMessageIds } as const;
       }),
     ),
   settle: protectedProcedure

@@ -13,7 +13,16 @@ import { validateDraft } from "../services/mls";
 
 const directory = await mkdtemp(join(tmpdir(), "whisp-mls-test-"));
 const client = createClient({ url: `file:${join(directory, "test.db")}` });
-const db = drizzle({ client, schema });
+let queryCount = 0;
+const db = drizzle({
+  client,
+  schema,
+  logger: {
+    logQuery: () => {
+      queryCount++;
+    },
+  },
+});
 const t = initTRPC
   .context<{ db: typeof db; session: { user: { id: string } } }>()
   .create();
@@ -788,4 +797,148 @@ test("sync includes the requesting sender device's publication receipt", async (
   await expect(sender.sync(input)).rejects.toMatchObject({
     code: "PRECONDITION_FAILED",
   });
+});
+
+test("upload validation checks every sealed conversation against its own active roster", async () => {
+  await db
+    .insert(schema.Friendship)
+    .values({ userIdA: "alice", userIdB: "mallory" });
+  const otherDevice = crypto.randomUUID();
+  await outsider.register({ deviceId: otherDevice, signatureKey });
+  await outsider.publish({
+    deviceId: otherDevice,
+    packages: [{ id: crypto.randomUUID(), data: wire }],
+  });
+  const draft = await sender.prepare({
+    deviceId: senderDevice,
+    recipients: ["bob", "mallory"],
+  });
+  const [first, second] = draft.conversations;
+  if (!first || !second)
+    throw new Error("Missing multi-recipient fixture conversations");
+  const firstPending = await begin(first.id);
+  await sender.append({ ...firstPending.request, draftId: draft.draftId });
+  await expect(validateDraft(db, "alice", draft.draftId)).rejects.toThrow(
+    "not encrypted for every conversation",
+  );
+  const secondPending = await begin(second.id);
+  await sender.append({ ...secondPending.request, draftId: draft.draftId });
+  const beforeValidation = queryCount;
+  expect((await validateDraft(db, "alice", draft.draftId)).recipients).toEqual([
+    "bob",
+    "mallory",
+  ]);
+  // Recipient fanout must not add a separate sequence of DB round trips.
+  expect(queryCount - beforeValidation).toBeLessThanOrEqual(4);
+  await expect(
+    validateDraft(db, "mallory", draft.draftId),
+  ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+  await outsider.register({ deviceId: crypto.randomUUID(), signatureKey });
+  await expect(validateDraft(db, "alice", draft.draftId)).rejects.toThrow(
+    "Recipient devices changed",
+  );
+  await sender.revoke({ deviceId: senderDevice });
+  await expect(validateDraft(db, "alice", draft.draftId)).rejects.toThrow(
+    "encryption device is unavailable",
+  );
+});
+
+test("atomic begin returns an existing publication before checking stale revision", async () => {
+  const draft = await prepare();
+  expect(draft.supportsAtomicBegin).toBe(true);
+  const input = {
+    deviceId: senderDevice,
+    conversationId: draft.conversationId,
+    draftId: draft.draftId,
+    revision: 0,
+  };
+  const begun = await sender.beginSend(input);
+  if (begun.kind !== "operation") throw new Error("Expected new operation");
+  expect(begun.retainedMessageIds).toEqual([]);
+  await sender.append({
+    deviceId: senderDevice,
+    draftId: draft.draftId,
+    operationId: begun.operation.operationId,
+    commits: [{ data: wire, members: begun.operation.members, welcome: wire }],
+    welcomes: begun.operation.packages.map((p) => ({
+      keyPackageId: p.keyPackageId,
+      commitIndex: 0,
+    })),
+    ciphertext: wire,
+  });
+  const before = await db.select().from(schema.MlsOperation);
+  expect(await sender.beginSend(input)).toEqual({
+    kind: "published",
+    retainedMessageIds: [],
+  });
+  expect(await db.select().from(schema.MlsOperation)).toEqual(before);
+  await sender.revoke({ deviceId: senderDevice });
+  await expect(sender.beginSend(input)).rejects.toMatchObject({
+    code: "PRECONDITION_FAILED",
+  });
+});
+
+test("atomic begin rejects stale revisions without reserving operations or keys", async () => {
+  const draft = await prepare();
+  const first = await begin(draft.conversationId);
+  await sender.append({ ...first.request, draftId: draft.draftId });
+  const next = await prepare();
+  const input = {
+    deviceId: senderDevice,
+    conversationId: next.conversationId,
+    draftId: next.draftId,
+    revision: 0,
+  };
+  const before = await db.select().from(schema.MlsOperation);
+  const keys = await db.select().from(schema.MlsKeyPackage);
+  await expect(sender.beginSend(input)).rejects.toMatchObject({
+    code: "CONFLICT",
+  });
+  expect(await db.select().from(schema.MlsOperation)).toEqual(before);
+  expect(await db.select().from(schema.MlsKeyPackage)).toEqual(keys);
+  const synced = await sender.sync({
+    deviceId: senderDevice,
+    conversationId: next.conversationId,
+    after: 0,
+  });
+  expect(
+    (
+      await sender.beginSend({
+        ...input,
+        revision: synced.conversation.revision,
+      })
+    ).kind,
+  ).toBe("operation");
+});
+
+test("atomic begin authenticates draft ownership, device and current group access", async () => {
+  await db.insert(schema.GroupMember).values([
+    { groupId: "atomic-group", userId: "alice" },
+    { groupId: "atomic-group", userId: "bob" },
+  ]);
+  const draft = await prepare("atomic-group");
+  const input = {
+    deviceId: senderDevice,
+    conversationId: draft.conversationId,
+    draftId: draft.draftId,
+    revision: 0,
+  };
+  await expect(
+    receiver.beginSend({ ...input, deviceId: recipientDevice }),
+  ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+  const otherDevice = crypto.randomUUID();
+  await sender.register({ deviceId: otherDevice, signatureKey });
+  await expect(
+    sender.beginSend({ ...input, deviceId: otherDevice }),
+  ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+  await expect(
+    sender.beginSend({ ...input, draftId: crypto.randomUUID() }),
+  ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+  await db
+    .delete(schema.GroupMember)
+    .where(eq(schema.GroupMember.userId, "alice"));
+  await expect(sender.beginSend(input)).rejects.toMatchObject({
+    code: "FORBIDDEN",
+  });
+  expect(await db.select().from(schema.MlsOperation)).toEqual([]);
 });
