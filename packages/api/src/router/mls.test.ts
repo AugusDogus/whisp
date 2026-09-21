@@ -660,3 +660,62 @@ test("native recovery detects a published descriptor without appending twice", a
     await receiver.descriptorPublished({ ...input, deviceId: recipientDevice }),
   ).toBe(false);
 });
+
+test("delivery authorization rejects removed group members before cached metadata can be used", async () => {
+  await db.insert(schema.GroupMember).values([
+    { groupId: "group", userId: "alice" },
+    { groupId: "group", userId: "bob" },
+  ]);
+  const draft = await prepare("group");
+  const pending = await begin(draft.conversationId);
+  await sender.append({ ...pending.request, draftId: draft.draftId });
+  const deliveryId = crypto.randomUUID();
+  await db.insert(schema.MessageDelivery).values({
+    id: deliveryId,
+    messageId: draft.draftId,
+    recipientId: "bob",
+    groupId: "group",
+  });
+  expect(
+    await receiver.delivery({ deviceId: recipientDevice, deliveryId }),
+  ).toMatchObject({ kind: "mls", messageId: draft.draftId });
+  await db
+    .delete(schema.GroupMember)
+    .where(eq(schema.GroupMember.userId, "bob"));
+  await expect(
+    receiver.delivery({ deviceId: recipientDevice, deliveryId }),
+  ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  expect(
+    (
+      await db
+        .select()
+        .from(schema.MessageDelivery)
+        .where(eq(schema.MessageDelivery.id, deliveryId))
+    )[0]?.readAt,
+  ).toBeNull();
+});
+
+test("conversation sync includes current retention even when no new events exist", async () => {
+  const draft = await prepare();
+  const pending = await begin(draft.conversationId);
+  await sender.append({ ...pending.request, draftId: draft.draftId });
+  const deliveryId = crypto.randomUUID();
+  await db
+    .insert(schema.MessageDelivery)
+    .values({ id: deliveryId, messageId: draft.draftId, recipientId: "bob" });
+  const input = {
+    deviceId: recipientDevice,
+    conversationId: draft.conversationId,
+    after: 2,
+  };
+  const unread = await receiver.sync(input);
+  expect(unread.events).toEqual([]);
+  expect(unread.retainedMessageIds).toEqual([draft.draftId]);
+  await db
+    .update(schema.MessageDelivery)
+    .set({ readAt: new Date() })
+    .where(eq(schema.MessageDelivery.id, deliveryId));
+  const read = await receiver.sync(input);
+  expect(read.events).toEqual([]);
+  expect(read.retainedMessageIds).toEqual([]);
+});
