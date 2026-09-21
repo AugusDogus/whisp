@@ -22,6 +22,7 @@ import {
   requireDevice,
   type MlsDatabase,
 } from "../services/mls";
+import { registerMlsDevice, signatureKey } from "../services/mls-device";
 import {
   directScope,
   hasConversationScope,
@@ -78,6 +79,26 @@ function sameRoster(a: MlsMember[], b: MlsMember[]) {
   );
 }
 
+async function descriptorPublished(
+  database: MlsDatabase,
+  userId: string,
+  input: { deviceId: string; draftId: string; conversationId: string },
+) {
+  const [receipt] = await database
+    .select({ id: MlsDraftConversation.id })
+    .from(MlsDraftConversation)
+    .innerJoin(MlsDraft, eq(MlsDraft.id, MlsDraftConversation.draftId))
+    .where(
+      and(
+        eq(MlsDraft.id, input.draftId),
+        eq(MlsDraft.senderId, userId),
+        eq(MlsDraft.senderDeviceId, input.deviceId),
+        eq(MlsDraftConversation.conversationId, input.conversationId),
+      ),
+    );
+  return Boolean(receipt);
+}
+
 export const mlsConversationsRouter = {
   prepare: protectedProcedure
     .input(
@@ -85,6 +106,7 @@ export const mlsConversationsRouter = {
         .object({
           deviceId: id,
           draftId: id.optional(),
+          signatureKey: signatureKey.optional(),
           recipients: z.array(z.string().min(1)).min(1).max(100).optional(),
           groupId: z.string().min(1).optional(),
         })
@@ -94,9 +116,18 @@ export const mlsConversationsRouter = {
         ),
     )
     .mutation(async ({ ctx, input }) =>
-      ctx.db.transaction((tx) =>
-        prepareMlsDraft(tx, ctx.session.user.id, input),
-      ),
+      ctx.db.transaction(async (tx) => {
+        if (input.signatureKey !== undefined)
+          await registerMlsDevice(tx, ctx.session.user.id, {
+            deviceId: input.deviceId,
+            signatureKey: input.signatureKey,
+          });
+        const prepared = await prepareMlsDraft(tx, ctx.session.user.id, input);
+        return {
+          ...prepared,
+          deviceIdentityValidated: input.signatureKey !== undefined,
+        };
+      }),
     ),
   sync: protectedProcedure
     .input(
@@ -104,6 +135,7 @@ export const mlsConversationsRouter = {
         deviceId: id,
         conversationId: id,
         after: z.number().int().nonnegative(),
+        draftId: id.optional(),
       }),
     )
     .query(async ({ ctx, input }) => {
@@ -149,6 +181,13 @@ export const mlsConversationsRouter = {
         conversation,
         welcome: input.after < (welcome?.sequence ?? 0) ? welcome : null,
         events,
+        descriptorPublished: input.draftId
+          ? await descriptorPublished(ctx.db, ctx.session.user.id, {
+              deviceId: input.deviceId,
+              conversationId: input.conversationId,
+              draftId: input.draftId,
+            })
+          : undefined,
         retainedMessageIds:
           (events.at(-1)?.sequence ?? after) >= conversation.revision
             ? await retainedMlsMessages(
@@ -460,19 +499,7 @@ export const mlsConversationsRouter = {
     .input(z.object({ deviceId: id, draftId: id, conversationId: id }))
     .query(async ({ ctx, input }) => {
       await requireDevice(ctx.db, ctx.session.user.id, input.deviceId);
-      const [receipt] = await ctx.db
-        .select({ id: MlsDraftConversation.id })
-        .from(MlsDraftConversation)
-        .innerJoin(MlsDraft, eq(MlsDraft.id, MlsDraftConversation.draftId))
-        .where(
-          and(
-            eq(MlsDraft.id, input.draftId),
-            eq(MlsDraft.senderId, ctx.session.user.id),
-            eq(MlsDraft.senderDeviceId, input.deviceId),
-            eq(MlsDraftConversation.conversationId, input.conversationId),
-          ),
-        );
-      return Boolean(receipt);
+      return descriptorPublished(ctx.db, ctx.session.user.id, input);
     }),
   uploadStatus: protectedProcedure
     .input(z.object({ draftId: id }))

@@ -11,6 +11,7 @@ import {
 } from "@acme/db/schema";
 
 import { mlsConflict, requireDevice } from "../services/mls";
+import { registerMlsDevice, signatureKey } from "../services/mls-device";
 import { protectedProcedure } from "../trpc";
 import { mlsConversationsRouter } from "./mls-conversations";
 
@@ -20,10 +21,6 @@ const bytes = z
   .min(4)
   .max(128 * 1024)
   .regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/);
-const signatureKey = bytes.refine(
-  (value) => Buffer.from(value, "base64").length === 32,
-  "Expected an Ed25519 public key",
-);
 
 export const mlsRouter = {
   register: protectedProcedure
@@ -35,49 +32,9 @@ export const mlsRouter = {
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      await ctx.db.transaction(async (tx) => {
-        const [existing] = await tx
-          .select()
-          .from(MlsDevice)
-          .where(eq(MlsDevice.id, input.deviceId));
-        if (existing) {
-          if (
-            existing.userId !== ctx.session.user.id ||
-            existing.signatureKey !== input.signatureKey ||
-            existing.revokedAt
-          )
-            mlsConflict(
-              "This device identity cannot be replaced. Register a new encryption device.",
-            );
-          if (input.name !== undefined && input.name !== existing.name) {
-            await tx
-              .update(MlsDevice)
-              .set({ name: input.name })
-              .where(eq(MlsDevice.id, input.deviceId));
-          }
-          return;
-        }
-        const devices = await tx
-          .select()
-          .from(MlsDevice)
-          .where(
-            and(
-              eq(MlsDevice.userId, ctx.session.user.id),
-              isNull(MlsDevice.revokedAt),
-            ),
-          );
-        if (devices.length >= 10)
-          mlsConflict(
-            "Ten encryption devices are registered. Remove a lost or unused device before adding another.",
-          );
-        await tx.insert(MlsDevice).values({
-          id: input.deviceId,
-          userId: ctx.session.user.id,
-          signatureKey: input.signatureKey,
-          name: input.name,
-          createdAt: new Date(),
-        });
-      });
+      await ctx.db.transaction((tx) =>
+        registerMlsDevice(tx, ctx.session.user.id, input),
+      );
       return { ok: true };
     }),
   devices: protectedProcedure.query(({ ctx }) =>
