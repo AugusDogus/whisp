@@ -14,6 +14,7 @@ import { FriendsListSkeletonVaried } from "~/components/friends-skeleton";
 import { Avatar } from "~/components/ui/avatar";
 import { GroupAvatar } from "~/components/ui/group-avatar";
 import { Text } from "~/components/ui/text";
+import { localMediaUri } from "~/utils/media-uri";
 
 type PreviewSource = ComponentProps<typeof Image>["source"];
 
@@ -28,13 +29,13 @@ function buildPreviewSource({
   thumbhash: string | undefined;
   mediaPath: string | null;
 }): PreviewSource | undefined {
-  if (rasterizedImagePath) return { uri: `file://${rasterizedImagePath}` };
+  if (rasterizedImagePath) return { uri: localMediaUri(rasterizedImagePath) };
 
   if (captionsCount > 0) {
     return thumbhash ? { thumbhash } : undefined;
   }
 
-  if (mediaPath) return { uri: `file://${mediaPath}` };
+  if (mediaPath) return { uri: localMediaUri(mediaPath) };
   return undefined;
 }
 
