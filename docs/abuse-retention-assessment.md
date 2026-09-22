@@ -1,16 +1,19 @@
 # whisp abuse-retention assessment
 
-Status: **draft, not approved for activation**. Owner: whisp controller/operator.
-Record approver, approval date, and revision here before configuring
-`ABUSE_RETENTION_POLICY_VERSION`. Reassess when the audience, risks, or processing
-changes. No universal suspension or post-deletion retention period is approved.
+Status: **product policy approved by Augie Luebbers on 2026-09-21**.
+Revision: `2026-09-21.1`. Approval is recorded from the instruction to implement
+the recommended approach and the subsequent clarification that it was approved.
+This records the controller's product decision, not an independent legal opinion.
+Reassess when the audience, risks, or processing changes. Each enforcement decision
+still requires its own necessity finding and shortest justified expiry; there is
+no universal suspension or post-deletion retention period.
 
 ## Purpose and proposed basis
 
 Protect people from recurrence of confirmed serious abuse by preventing a limited
 sharing suspension from being evaded through account deletion. Proposed GDPR basis:
 Article 6(1)(f), legitimate interests. Google Play's retention exception does not
-supply a GDPR lawful basis. Confirm applicability with qualified privacy advice.
+supply a GDPR lawful basis. Review jurisdiction-specific applicability as part of ongoing privacy operations.
 
 ## Necessity
 
@@ -36,9 +39,9 @@ account. Human review, case-specific expiry, immediate revocation, dedicated sec
 storage, restricted operator access, and automated purge reduce impact. Verify
 those controls and the availability of effective review in practice.
 
-## Required approval decisions
+## Operational follow-through
 
-- Approver, date, revision, and conclusion on necessity and the balancing test.
+- Apply the approved limits above and revisit the balancing test when facts change.
 - How reviewers substantiate each serious-abuse category and choose the shortest
   proportionate duration. No arbitrary default period should be introduced.
 - Confirmation that the 30-day report review window is necessary and achievable,
