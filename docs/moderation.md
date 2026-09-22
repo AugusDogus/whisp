@@ -102,12 +102,12 @@ No emails or external reports are sent by this tool.
 ## Release and operations
 
 1. Apply migrations through `0004_file_deletion_attempts.sql`. The migrations preserve
-   valid data, removes old orphan rows, queues known orphan media keys, and deletes
+   valid data, remove old orphan rows, queue known orphan media keys, and delete
    reports whose account references were already cleared.
 2. Deploy server and privacy/terms changes with the mobile build. Accounts must
-   accept policy version `2026-09-21.1` before sharing. The dismissible terms
-   notice keeps navigation, account deletion, blocking, and reporting available
-   without acceptance.
+   accept policy version `2026-09-21.1` before sharing. Terms are a dedicated onboarding
+   screen, also available from Profile. Users can decline and still access account
+   deletion, blocking, and reporting; sharing remains restricted until acceptance.
 3. Configure `CRON_SECRET` for the existing daily cleanup route. Missing credentials
    now return 401. Monitor failures and queue age; a 503 means file deletion jobs
    remain pending. Storage failures must be investigated, not treated as success.
