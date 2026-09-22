@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { PreviewScope } from "../../packages/api/src/uploadthing/preview-scope";
-import { resetInheritedPushTokens } from "./preview-push-tokens";
+import { resetInheritedPreviewData } from "./preview-data-reset";
 
 const clients: ReturnType<typeof createClient>[] = [];
 const directories: string[] = [];
@@ -32,49 +32,72 @@ async function fixture() {
   await client.execute(
     "INSERT INTO push_token VALUES ('production-device', 'production-token')",
   );
+  await client.executeMultiple(`
+    CREATE TABLE abuse_enforcement (id TEXT PRIMARY KEY);
+    CREATE TABLE account_suspension (userId TEXT PRIMARY KEY, enforcementId TEXT REFERENCES abuse_enforcement(id) ON DELETE CASCADE);
+    INSERT INTO abuse_enforcement VALUES ('production-decision');
+    INSERT INTO account_suspension VALUES ('production-user', 'production-decision');
+  `);
   return client;
 }
 
-test("initialization clears inherited device registrations only in the preview", async () => {
+test("initialization clears inherited devices and enforcement only in the preview", async () => {
   const source = await fixture();
   const preview = await fixture();
-  await resetInheritedPushTokens(preview, PreviewScope.parse("17"));
+  await resetInheritedPreviewData(preview, PreviewScope.parse("17"));
   expect((await preview.execute("SELECT * FROM push_token")).rows).toHaveLength(
     0,
   );
   expect((await source.execute("SELECT * FROM push_token")).rows).toHaveLength(
     1,
   );
+  expect(
+    (await preview.execute("SELECT * FROM abuse_enforcement")).rows,
+  ).toHaveLength(0);
+  expect(
+    (await preview.execute("SELECT * FROM account_suspension")).rows,
+  ).toHaveLength(0);
+  expect(
+    (await source.execute("SELECT * FROM abuse_enforcement")).rows,
+  ).toHaveLength(1);
 });
 
-test("redeployments retain devices registered with the preview", async () => {
+test("redeployments retain preview devices and enforcement decisions", async () => {
   const preview = await fixture();
   const scope = PreviewScope.parse("17");
-  await resetInheritedPushTokens(preview, scope);
+  await resetInheritedPreviewData(preview, scope);
   await preview.execute(
     "INSERT INTO push_token VALUES ('preview-device', 'preview-token')",
   );
-  await resetInheritedPushTokens(preview, scope);
+  await preview.execute(
+    "INSERT INTO abuse_enforcement VALUES ('preview-decision')",
+  );
+  await resetInheritedPreviewData(preview, scope);
   expect(
     (await preview.execute("SELECT token FROM push_token")).rows.map(
       (row) => row.token,
     ),
   ).toEqual(["preview-token"]);
+  expect(
+    (await preview.execute("SELECT id FROM abuse_enforcement")).rows.map(
+      (row) => row.id,
+    ),
+  ).toEqual(["preview-decision"]);
 });
 
 test("a failed reset rolls back the marker so retries still clear inherited tokens", async () => {
   const preview = await fixture();
   await preview.execute(
-    "CREATE TRIGGER fail_delete BEFORE DELETE ON push_token BEGIN SELECT RAISE(ABORT, 'test failure'); END",
+    "CREATE TRIGGER fail_delete BEFORE DELETE ON abuse_enforcement BEGIN SELECT RAISE(ABORT, 'test failure'); END",
   );
   await expect(
-    resetInheritedPushTokens(preview, PreviewScope.parse("17")),
+    resetInheritedPreviewData(preview, PreviewScope.parse("17")),
   ).rejects.toThrow();
   expect(
     (await preview.execute("SELECT * FROM preview_push_token_reset")).rows,
   ).toHaveLength(0);
   await preview.execute("DROP TRIGGER fail_delete");
-  await resetInheritedPushTokens(preview, PreviewScope.parse("17"));
+  await resetInheritedPreviewData(preview, PreviewScope.parse("17"));
   expect((await preview.execute("SELECT * FROM push_token")).rows).toHaveLength(
     0,
   );

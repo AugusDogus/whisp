@@ -4,9 +4,13 @@ import type { Client } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
 
 import { eq } from "@acme/db";
-import { PreviewPushTokenReset, PushToken } from "@acme/db/schema";
+import {
+  AbuseEnforcement,
+  PreviewPushTokenReset,
+  PushToken,
+} from "@acme/db/schema";
 
-export async function resetInheritedPushTokens(
+export async function resetInheritedPreviewData(
   client: Client,
   scope: PreviewScope,
 ) {
@@ -21,6 +25,9 @@ export async function resetInheritedPushTokens(
     // Clear copied production destinations once, before the preview is deployed.
     // Subsequent pushes must retain registrations made by preview devices.
     await tx.delete(PushToken);
+    // Preview keys differ from production. Remove copied enforcement records
+    // and their cascading suspensions, while preserving later preview decisions.
+    await tx.delete(AbuseEnforcement);
     await tx.insert(PreviewPushTokenReset).values({ scope: scope.prefix });
   });
 }
