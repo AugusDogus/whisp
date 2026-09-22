@@ -3,14 +3,14 @@ import type { TRPCRouterRecord } from "@trpc/server";
 import { REST } from "@discordjs/rest";
 import { TRPCError } from "@trpc/server";
 import { Routes } from "discord-api-types/v10";
-import { eq } from "drizzle-orm";
 import { z } from "zod/v4";
 
 import { authEnv } from "@acme/auth/env";
-import { user } from "@acme/db/schema";
 
+import { AccountDeletion } from "../services/account-deletion";
 import { DiscordProfile } from "../services/discord-profile";
 import { protectedProcedure, publicProcedure } from "../trpc";
+import { PreviewScope } from "../uploadthing/preview-scope";
 
 const env = authEnv();
 const rest = new REST({ version: "10" }).setToken(env.DISCORD_BOT_TOKEN);
@@ -38,17 +38,11 @@ export const authRouter = {
     return "you can see this secret message!";
   }),
   deleteAccount: protectedProcedure.mutation(async ({ ctx }) => {
-    const userId = ctx.session.user.id;
-
-    // Delete the user (cascade will handle sessions, accounts, etc.)
-    await ctx.db.delete(user).where(eq(user.id, userId));
-
-    // Sign out the user
-    await ctx.authApi.signOut({
-      headers: new Headers(),
-    });
-
-    return { success: true };
+    return AccountDeletion.remove(
+      ctx.db,
+      ctx.session.user.id,
+      PreviewScope.fromEnvironment(process.env),
+    );
   }),
 
   refreshAvatar: protectedProcedure

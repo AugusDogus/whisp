@@ -26,7 +26,7 @@ export function ContentPolicyGate({ children }: { children: ReactNode }) {
   const needsGate =
     !!session &&
     (status.isPending ||
-      status.isError ||
+      (status.isError && !status.data) ||
       status.data?.status === "acceptance_required" ||
       status.data?.status === "unavailable");
   useEffect(() => {

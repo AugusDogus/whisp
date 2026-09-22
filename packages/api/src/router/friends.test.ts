@@ -53,6 +53,9 @@ await client.executeMultiple(
     new URL("../../../db/drizzle/0006_account_safety.sql", import.meta.url),
   ).text(),
 );
+await client.executeMultiple(
+  "ALTER TABLE account_suspension ADD expiresAt INTEGER; ALTER TABLE account_suspension ADD enforcementId TEXT;",
+);
 
 beforeEach(async () => {
   await db.delete(schema.FriendRequest);

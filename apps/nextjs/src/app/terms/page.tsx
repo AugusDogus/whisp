@@ -176,14 +176,18 @@ export default function TermsPage() {
               <p>
                 You may terminate your whisp account at any time by deleting
                 your account through the app settings. When you delete your
-                account, your sign-in account and sessions are deleted. Safety
-                reports are retained for review with their account references
-                removed, as described in our privacy policy. whisp reserves the
-                right to suspend or terminate your access to the service at any
-                time, with or without cause, and with or without notice. Upon
-                termination, your right to use the service will immediately
-                cease. whisp is not liable to you or any third party for any
-                termination of your access to the service.
+                account, its identity and associated data are removed and cloud
+                files are queued for deletion as described in our privacy
+                policy. Reports involving the account are deleted. Only a
+                human-reviewed, justified serious-abuse decision may retain a
+                protected identifier until its explicit expiry. Deletion does
+                not extend that period. You may appeal or object by contacting
+                augie@luebbers.email. whisp reserves the right to suspend or
+                terminate your access to the service at any time, with or
+                without cause, and with or without notice. Upon termination,
+                your right to use the service will immediately cease. whisp is
+                not liable to you or any third party for any termination of your
+                access to the service.
               </p>
             </section>
 

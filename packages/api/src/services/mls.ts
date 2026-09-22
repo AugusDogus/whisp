@@ -57,7 +57,9 @@ export async function resolveRecipients(
     database,
     senderId,
     // Group drafts also carry their encrypted recipient list; membership decides.
-    input.groupId ? { groupId: input.groupId } : { recipients: input.recipients },
+    input.groupId
+      ? { groupId: input.groupId }
+      : { recipients: input.recipients },
   );
   if (allowed.status === "restricted")
     throw new TRPCError({
