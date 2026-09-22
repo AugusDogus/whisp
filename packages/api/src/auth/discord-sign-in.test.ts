@@ -25,6 +25,7 @@ for (const name of [
   "0002_push_token_sessions",
   "0003_account_safety",
   "0004_account_lifecycle",
+  "0005_file_deletion_attempts",
 ]) {
   await client.executeMultiple(
     await Bun.file(

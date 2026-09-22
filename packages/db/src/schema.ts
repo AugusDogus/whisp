@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { index, sqliteTable } from "drizzle-orm/sqlite-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -308,10 +309,22 @@ export const Waitlist = sqliteTable("waitlist", (t) => ({
 }));
 
 // Removed only after the storage provider confirms deletion. No account identity.
-export const FileDeletion = sqliteTable("file_deletion", (t) => ({
-  fileKey: t.text().primaryKey(),
-  createdAt: t
-    .integer({ mode: "timestamp" })
-    .notNull()
-    .$defaultFn(() => new Date()),
-}));
+export const FileDeletion = sqliteTable(
+  "file_deletion",
+  (t) => ({
+    fileKey: t.text().primaryKey(),
+    createdAt: t
+      .integer({ mode: "timestamp" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    // Null means unattempted. Retain original queue age while retries rotate fairly.
+    lastAttemptAt: t.integer({ mode: "timestamp" }),
+  }),
+  (t) => [
+    index("file_deletion_attempt_order_idx").on(
+      sql`coalesce(${t.lastAttemptAt}, ${t.createdAt})`,
+      t.createdAt,
+      t.fileKey,
+    ),
+  ],
+);

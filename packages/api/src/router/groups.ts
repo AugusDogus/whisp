@@ -9,6 +9,7 @@ import { Group, GroupMember, Message, MessageDelivery } from "@acme/db/schema";
 import { Blocking } from "../services/blocking";
 import { ContentAccess } from "../services/content-access";
 import { getFriendIds } from "../services/friendship";
+import { GroupMetadata } from "../services/group-metadata";
 import {
   getGroupMemberAvatars,
   getGroupMembersWithDiscordIds,
@@ -325,34 +326,21 @@ export const groupsRouter = {
     .input(
       z.object({
         groupId: z.string().min(1),
-        name: z.string().min(1).max(64),
+        name: z.string().trim().min(1).max(64),
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const me = ctx.session.user.id;
-
-      const membership = (
-        await ctx.db
-          .select()
-          .from(GroupMember)
-          .where(
-            and(
-              eq(GroupMember.groupId, input.groupId),
-              eq(GroupMember.userId, me),
-            ),
-          )
-      )[0];
-      if (!membership)
+      const result = await GroupMetadata.rename(
+        ctx.db,
+        ctx.session.user.id,
+        input,
+      );
+      if (result.status !== "renamed")
         throw new TRPCError({
           code: "FORBIDDEN",
-          message: "Not a member of this group",
+          message:
+            "This group cannot be renamed with your current account permissions or contact settings. The existing name is unchanged.",
         });
-
-      await ctx.db
-        .update(Group)
-        .set({ name: input.name.trim() })
-        .where(eq(Group.id, input.groupId));
-
       return { ok: true };
     }),
 

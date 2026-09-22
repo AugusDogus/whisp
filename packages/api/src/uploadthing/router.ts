@@ -18,6 +18,7 @@ import {
   user,
 } from "@acme/db/schema";
 
+import { FileDeletions } from "../services/file-deletions";
 import { MessageRecipients } from "../services/message-recipients";
 import { notifyNewMessage } from "../utils/send-notification";
 import { updateStreak } from "../utils/update-streak";
@@ -125,14 +126,16 @@ export function createUploadRouter({ getSession }: CreateDeps) {
           return { status: "delivered", deliveries } as const;
         });
         if (result.status !== "delivered") {
-          const deleted = await new UTApi().deleteFiles(getFileKey(file));
-          if (!deleted.success)
+          const cleanup = await FileDeletions.process(
+            db,
+            PreviewScope.fromEnvironment(process.env),
+            getFileKey(file),
+            (key) => new UTApi().deleteFiles(key),
+          );
+          if (cleanup.status === "failed")
             throw new UploadThingError(
-              "Delivery was cancelled, but uploaded file cleanup failed. Contact support.",
+              "Delivery was cancelled. Uploaded file cleanup is queued for retry.",
             );
-          await db
-            .delete(FileDeletion)
-            .where(eq(FileDeletion.fileKey, getFileKey(file)));
           throw new UploadThingError(
             "Delivery was cancelled because the recipients or account permissions changed during upload.",
           );
