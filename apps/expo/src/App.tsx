@@ -14,7 +14,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { HeroUINativeProvider } from "heroui-native/provider";
 import { PostHogProvider } from "posthog-react-native";
 
-import { ContentPolicyNotice } from "~/components/content-policy-notice";
 import { QueryProvider } from "~/components/query-provider";
 import { usePushNotifications } from "~/hooks/usePushNotifications";
 import { authClient } from "~/utils/auth";
@@ -158,7 +157,6 @@ export default Sentry.wrap(function App() {
             }}
           >
             <QueryProvider>
-              <ContentPolicyNotice />
               <AppContent />
             </QueryProvider>
           </PostHogProvider>

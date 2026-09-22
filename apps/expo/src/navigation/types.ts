@@ -4,6 +4,7 @@ export interface RootStackParamList extends ParamListBase {
   Splash: undefined;
   Login: undefined;
   Onboarding: undefined;
+  Terms: { source: "onboarding" | "profile" };
   Main: { screen?: string; params?: Record<string, unknown> } | undefined;
   Media: {
     path: string;

@@ -67,7 +67,7 @@ export default function OnboardingScreen() {
         } else if (notificationStatus !== RESULTS.GRANTED) {
           setCurrentStep("notifications");
         } else {
-          // All permissions granted, go to main
+          // All device permissions granted.
           setCurrentStep("complete");
         }
       } catch (error) {
@@ -188,13 +188,13 @@ export default function OnboardingScreen() {
     }
   };
 
-  // Handle navigation to Main when onboarding is complete
+  // Finish onboarding with the account terms after device permissions.
   useEffect(() => {
     if (currentStep === "complete") {
       // Mark onboarding as complete
       void SecureStore.setItemAsync("whisp_onboarding_complete", "true").then(
         () => {
-          navigation.replace("Main");
+          navigation.replace("Terms", { source: "onboarding" });
         },
       );
     }

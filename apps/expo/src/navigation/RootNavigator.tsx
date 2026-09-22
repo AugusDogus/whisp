@@ -26,6 +26,7 @@ import LoginScreen from "~/app/login";
 import MediaScreen from "~/app/media";
 import OnboardingScreen from "~/app/onboarding";
 import ProfileScreen from "~/app/profile";
+import TermsScreen from "~/app/terms";
 import { RecordingProvider, useRecording } from "~/contexts/RecordingContext";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -99,6 +100,7 @@ export function RootNavigator() {
           <Stack.Screen name="Splash" component={SplashScreen} />
           <Stack.Screen name="Login" component={LoginScreen} />
           <Stack.Screen name="Onboarding" component={OnboardingScreen} />
+          <Stack.Screen name="Terms" component={TermsScreen} />
           <Stack.Screen name="Main" component={MainTabs} />
           <Stack.Screen name="Media" component={MediaScreen} />
           <Stack.Screen name="Group" component={GroupScreen} />

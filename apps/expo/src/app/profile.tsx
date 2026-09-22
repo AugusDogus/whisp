@@ -214,12 +214,16 @@ export default function ProfileScreen() {
                 <BuildInfo />
                 <Pressable
                   onPress={() => {
-                    void Linking.openURL("https://whisp.chat/terms");
+                    navigation.navigate("Terms", { source: "profile" });
                   }}
                   className="flex-row items-center justify-between active:opacity-70"
                 >
                   <Text className="text-sm">Terms of Service</Text>
-                  <Ionicons name="open-outline" size={14} color={iconColor} />
+                  <Ionicons
+                    name="chevron-forward"
+                    size={14}
+                    color={iconColor}
+                  />
                 </Pressable>
                 <Pressable
                   onPress={() => {

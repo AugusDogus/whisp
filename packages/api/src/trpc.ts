@@ -238,7 +238,7 @@ export const sharingProcedure = protectedProcedure.use(
         code: "FORBIDDEN",
         message:
           access.status === "acceptance_required"
-            ? "Accept the current terms in whisp before sharing. Update the app if no prompt appears."
+            ? "Accept the current terms in Profile → Terms of Service before sharing."
             : "Sharing is unavailable for this account. Contact augie@luebbers.email for help.",
       });
     }
