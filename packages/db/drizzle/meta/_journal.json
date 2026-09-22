@@ -57,6 +57,13 @@
       "when": 1790624796400,
       "tag": "0007_account_lifecycle",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1790625001015,
+      "tag": "0008_file_deletion_attempts",
+      "breakpoints": true
     }
   ]
 }

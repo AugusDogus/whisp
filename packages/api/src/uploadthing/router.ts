@@ -20,6 +20,7 @@ import {
   user,
 } from "@acme/db/schema";
 
+import { FileDeletions } from "../services/file-deletions";
 import { validateDraft } from "../services/mls";
 import { notifyNewMessage } from "../utils/send-notification";
 import { updateStreak } from "../utils/update-streak";
@@ -132,13 +133,13 @@ export function createUploadRouter({ getSession }: CreateDeps) {
                 .insert(FileDeletion)
                 .values({ fileKey: getFileKey(file) })
                 .onConflictDoNothing();
-              const deleted = await new UTApi()
-                .deleteFiles(getFileKey(file))
-                .catch(() => ({ success: false }));
-              if (deleted.success)
-                await db
-                  .delete(FileDeletion)
-                  .where(eq(FileDeletion.fileKey, getFileKey(file)));
+              // Clears the job once storage confirms; otherwise it stays queued.
+              await FileDeletions.process(
+                db,
+                PreviewScope.fromEnvironment(process.env),
+                getFileKey(file),
+                (key) => new UTApi().deleteFiles(key),
+              );
             }
             throw error;
           });

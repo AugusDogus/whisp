@@ -286,7 +286,7 @@ test("failed cloud deletion retries without identity and previews cannot delete 
       attempted.push(key);
       return { success: false };
     }),
-  ).toEqual({ deleted: 0, failed: 1 });
+  ).toMatchObject({ deleted: 0, failed: 1 });
   expect(attempted).toEqual(["owned"]);
   expect(
     (await database.select().from(schema.FileDeletion)).map(
@@ -297,10 +297,10 @@ test("failed cloud deletion retries without identity and previews cannot delete 
     await SafetyCleanup.run(database, scope, async () => {
       throw new Error("Storage offline");
     }),
-  ).toEqual({ deleted: 0, failed: 1 });
+  ).toMatchObject({ deleted: 0, failed: 1 });
   expect(
     await SafetyCleanup.run(database, scope, async () => ({ success: true })),
-  ).toEqual({ deleted: 1, failed: 0 });
+  ).toMatchObject({ deleted: 1, failed: 0 });
   expect(await database.select().from(schema.FileDeletion)).toHaveLength(0);
   expect(await database.select().from(schema.PreviewUpload)).toHaveLength(0);
 });
@@ -345,4 +345,91 @@ test("daily retention cleanup purges old reports and preserves recent pending re
       (report) => report.id,
     ),
   ).toEqual(["new"]);
+});
+
+test("failed deletion jobs yield to files that have not been attempted", async () => {
+  await database.insert(schema.FileDeletion).values(
+    Array.from({ length: 100 }, (_, index) => ({
+      fileKey: `failing-${index}`,
+      createdAt: new Date(0),
+    })),
+  );
+  await database
+    .insert(schema.FileDeletion)
+    .values({ fileKey: "healthy", createdAt: new Date(86400_000) });
+  const attempted: string[] = [];
+  const removeFile = async (key: string) => {
+    attempted.push(key);
+    return { success: key === "healthy" };
+  };
+  await SafetyCleanup.run(database, undefined, removeFile);
+  attempted.length = 0;
+  const result = await SafetyCleanup.run(
+    database,
+    undefined,
+    removeFile,
+    new Date(Date.now() + 86400_000),
+  );
+  expect(attempted).toContain("healthy");
+  expect(result.deleted).toBe(1);
+  expect(await database.select().from(schema.FileDeletion)).toHaveLength(100);
+});
+
+test("storage failures do not prevent either message retention deadline", async () => {
+  await database.insert(schema.Message).values([
+    {
+      id: "soft-expired",
+      senderId: "alice",
+      fileUrl: "https://example.com/soft",
+      deletedAt: new Date(Date.now() - 31 * 86400_000),
+    },
+    {
+      id: "unread-expired",
+      senderId: "alice",
+      fileUrl: "https://example.com/old",
+      createdAt: new Date(Date.now() - 91 * 86400_000),
+    },
+    { id: "recent", senderId: "alice", fileUrl: "https://example.com/recent" },
+  ]);
+  await database.insert(schema.MessageDelivery).values(
+    ["soft-expired", "unread-expired", "recent"].map((messageId) => ({
+      messageId,
+      recipientId: "bob",
+    })),
+  );
+  await database.insert(schema.FileDeletion).values({ fileKey: "unavailable" });
+  const result = await SafetyCleanup.run(database, undefined, async () => {
+    throw new Error("Storage unavailable");
+  });
+  expect(result.failed).toBe(1);
+  expect(
+    (await database.select().from(schema.Message)).map((message) => message.id),
+  ).toEqual(["recent"]);
+  expect(
+    (await database.select().from(schema.MessageDelivery)).map(
+      (delivery) => delivery.messageId,
+    ),
+  ).toEqual(["recent"]);
+  expect(await database.select().from(schema.FileDeletion)).toHaveLength(1);
+});
+
+test("new arrivals do not starve an older retry", async () => {
+  await database.insert(schema.FileDeletion).values({
+    fileKey: "retry",
+    createdAt: new Date(0),
+    lastAttemptAt: new Date(86400_000),
+  });
+  await database.insert(schema.FileDeletion).values(
+    Array.from({ length: 100 }, (_, index) => ({
+      fileKey: `new-${index}`,
+      createdAt: new Date(2 * 86400_000),
+    })),
+  );
+  const attempted: string[] = [];
+  await SafetyCleanup.run(database, undefined, async (key) => {
+    attempted.push(key);
+    return { success: true };
+  });
+  expect(attempted[0]).toBe("retry");
+  expect(await database.select().from(schema.FileDeletion)).toHaveLength(1);
 });
