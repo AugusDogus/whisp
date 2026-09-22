@@ -81,6 +81,11 @@ await client.executeMultiple(
     new URL("../../../../db/drizzle/0006_account_safety.sql", import.meta.url),
   ).text(),
 );
+// Suspension expiry from the account lifecycle migration, which also rebuilds
+// tables this minimal schema does not model.
+await client.executeMultiple(
+  "ALTER TABLE account_suspension ADD expiresAt INTEGER; ALTER TABLE account_suspension ADD enforcementId TEXT;",
+);
 beforeEach(async () => {
   await client.executeMultiple(
     "DELETE FROM mls_draft; DELETE FROM mls_conversation; DELETE FROM mls_key_package; DELETE FROM mls_device; DELETE FROM friendship; DELETE FROM group_member; DELETE FROM message_delivery; DELETE FROM user; INSERT INTO user VALUES ('alice'), ('bob'), ('mallory');",

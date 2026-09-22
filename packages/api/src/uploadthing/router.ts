@@ -16,6 +16,8 @@ import {
   MlsDraft,
   Message,
   MessageDelivery,
+  FileDeletion,
+  user,
 } from "@acme/db/schema";
 
 import { validateDraft } from "../services/mls";
@@ -125,7 +127,18 @@ export function createUploadRouter({ getSession }: CreateDeps) {
                     isNull(MlsDraft.completedAt),
                   ),
                 );
-              await new UTApi().deleteFiles(getFileKey(file));
+              // Queue first so a failed provider call is retried by daily cleanup.
+              await db
+                .insert(FileDeletion)
+                .values({ fileKey: getFileKey(file) })
+                .onConflictDoNothing();
+              const deleted = await new UTApi()
+                .deleteFiles(getFileKey(file))
+                .catch(() => ({ success: false }));
+              if (deleted.success)
+                await db
+                  .delete(FileDeletion)
+                  .where(eq(FileDeletion.fileKey, getFileKey(file)));
             }
             throw error;
           });
@@ -205,16 +218,34 @@ export function createUploadRouter({ getSession }: CreateDeps) {
           PreviewScope.fromEnvironment(process.env),
           { key: getFileKey(file), customId: file.customId },
         );
-        await db
-          .insert(BackgroundUploadTestFile)
-          .values({
-            userId: metadata.userId,
-            fileKey: getFileKey(file),
-            fileUrl: file.ufsUrl,
-            originalFileName: file.name,
-            mimeType: file.type,
-          })
-          .onConflictDoNothing({ target: BackgroundUploadTestFile.fileKey });
+        const saved = await db.transaction(async (tx) => {
+          const [owner] = await tx
+            .select({ id: user.id })
+            .from(user)
+            .where(eq(user.id, metadata.userId));
+          if (!owner) {
+            await tx
+              .insert(FileDeletion)
+              .values({ fileKey: getFileKey(file) })
+              .onConflictDoNothing();
+            return false;
+          }
+          await tx
+            .insert(BackgroundUploadTestFile)
+            .values({
+              userId: metadata.userId,
+              fileKey: getFileKey(file),
+              fileUrl: file.ufsUrl,
+              originalFileName: file.name,
+              mimeType: file.type,
+            })
+            .onConflictDoNothing({ target: BackgroundUploadTestFile.fileKey });
+          return true;
+        });
+        if (!saved)
+          throw new UploadThingError(
+            "Account deleted during upload. File cleanup is queued.",
+          );
 
         return { uploadedBy: metadata.userId };
       }),

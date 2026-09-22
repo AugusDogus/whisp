@@ -37,7 +37,7 @@ export const PreviewUploads = {
       .onConflictDoNothing();
   },
   async canDelete(
-    db: typeof database,
+    db: Pick<typeof database, "select">,
     scope: PreviewScope | undefined,
     fileKey: string,
   ) {

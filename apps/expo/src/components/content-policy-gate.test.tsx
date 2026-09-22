@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { act, create, type ReactTestRenderer } from "react-test-renderer";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -30,19 +30,27 @@ afterEach(async () => {
 });
 
 async function show(
-  initial: "acceptance_required" | "suspended",
+  initial: "acceptance_required" | "suspended" | "allowed",
   fail = false,
+  appContent: ReactNode = <Button>Account settings</Button>,
 ) {
   const state: {
     status: "acceptance_required" | "suspended" | "allowed";
     fail: boolean;
+    failStatus: boolean;
     accepted: unknown[];
-  } = { status: initial, fail, accepted: [] };
+  } = { status: initial, fail, failStatus: false, accepted: [] };
   const api = trpc.createClient({
     links: [
       () =>
         ({ op }) =>
           observable((observer) => {
+            if (op.path === "safety.status" && state.failStatus) {
+              observer.error(
+                TRPCClientError.from(new Error("Network unavailable")),
+              );
+              return;
+            }
             if (op.path === "safety.acceptPolicy") {
               state.accepted.push(op.input);
               if (state.fail) {
@@ -77,9 +85,7 @@ async function show(
   await act(async () => {
     renderer = create(
       <Provider>
-        <ContentPolicyGate>
-          <Button>Account settings</Button>
-        </ContentPolicyGate>
+        <ContentPolicyGate>{appContent}</ContentPolicyGate>
       </Provider>,
     );
   });
@@ -115,4 +121,29 @@ test("suspended accounts retain access to their account settings and appeal cont
   await show("suspended");
   expect(JSON.stringify(renderer?.toJSON())).toContain("Account settings");
   expect(JSON.stringify(renderer?.toJSON())).toContain("augie@luebbers.email");
+});
+
+test("a failed background status refresh preserves the mounted app", async () => {
+  let mounts = 0;
+  let unmounts = 0;
+  function AppState() {
+    useEffect(() => {
+      mounts++;
+      return () => {
+        unmounts++;
+      };
+    }, []);
+    return <Button>Account settings</Button>;
+  }
+  const state = await show("allowed", false, <AppState />);
+  expect(mounts).toBe(1);
+  state.failStatus = true;
+  await act(async () => client.refetchQueries());
+  await settle();
+  expect(JSON.stringify(renderer?.toJSON())).toContain("Account settings");
+  expect(unmounts).toBe(0);
+  state.failStatus = false;
+  await act(async () => client.refetchQueries());
+  await settle();
+  expect(mounts).toBe(1);
 });

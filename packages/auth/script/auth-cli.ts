@@ -23,6 +23,7 @@ import { initAuth } from "../src/index";
  * @warning Use the main auth configuration from "../src/index.ts" for your application.
  */
 export const auth = initAuth({
+  enforceAccount: async () => {},
   database: drizzleAdapter(db, { provider: "sqlite" }),
   baseUrl: "http://localhost:3000",
   productionUrl: "http://localhost:3000",
