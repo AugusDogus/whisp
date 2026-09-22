@@ -13,7 +13,7 @@ import { trpc } from "~/utils/api";
 
 import { settle } from "../test/discord-profile";
 import { native } from "../test/setup";
-import { ContentPolicyGate } from "./content-policy-gate";
+import { ContentPolicyNotice } from "./content-policy-notice";
 
 let renderer: ReactTestRenderer | undefined;
 let client: QueryClient;
@@ -85,7 +85,8 @@ async function show(
   await act(async () => {
     renderer = create(
       <Provider>
-        <ContentPolicyGate>{appContent}</ContentPolicyGate>
+        <ContentPolicyNotice />
+        {appContent}
       </Provider>,
     );
   });
@@ -101,16 +102,17 @@ function button(label: string) {
   return match;
 }
 
-test("sharing screens remain hidden until the server saves the current terms version", async () => {
+test("account controls remain accessible while terms acceptance is pending or fails", async () => {
   const state = await show("acceptance_required", true);
-  expect(JSON.stringify(renderer?.toJSON())).not.toContain("Account settings");
+  await act(async () => button("Review terms").props.onPress());
+  expect(JSON.stringify(renderer?.toJSON())).toContain("Account settings");
   await act(async () => button("Agree and continue").props.onPress());
   await settle();
   expect(state.accepted).toEqual([{ version: CONTENT_POLICY_VERSION }]);
   expect(JSON.stringify(renderer?.toJSON())).toContain(
     "Could not save acceptance",
   );
-  expect(JSON.stringify(renderer?.toJSON())).not.toContain("Account settings");
+  expect(JSON.stringify(renderer?.toJSON())).toContain("Account settings");
   state.fail = false;
   await act(async () => button("Agree and continue").props.onPress());
   await settle();
@@ -146,4 +148,30 @@ test("a failed background status refresh preserves the mounted app", async () =>
   await act(async () => client.refetchQueries());
   await settle();
   expect(mounts).toBe(1);
+});
+
+test("declining updated terms preserves mounted account controls without accepting", async () => {
+  let mounts = 0;
+  let unmounts = 0;
+  function AccountControls() {
+    useEffect(() => {
+      mounts++;
+      return () => {
+        unmounts++;
+      };
+    }, []);
+    return <Button>Delete account</Button>;
+  }
+  const state = await show("allowed", false, <AccountControls />);
+  state.status = "acceptance_required";
+  await act(async () => client.refetchQueries());
+  await settle();
+  await act(async () => button("Review terms").props.onPress());
+  expect(JSON.stringify(renderer?.toJSON())).toContain("Before you share");
+  await act(async () => button("Not now").props.onPress());
+  expect(JSON.stringify(renderer?.toJSON())).not.toContain("Before you share");
+  expect(JSON.stringify(renderer?.toJSON())).toContain("Delete account");
+  expect(state.accepted).toEqual([]);
+  expect(mounts).toBe(1);
+  expect(unmounts).toBe(0);
 });

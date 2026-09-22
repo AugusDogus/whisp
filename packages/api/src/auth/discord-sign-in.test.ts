@@ -28,6 +28,7 @@ for (const name of [
   "0005_mls_application_epochs",
   "0006_account_safety",
   "0007_account_lifecycle",
+  "0008_file_deletion_attempts",
 ]) {
   await client.executeMultiple(
     await Bun.file(

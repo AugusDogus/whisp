@@ -21,6 +21,7 @@ export async function createSafetyTestDatabase() {
     "0005_mls_application_epochs.sql",
     "0006_account_safety.sql",
     "0007_account_lifecycle.sql",
+    "0008_file_deletion_attempts.sql",
   ]) {
     await client.executeMultiple(
       await Bun.file(

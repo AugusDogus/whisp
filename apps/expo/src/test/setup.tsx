@@ -54,6 +54,7 @@ mock.module("react-native", () => ({
   View: "view",
   Text: "text",
   ScrollView: "scroll-view",
+  Modal: "modal",
   Linking: { openURL: async () => undefined },
   I18nManager: { isRTL: false },
   StyleSheet: {

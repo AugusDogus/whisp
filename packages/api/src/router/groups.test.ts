@@ -5,6 +5,9 @@ import { drizzle } from "drizzle-orm/libsql";
 
 import * as schema from "@acme/db/schema";
 
+import { Blocking } from "../services/blocking";
+import { createSafetyTestDatabase } from "../services/safety-test-fixture";
+
 const client = createClient({ url: ":memory:" });
 let queries = 0;
 const db = drizzle({ client, schema, logger: { logQuery: () => queries++ } });
@@ -81,4 +84,34 @@ test("group list preserves unread counts, avatars, and latest activity within me
       unreadCount: 1,
     },
   ]);
+});
+
+// Uses the full migrated schema, seeded with alice, bob, and carol.
+const safetyDatabase = await createSafetyTestDatabase();
+const safetyCaller = (userId: string) =>
+  t
+    .router(groupsRouter)
+    .createCaller({ db: safetyDatabase, session: { user: { id: userId } } });
+
+test("blocked group renames cannot change the name returned to the blocker", async () => {
+  await safetyDatabase
+    .insert(schema.Group)
+    .values({ id: "shared", name: "Friends", createdById: "alice" });
+  await safetyDatabase.insert(schema.GroupMember).values(
+    ["alice", "bob", "carol"].map((userId) => ({
+      userId,
+      groupId: "shared",
+    })),
+  );
+  await safetyDatabase.transaction((tx) => Blocking.block(tx, "alice", "bob"));
+  await expect(
+    safetyCaller("bob").rename({ groupId: "shared", name: "Unwanted contact" }),
+  ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  expect(
+    (await safetyCaller("alice").list()).map((group) => group.name),
+  ).toEqual(["Friends"]);
+  await safetyCaller("carol").rename({ groupId: "shared", name: "Holiday" });
+  expect(
+    (await safetyCaller("alice").list()).map((group) => group.name),
+  ).toEqual(["Holiday"]);
 });
