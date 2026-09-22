@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 
+import { UTApi } from "uploadthing/server";
+
+import { PreviewScope } from "@acme/api/preview-scope";
+import { SafetyCleanup } from "@acme/api/safety-cleanup";
 import { and, inArray, isNotNull, isNull, lt } from "@acme/db";
 import { db } from "@acme/db/client";
 import { Message, MessageDelivery } from "@acme/db/schema";
@@ -17,11 +21,26 @@ export async function GET(request: Request) {
   const authHeader = request.headers.get("authorization");
   const cronSecret = env.CRON_SECRET;
 
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
+    const storage = new UTApi();
+    const safety = await SafetyCleanup.run(
+      db,
+      PreviewScope.fromEnvironment(process.env),
+      (key) => storage.deleteFiles(key),
+    );
+    if (safety.failed > 0)
+      return NextResponse.json(
+        {
+          error:
+            "Some account files could not be deleted. Jobs are retained for retry.",
+          ...safety,
+        },
+        { status: 503 },
+      );
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
     // Find messages that have been soft-deleted for more than 30 days
@@ -90,6 +109,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       success: true,
+      safety,
       deletedSoftDeletedMessages: deletedMessages,
       deletedSoftDeletedDeliveries: deletedDeliveries,
       deletedOldMessages: deletedOldMessages,

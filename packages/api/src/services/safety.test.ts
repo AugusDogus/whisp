@@ -1,13 +1,7 @@
-import { createClient } from "@libsql/client";
-import { afterAll, beforeEach, expect, test } from "bun:test";
-import { drizzle } from "drizzle-orm/libsql";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { expect, test } from "bun:test";
 
 import { eq } from "@acme/db";
 import * as schema from "@acme/db/schema";
-import { CONTENT_POLICY_VERSION } from "@acme/validators";
 
 import { AbuseReports } from "./abuse-reports";
 import { Blocking } from "./blocking";
@@ -15,61 +9,9 @@ import { ContentAccess } from "./content-access";
 import { FriendRequests } from "./friend-requests";
 import { MessageRecipients } from "./message-recipients";
 import { Moderation } from "./moderation";
+import { createSafetyTestDatabase } from "./safety-test-fixture";
 
-const directory = mkdtempSync(join(tmpdir(), "whisp-safety-test-"));
-const client = createClient({ url: `file:${join(directory, "test.db")}` });
-const database = drizzle({ client, schema });
-for (const file of [
-  "0000_baseline.sql",
-  "0001_discord_cosmetics.sql",
-  "0002_account_safety.sql",
-]) {
-  await client.executeMultiple(
-    await Bun.file(
-      new URL(`../../../db/drizzle/${file}`, import.meta.url),
-    ).text(),
-  );
-}
-
-beforeEach(async () => {
-  for (const table of [
-    schema.AbuseReport,
-    schema.AccountSuspension,
-    schema.ContentPolicyAcceptance,
-    schema.UserBlock,
-    schema.MessageDelivery,
-    schema.Message,
-    schema.GroupMember,
-    schema.Group,
-    schema.Friendship,
-    schema.FriendRequest,
-    schema.user,
-  ]) {
-    await database.delete(table);
-  }
-  for (const id of ["alice", "bob", "carol"]) {
-    await database.insert(schema.user).values({
-      id,
-      name: id,
-      email: `${id}@example.com`,
-      emailVerified: false,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
-    await database
-      .insert(schema.ContentPolicyAcceptance)
-      .values({ userId: id, version: CONTENT_POLICY_VERSION });
-  }
-  await database.insert(schema.Friendship).values([
-    { userIdA: "alice", userIdB: "bob" },
-    { userIdA: "alice", userIdB: "carol" },
-  ]);
-});
-
-afterAll(() => {
-  client.close();
-  rmSync(directory, { recursive: true });
-});
+const database = await createSafetyTestDatabase();
 
 test("blocking is idempotent, removes pending contact, and works in both directions", async () => {
   await database
@@ -266,7 +208,12 @@ test("moderation actions are atomic and stop sharing without disabling reports",
     reason: "harassment",
     details: "",
   });
-  expect(await Moderation.resolve(database, "report", "suspend")).toEqual({
+  expect(
+    await Moderation.resolve(database, "report", {
+      action: "suspend",
+      expiresAt: new Date(Date.now() + 86400_000).toISOString(),
+    }),
+  ).toEqual({
     status: "resolved",
   });
   expect(await ContentAccess.status(database, "bob")).toEqual({
@@ -284,7 +231,9 @@ test("moderation actions are atomic and stop sharing without disabling reports",
       reason: "spam",
     }),
   ).toEqual({ status: "submitted" });
-  expect(await Moderation.resolve(database, "report", "dismiss")).toEqual({
+  expect(
+    await Moderation.resolve(database, "report", { action: "dismiss" }),
+  ).toEqual({
     status: "already_reviewed",
   });
   expect(

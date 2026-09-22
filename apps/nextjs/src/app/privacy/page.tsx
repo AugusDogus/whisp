@@ -106,10 +106,11 @@ export default function PrivacyPage() {
                 preferences, records of conduct-policy acceptance, and any
                 sharing suspension. Reports are stored separately from
                 disappearing messages and are not deleted when a message is
-                viewed. Deleting an account clears its account references from
-                reports; the submitted explanation and review record remain for
-                safety review. For questions or a request about report data,
-                contact{" "}
+                viewed. Report explanations are erased on resolution. Reports
+                are scheduled for deletion 30 days after submission and removed
+                by daily cleanup. Deleting either involved account removes the
+                report immediately. For questions or a request about report
+                data, contact{" "}
                 <a className="underline" href="mailto:augie@luebbers.email">
                   augie@luebbers.email
                 </a>
@@ -169,10 +170,35 @@ export default function PrivacyPage() {
                 Your account information (Discord username, user ID, email, and
                 profile picture) is stored for as long as your account is
                 active. You can delete your account at any time through the app
-                settings. Account deletion removes your sign-in account and
-                associated sessions. Safety reports are handled separately as
-                described above. Contact us for requests about any remaining
-                data.
+                settings. Deletion removes your Discord ID, credentials,
+                profile, sessions, notification tokens, friendships, blocks,
+                reports involving you, sent messages, and groups you created.
+                Cloud files are queued for deletion, with daily retries if
+                storage deletion fails. This does not delete your Discord
+                account or other people&apos;s messages outside groups you
+                created.
+              </p>
+              <p className="mt-3">
+                For confirmed serious abuse, a human reviewer may find that a
+                limited suspension must continue after deletion to prevent
+                further serious harm. In those cases we may retain a keyed hash
+                of your Discord ID, a decision reference, the reason and
+                necessity finding, policy revision, decision date, and expiry.
+                This is protected personal data, not anonymous data. We do not
+                retain your raw Discord ID, profile, report text, or media in
+                that record. This processing is subject to an approved
+                legitimate-interests assessment and individual necessity review,
+                including age and privacy interests. Reports alone do not
+                justify it.
+              </p>
+              <p className="mt-3">
+                The reviewer chooses the shortest justified suspension period.
+                Deletion and signing in again never extend it. Enforcement ends
+                at expiry, and daily cleanup removes the record. Contact
+                augie@luebbers.email to learn the reason and expiry, appeal,
+                request erasure, or object to retention without recreating your
+                account. We assess such requests individually and explain the
+                outcome.
               </p>
 
               <h3 className="mb-2 mt-4 text-lg font-semibold">

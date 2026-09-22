@@ -1,4 +1,4 @@
-import { eq, sql } from "@acme/db";
+import { and, eq, sql } from "@acme/db";
 import type { SQLWrapper } from "@acme/db";
 import type { db } from "@acme/db/client";
 import {
@@ -22,7 +22,13 @@ export const ContentAccess = {
         ContentPolicyAcceptance,
         eq(ContentPolicyAcceptance.userId, user.id),
       )
-      .leftJoin(AccountSuspension, eq(AccountSuspension.userId, user.id))
+      .leftJoin(
+        AccountSuspension,
+        and(
+          eq(AccountSuspension.userId, user.id),
+          sql`(${AccountSuspension.expiresAt} is null or ${AccountSuspension.expiresAt} > unixepoch())`,
+        ),
+      )
       .where(eq(user.id, userId));
     if (!row) return { status: "unavailable" } as const;
     if (row.suspendedUserId) return { status: "suspended" } as const;
@@ -33,6 +39,6 @@ export const ContentAccess = {
 
   // Correlated predicate used again when reading deliveries and sending pushes.
   notSuspended(userId: string | SQLWrapper) {
-    return sql`not exists (select 1 from ${AccountSuspension} where ${AccountSuspension.userId} = ${userId})`;
+    return sql`not exists (select 1 from ${AccountSuspension} where ${AccountSuspension.userId} = ${userId} and (${AccountSuspension.expiresAt} is null or ${AccountSuspension.expiresAt} > unixepoch()))`;
   },
 };

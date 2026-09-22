@@ -8,11 +8,14 @@ import {
 } from "uploadthing/server";
 import { z } from "zod/v4";
 
+import { eq } from "@acme/db";
 import { db } from "@acme/db/client";
 import {
   BackgroundUploadTestFile,
   Message,
   MessageDelivery,
+  FileDeletion,
+  user,
 } from "@acme/db/schema";
 
 import { MessageRecipients } from "../services/message-recipients";
@@ -96,8 +99,13 @@ export function createUploadRouter({ getSession }: CreateDeps) {
             metadata.userId,
             metadata,
           );
-          if (recipients.status !== "ready")
+          if (recipients.status !== "ready") {
+            await tx
+              .insert(FileDeletion)
+              .values({ fileKey: getFileKey(file) })
+              .onConflictDoNothing();
             return { status: "unavailable" } as const;
+          }
           await tx.insert(Message).values({
             id: messageId,
             senderId: metadata.userId,
@@ -122,6 +130,9 @@ export function createUploadRouter({ getSession }: CreateDeps) {
             throw new UploadThingError(
               "Delivery was cancelled, but uploaded file cleanup failed. Contact support.",
             );
+          await db
+            .delete(FileDeletion)
+            .where(eq(FileDeletion.fileKey, getFileKey(file)));
           throw new UploadThingError(
             "Delivery was cancelled because the recipients or account permissions changed during upload.",
           );
@@ -215,16 +226,34 @@ export function createUploadRouter({ getSession }: CreateDeps) {
           PreviewScope.fromEnvironment(process.env),
           { key: getFileKey(file), customId: file.customId },
         );
-        await db
-          .insert(BackgroundUploadTestFile)
-          .values({
-            userId: metadata.userId,
-            fileKey: getFileKey(file),
-            fileUrl: file.ufsUrl,
-            originalFileName: file.name,
-            mimeType: file.type,
-          })
-          .onConflictDoNothing({ target: BackgroundUploadTestFile.fileKey });
+        const saved = await db.transaction(async (tx) => {
+          const [owner] = await tx
+            .select({ id: user.id })
+            .from(user)
+            .where(eq(user.id, metadata.userId));
+          if (!owner) {
+            await tx
+              .insert(FileDeletion)
+              .values({ fileKey: getFileKey(file) })
+              .onConflictDoNothing();
+            return false;
+          }
+          await tx
+            .insert(BackgroundUploadTestFile)
+            .values({
+              userId: metadata.userId,
+              fileKey: getFileKey(file),
+              fileUrl: file.ufsUrl,
+              originalFileName: file.name,
+              mimeType: file.type,
+            })
+            .onConflictDoNothing({ target: BackgroundUploadTestFile.fileKey });
+          return true;
+        });
+        if (!saved)
+          throw new UploadThingError(
+            "Account deleted during upload. File cleanup is queued.",
+          );
 
         return { uploadedBy: metadata.userId };
       }),

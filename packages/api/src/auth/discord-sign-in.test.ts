@@ -2,49 +2,48 @@ import { createClient } from "@libsql/client";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { afterAll, describe, expect, spyOn, test } from "bun:test";
 import { drizzle } from "drizzle-orm/libsql";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { z } from "zod/v4";
 
+import { Enforcement } from "@acme/db/enforcement";
 import * as schema from "@acme/db/schema";
+import { CONTENT_POLICY_VERSION } from "@acme/validators";
 
+import { AccountDeletion } from "../services/account-deletion";
+import { ContentAccess } from "../services/content-access";
 import { DiscordProfile } from "../services/discord-profile";
+import { Moderation } from "../services/moderation";
 
-const client = createClient({ url: "file::memory:" });
+const directory = mkdtempSync(join(tmpdir(), "whisp-sign-in-"));
+const client = createClient({ url: `file:${join(directory, "test.db")}` });
 const db = drizzle({ client, schema });
-await client.executeMultiple(`
-  CREATE TABLE user (id TEXT PRIMARY KEY, name TEXT NOT NULL, discordUsername TEXT,
-    email TEXT NOT NULL UNIQUE, emailVerified INTEGER NOT NULL, image TEXT,
-    createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL,
-    notifyOnMessages INTEGER NOT NULL DEFAULT 1, notifyOnFriendActivity INTEGER NOT NULL DEFAULT 1);
-  CREATE TABLE account (id TEXT PRIMARY KEY, accountId TEXT NOT NULL, providerId TEXT NOT NULL,
-    userId TEXT NOT NULL, accessToken TEXT, refreshToken TEXT, idToken TEXT,
-    accessTokenExpiresAt INTEGER, refreshTokenExpiresAt INTEGER, scope TEXT, password TEXT,
-    createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL);
-  CREATE TABLE session (id TEXT PRIMARY KEY, expiresAt INTEGER NOT NULL, token TEXT UNIQUE NOT NULL,
-    createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL, ipAddress TEXT, userAgent TEXT, userId TEXT NOT NULL);
-  CREATE TABLE verification (id TEXT PRIMARY KEY, identifier TEXT NOT NULL, value TEXT NOT NULL,
-    expiresAt INTEGER NOT NULL, createdAt INTEGER, updatedAt INTEGER);
-`);
-await client.executeMultiple(
-  await Bun.file(
-    new URL("../../../db/drizzle/0001_discord_cosmetics.sql", import.meta.url),
-  ).text(),
-);
-
-await client.executeMultiple(`
-  CREATE TABLE push_token (id TEXT PRIMARY KEY, userId TEXT NOT NULL, token TEXT NOT NULL UNIQUE,
-    platform TEXT NOT NULL, createdAt INTEGER NOT NULL, updatedAt INTEGER);
-`);
-await client.executeMultiple(
-  await Bun.file(
-    new URL(
-      "../../../db/drizzle/0002_push_token_sessions.sql",
-      import.meta.url,
-    ),
-  ).text(),
-);
+for (const name of [
+  "0000_baseline",
+  "0001_discord_cosmetics",
+  "0002_push_token_sessions",
+  "0003_account_safety",
+  "0004_account_lifecycle",
+]) {
+  await client.executeMultiple(
+    await Bun.file(
+      new URL(`../../../db/drizzle/${name}.sql`, import.meta.url),
+    ).text(),
+  );
+}
+const config = {
+  key: "test-enforcement-key-at-least-32-characters",
+  policyVersion: "test-policy",
+};
 
 const { initAuth } = await import("@acme/auth");
 const auth = initAuth({
+  enforceAccount: async (userId) => {
+    const result = await Enforcement.apply(db, config, userId);
+    if (result.status !== "ready")
+      throw new Error(`Safety check failed: ${result.status}`);
+  },
   database: drizzleAdapter(db, { provider: "sqlite" }),
   proxySecret: "test-only-proxy-secret-with-at-least-thirty-two-characters",
   baseUrl: "http://localhost:3000",
@@ -125,6 +124,7 @@ async function signIn() {
 afterAll(() => {
   fetchMock.mockRestore();
   client.close();
+  rmSync(directory, { recursive: true });
 });
 
 describe("Discord OAuth profile persistence", () => {
@@ -280,4 +280,72 @@ test("Better Auth logout deletes the session's push registration without contact
   expect(logout.status).toBe(200);
   expect(await db.query.PushToken.findMany()).toHaveLength(0);
   expect(await auth.api.getSession({ headers })).toBeNull();
+});
+
+test("real Discord re-registration preserves only the reviewed unexpired enforcement", async () => {
+  discordResponse = baseProfile;
+  await signIn();
+  const [original] = await db.select().from(schema.user);
+  if (!original) throw new Error("Expected signed-in user");
+  await db.insert(schema.user).values({
+    id: "reporter",
+    name: "Reporter",
+    email: "reporter@example.com",
+    emailVerified: false,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+  await db.insert(schema.AbuseReport).values({
+    id: "serious",
+    reporterId: "reporter",
+    reportedUserId: original.id,
+    reason: "harassment",
+    details: "Sensitive allegation",
+  });
+  const expiresAt = new Date(Date.now() + 86400_000).toISOString();
+  const result = await Moderation.resolve(
+    db,
+    "serious",
+    {
+      action: "enforce",
+      expiresAt,
+      reason: "repeated_severe_harassment",
+      confirmedSeriousAbuse: true,
+      necessaryDespiteDeletion: true,
+      shorterPeriodInsufficient: true,
+      rightsAndAgeConsidered: true,
+    },
+    config,
+  );
+  expect(result.status).toBe("resolved");
+  const decisions = await db.select().from(schema.AbuseEnforcement);
+  await AccountDeletion.remove(db, original.id, undefined);
+  expect(await db.select().from(schema.account)).toHaveLength(0);
+  expect(await db.select().from(schema.session)).toHaveLength(0);
+  expect(await db.select().from(schema.AbuseReport)).toHaveLength(0);
+  expect(await db.select().from(schema.AbuseEnforcement)).toEqual(decisions);
+  expect(JSON.stringify(decisions)).not.toContain(id);
+  expect(JSON.stringify(decisions)).not.toContain("nelly");
+  expect(JSON.stringify(decisions)).not.toContain("Sensitive allegation");
+  expect((await signIn()).status).toBe(302);
+  const [linked] = await db.select().from(schema.account);
+  if (!linked) throw new Error("Expected recreated Discord account");
+  expect(linked.userId).not.toBe(original.id);
+  await db
+    .insert(schema.ContentPolicyAcceptance)
+    .values({ userId: linked.userId, version: CONTENT_POLICY_VERSION });
+  expect(await ContentAccess.status(db, linked.userId)).toEqual({
+    status: "suspended",
+  });
+  await signIn();
+  expect(await db.select().from(schema.AbuseEnforcement)).toEqual(decisions);
+  await Moderation.restore(db, linked.userId);
+  expect(await db.select().from(schema.AbuseEnforcement)).toHaveLength(0);
+  expect(await ContentAccess.status(db, linked.userId)).toEqual({
+    status: "allowed",
+  });
+  await AccountDeletion.remove(db, linked.userId, undefined);
+  await signIn();
+  expect(await db.select().from(schema.AbuseEnforcement)).toHaveLength(0);
+  expect(await db.select().from(schema.AccountSuspension)).toHaveLength(0);
 });

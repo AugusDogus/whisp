@@ -80,16 +80,17 @@ export default function ProfileScreen() {
     },
   });
 
-  const deleteAccount = trpc.auth.deleteAccount.useMutation();
+  const deleteAccount = trpc.auth.deleteAccount.useMutation({
+    onSuccess: async () => {
+      setDeleteDialogOpen(false);
+      await authClient.signOut();
+    },
+  });
 
   const handleToggle = (key: keyof typeof preferences) => {
     updatePreferences.mutate({
       [key]: !preferences[key],
     });
-  };
-
-  const handleDeleteAccount = async () => {
-    await deleteAccount.mutateAsync();
   };
 
   return (
@@ -273,13 +274,23 @@ export default function ProfileScreen() {
               <Dialog.Content>
                 <Dialog.Title>Delete Account</Dialog.Title>
                 <Dialog.Description>
-                  Are you sure you want to delete your Whisp account? This will
-                  permanently delete all your messages, friend connections, and
-                  account data. This action cannot be undone.
+                  Are you sure you want to delete your whisp account? This will
+                  remove your account, messages, groups you created,
+                  friendships, and reports involving you. Cloud files are queued
+                  for deletion. This action cannot be undone.
+                  {"\n\n"}A confirmed serious-abuse decision may retain a
+                  protected account identifier until its suspension expires.
+                  Contact augie@luebbers.email to appeal or object to retention.
                   {"\n\n"}
-                  Note: This only deletes your Whisp account. Your Discord
+                  Note: This only deletes your whisp account. Your Discord
                   account will remain active.
                 </Dialog.Description>
+                {deleteAccount.error && (
+                  <Text accessibilityRole="alert" className="text-danger">
+                    Account deletion could not be confirmed. Try again. If you
+                    are signed out, contact augie@luebbers.email for help.
+                  </Text>
+                )}
                 <View className="flex-row justify-end gap-3 pt-4">
                   <Button
                     variant="ghost"
@@ -291,10 +302,8 @@ export default function ProfileScreen() {
                   <Button
                     variant="danger"
                     size="sm"
-                    onPress={() => {
-                      void handleDeleteAccount();
-                      setDeleteDialogOpen(false);
-                    }}
+                    isDisabled={deleteAccount.isPending}
+                    onPress={() => deleteAccount.mutate()}
                   >
                     Delete Account
                   </Button>

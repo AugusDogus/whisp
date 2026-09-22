@@ -1,6 +1,6 @@
 import { z } from "zod/v4";
 
-export const CONTENT_POLICY_VERSION = "2026-09-21";
+export const CONTENT_POLICY_VERSION = "2026-09-21.1";
 
 export const reportReasons = [
   "spam",

@@ -7,6 +7,8 @@
       "types": "./dist/index.d.ts",
       "default": "./src/index.ts"
     },
+    "./safety-cleanup": "./src/services/safety-cleanup.ts",
+    "./preview-scope": "./src/uploadthing/preview-scope.ts",
     "./env": "./src/env.ts"
   },
   "license": "MIT",

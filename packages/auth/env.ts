@@ -4,6 +4,8 @@ import { z } from "zod/v4";
 export function authEnv() {
   return createEnv({
     server: {
+      ABUSE_ENFORCEMENT_KEY: z.string().min(32).optional(),
+      ABUSE_RETENTION_POLICY_VERSION: z.string().min(1).optional(),
       AUTH_DISCORD_ID: z.string().min(1),
       AUTH_DISCORD_SECRET: z.string().min(1),
       OAUTH_PROXY_SECRET: z.string().min(32),

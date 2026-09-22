@@ -49,8 +49,11 @@ await client.executeMultiple(`
 
 await client.executeMultiple(
   await Bun.file(
-    new URL("../../../db/drizzle/0002_account_safety.sql", import.meta.url),
+    new URL("../../../db/drizzle/0003_account_safety.sql", import.meta.url),
   ).text(),
+);
+await client.executeMultiple(
+  "ALTER TABLE account_suspension ADD expiresAt INTEGER; ALTER TABLE account_suspension ADD enforcementId TEXT;",
 );
 
 beforeEach(async () => {
