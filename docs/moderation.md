@@ -18,8 +18,8 @@ Reports have a 30-day operational review window from submission, with daily purg
 Resolve promptly: resolution immediately clears free-text explanations. Deletion
 of either involved account deletes the entire report. Do not copy reports into
 logs, tickets, or an indefinite evidence archive. This window is an engineering
-policy choice, not a statutory retention period. Confirm it in the operational
-privacy assessment before public launch.
+policy choice, not a statutory retention period. Revisit it if operational needs
+or privacy risks change.
 
 An ordinary suspension ends at its explicit expiry or account deletion. A report
 alone never creates a deletion-surviving identifier. Only confirmed serious abuse
@@ -35,29 +35,36 @@ and impact on the person. Deletion and sign-in never extend it. Enforcement stop
 at expiry even if cleanup is delayed; the daily job physically deletes the record.
 Revocation immediately deletes it and every linked suspension.
 
-## Policy approval before enabling retention
+## Approved policy and configuration
 
-Retention after deletion is disabled unless both `ABUSE_ENFORCEMENT_KEY` and
-`ABUSE_RETENTION_POLICY_VERSION` are configured. Do not set the policy version
-merely to enable the command. Complete and approve the assessment in
-[abuse-retention-assessment.md](abuse-retention-assessment.md) first. Code and a
-configuration flag do not establish a lawful basis. Ordinary reporting, blocking,
-deletion, and account-local suspensions work without this configuration.
+Augie approved this approach and its implementation. Policy revision
+`2026-09-21.1` is recorded in
+[abuse-retention-assessment.md](abuse-retention-assessment.md). There is no further
+product-approval step. Configure `ABUSE_ENFORCEMENT_KEY` and
+`ABUSE_RETENTION_POLICY_VERSION=2026-09-21.1` in the deployment and operator
+CLI environment. Individual serious-abuse decisions still require human review,
+necessity attestations, and explicit expiry. Ordinary reporting, blocking,
+deletion, and account-local suspensions work without an enforcement key.
 
 Generate a dedicated random key of at least 32 bytes in the environment's secret
 store. Do not reuse OAuth/auth secrets or log the key, Discord IDs, or fingerprints.
 Keep the key stable while records are active. Missing or changed keys fail new
 session safety checks closed when active records exist. Restore the correct key
 instead of disabling checks. A planned rotation must wait for expiry or explicitly
-revoke old decisions after review. Previews must not inherit production enforcement
-records without an isolated privacy-safe data strategy; do not copy the production
-key simply to make preview sign-in work.
+revoke old decisions after review. Production and previews use separate keys.
+New preview database initialization removes copied production enforcement records
+and linked suspensions before deployment. Redeployments preserve decisions made
+within the preview. Never copy the production key into previews.
 
 ## Operator workflow
 
 Only operators with database credentials can use the CLI. There is no public admin
 endpoint. Run against the intended environment with its database and retention
 configuration. Commands print JSON and never execute submitted report text.
+The configured operator keys are also stored locally in mode-0600 files under
+`~/.config/whisp/enforcement-production.env` and `enforcement-preview.env`.
+Load the matching file with Bun's `--env-file` option and supply that environment's
+database credentials separately. Never commit or print these files.
 
 ```sh
 bun packages/api/src/moderation/cli.ts list
