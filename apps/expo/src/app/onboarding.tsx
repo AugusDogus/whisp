@@ -188,13 +188,13 @@ export default function OnboardingScreen() {
     }
   };
 
-  // Handle navigation to Main when onboarding is complete
+  // Terms are the final, skippable onboarding step.
   useEffect(() => {
     if (currentStep === "complete") {
       // Mark onboarding as complete
       void SecureStore.setItemAsync("whisp_onboarding_complete", "true").then(
         () => {
-          navigation.replace("Main");
+          navigation.replace("Terms");
         },
       );
     }
