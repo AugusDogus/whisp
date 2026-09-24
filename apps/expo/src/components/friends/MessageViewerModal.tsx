@@ -12,9 +12,10 @@ import { ResizeMode, Video } from "expo-av";
 import { Image } from "expo-image";
 
 import { useQueryClient } from "@tanstack/react-query";
+import { PortalHost } from "heroui-native/portal";
 import { toast } from "sonner-native";
 
-import { SafetyActions } from "~/components/safety-actions";
+import { SafetyMenu } from "~/components/safety-actions";
 import type { ViewerState } from "~/hooks/useMessageViewerState";
 import { isVideoMime } from "~/utils/media-kind";
 import { openWhisp, type OpenedWhisp } from "~/utils/mls-media";
@@ -24,13 +25,17 @@ type MediaState =
   | { kind: "error"; message: string }
   | { kind: "ready"; deliveryId: string; media: OpenedWhisp };
 
+const VIEWER_PORTAL_HOST = "message-viewer";
+
 export function MessageViewerModal({
   viewer,
+  getSenderName,
   insetsTop,
   onRequestClose,
   onTap,
 }: {
   viewer: ViewerState | null;
+  getSenderName: (senderId: string) => string;
   insetsTop: number;
   onRequestClose: () => void;
   onTap: () => void;
@@ -222,17 +227,20 @@ export function MessageViewerModal({
       </TouchableWithoutFeedback>
       {message && (
         <View
-          className="bg-surface absolute right-3 rounded-xl"
-          style={{ top: insetsTop + 24 }}
+          className="absolute right-2 rounded-full bg-black/30"
+          style={{ top: insetsTop + 20 }}
         >
-          <SafetyActions
+          <SafetyMenu
             userId={message.senderId}
-            name="Sender"
+            name={getSenderName(message.senderId)}
             onBlocked={onRequestClose}
-            compact
+            iconColor="#fff"
+            portalHost={VIEWER_PORTAL_HOST}
           />
         </View>
       )}
+      {/* Menus and dialogs opened from the viewer must render above this Modal. */}
+      <PortalHost name={VIEWER_PORTAL_HOST} />
     </Modal>
   );
 }

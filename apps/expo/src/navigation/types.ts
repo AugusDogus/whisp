@@ -30,6 +30,7 @@ export interface RootStackParamList extends ParamListBase {
   Settings: undefined;
   Devices: undefined;
   EncryptionRecovery: undefined;
+  BlockedAccounts: undefined;
 }
 
 export type AppScreenName = keyof RootStackParamList;

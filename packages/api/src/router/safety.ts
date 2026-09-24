@@ -32,7 +32,7 @@ export const safetyRouter = {
 
   blockedUsers: protectedProcedure.query(({ ctx }) =>
     ctx.db
-      .select({ id: user.id, name: user.name })
+      .select({ id: user.id, name: user.name, image: user.image })
       .from(UserBlock)
       .innerJoin(user, eq(user.id, UserBlock.blockedId))
       .where(eq(UserBlock.blockerId, ctx.session.user.id)),
