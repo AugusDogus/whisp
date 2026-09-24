@@ -416,19 +416,26 @@ fn sync(
                             current.cursor = event.sequence;
                             continue;
                         }
-                        let ReceivedMessage::Application { sender, plaintext } =
-                            client.process(decode_base64(data)?)?
-                        else {
-                            return Err(MlsError::protocol("MLS application verification"));
-                        };
-                        if sender != sender_device_id
-                            || !current
-                                .members
-                                .iter()
-                                .any(|m| m.device_id == sender && m.user_id == sender_id)
+                        // Application events cannot change membership. Reject
+                        // invalid bytes/identity and advance past that event so
+                        // one member cannot poison the immutable delivery log.
+                        // Commit validation above remains fail-closed.
+                        if !current
+                            .members
+                            .iter()
+                            .any(|m| m.device_id == sender_device_id && m.user_id == sender_id)
                         {
-                            return Err(MlsError::protocol("MLS sender authentication"));
+                            current.cursor = event.sequence;
+                            continue;
                         }
+                        let plaintext = match decode_base64(data) {
+                            Ok(bytes) => client.process_application(bytes, &sender_device_id)?,
+                            Err(_) => None,
+                        };
+                        let Some(plaintext) = plaintext else {
+                            current.cursor = event.sequence;
+                            continue;
+                        };
                         if let Ok(d) = serde_json::from_slice::<Descriptor>(&plaintext)
                             && d.valid()
                             && d.sender_id == sender_id
