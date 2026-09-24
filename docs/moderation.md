@@ -105,10 +105,11 @@ No emails or external reports are sent by this tool.
    valid data, remove old orphan rows, queue known orphan media keys, and delete
    reports whose account references were already cleared.
 2. Deploy server and privacy/terms changes with the mobile build. Accounts must
-   accept policy version `2026-09-21.1` before sharing. Acceptance lives beside
-   the Terms of Service link in Profile. There is no onboarding terms screen or
-   camera notice. Account deletion, blocking, and reporting remain available
-   without acceptance; sharing remains restricted until acceptance.
+   accept policy version `2026-09-21.1` before sharing. Terms are a short, skippable
+   onboarding screen and remain available in Profile. If skipped, Send opens a
+   compact acceptance modal before uploading or leaving the draft. Acceptance
+   resumes that send; dismissal keeps the draft and recipients. Account deletion,
+   blocking, and reporting remain available without acceptance.
 3. Configure `CRON_SECRET` for the existing daily cleanup route. Missing credentials
    now return 401. Monitor failures and queue age; a 503 means file deletion jobs
    remain pending. Storage failures must be investigated, not treated as success.
