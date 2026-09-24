@@ -392,3 +392,105 @@ fn application_refresh_policy_rejects_legacy_expired_exhausted_and_future_states
     .unwrap();
     assert!(matches!(record.pending, Some(Pending::Commit { .. })));
 }
+
+#[test]
+fn invalid_applications_do_not_block_later_messages_or_consume_their_keys() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let fixture = Fixture::new(&listener);
+    let descriptor = fixture.descriptor("bob");
+    let peer_id = fixture
+        .state
+        .members
+        .iter()
+        .find(|m| m.user_id == "bob")
+        .unwrap()
+        .device_id
+        .clone();
+    let valid = fixture
+        .peer
+        .encrypt(serde_json::to_vec(&descriptor).unwrap())
+        .unwrap();
+    let mut tampered = valid.clone();
+    *tampered.last_mut().unwrap() ^= 1;
+    // A commit mislabeled by the delivery service must not advance the group.
+    let commit = fixture.peer.update_keys().unwrap();
+    let message_id = descriptor.message_id.clone();
+    let server = serve(
+        listener,
+        vec!["sync", "sync", "sync"],
+        move |index, input| {
+            let entry = |data: String| {
+                json!({"kind":"application", "data":data,
+            "senderDeviceId":peer_id,"senderId":"bob","messageId":message_id,"groupId":null})
+            };
+            match index {
+                0 => {
+                    assert_eq!(input["after"], 2);
+                    Some(json!({"conversation":{"revision":6},"welcome":null,
+                    "retainedMessageIds":[message_id],"events":[
+                        {"sequence":3,"entry":entry("not base64".into())},
+                        {"sequence":4,"entry":entry("AAAA".into())},
+                        {"sequence":5,"entry":entry(encode_base64(tampered.clone()))},
+                        {"sequence":6,"entry":entry(encode_base64(commit.clone()))}
+                    ]}))
+                }
+                1 => {
+                    assert_eq!(input["after"], 6);
+                    Some(json!({"conversation":{"revision":7},"welcome":null,
+                    "retainedMessageIds":[message_id],"events":[
+                        {"sequence":7,"entry":entry(encode_base64(valid.clone()))}
+                    ]}))
+                }
+                _ => {
+                    assert_eq!(input["after"], 7);
+                    Some(json!({"conversation":{"revision":7},"welcome":null,
+                    "retainedMessageIds":[message_id],"events":[]}))
+                }
+            }
+        },
+    );
+    let api = Api::new(&fixture.config).unwrap();
+    let skipped = sync(&api, &fixture.id, None).unwrap().0.unwrap();
+    assert_eq!(skipped.cursor, 6);
+    assert!(skipped.descriptors.is_empty());
+    assert_eq!(fixture.record().current.unwrap().cursor, 6);
+    let received = sync(&api, &fixture.id, None).unwrap().0.unwrap();
+    assert_eq!(received.cursor, 7);
+    assert_eq!(
+        received.descriptors[&descriptor.message_id].key,
+        descriptor.key
+    );
+    // A restarted receive reads the same durable descriptor without replay.
+    let restored = sync(&api, &fixture.id, None).unwrap().0.unwrap();
+    assert!(restored.descriptors.contains_key(&descriptor.message_id));
+    server.join().unwrap();
+}
+
+#[test]
+fn rejected_sender_binding_preserves_application_for_the_authenticated_sender() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let fixture = Fixture::new(&listener);
+    let receiver = restore(&fixture.config, &fixture.state.snapshot).unwrap();
+    let peer_id = fixture
+        .state
+        .members
+        .iter()
+        .find(|m| m.user_id == "bob")
+        .unwrap()
+        .device_id
+        .clone();
+    let bytes = fixture.peer.encrypt(b"descriptor".to_vec()).unwrap();
+    assert_eq!(
+        receiver
+            .process_application(bytes.clone(), "wrong-device")
+            .unwrap(),
+        None
+    );
+    assert_eq!(
+        receiver
+            .process_application(bytes.clone(), &peer_id)
+            .unwrap(),
+        Some(b"descriptor".to_vec())
+    );
+    assert_eq!(receiver.process_application(bytes, &peer_id).unwrap(), None);
+}

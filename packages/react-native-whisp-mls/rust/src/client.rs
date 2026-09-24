@@ -381,6 +381,68 @@ impl MlsClient {
 }
 
 impl MlsClient {
+    /// Reject an invalid application without consuming receive keys or applying
+    /// a commit disguised as an application. Local failures remain fatal.
+    pub(crate) fn process_application(
+        &self,
+        bytes: Vec<u8>,
+        expected_sender: &str,
+    ) -> Result<Option<Vec<u8>>, MlsError> {
+        let message = match decode(&bytes) {
+            Ok(message) => match message.try_into_protocol_message() {
+                Ok(message) if message.content_type() == ContentType::Application => message,
+                _ => return Ok(None),
+            },
+            Err(_) => return Ok(None),
+        };
+        let mut state = self.lock()?;
+        let State {
+            provider, group, ..
+        } = &mut *state;
+        let active = group.as_mut().ok_or(MlsError::NotJoined)?;
+        let group_id = active.group_id().clone();
+        // OpenMLS may advance the secret tree before authentication fails.
+        // Copy its in-memory store, avoiding encrypted snapshot work per message.
+        let checkpoint = provider
+            .storage()
+            .values
+            .read()
+            .map_err(|_| MlsError::SessionUnavailable)?
+            .clone();
+        let result = match active.process_message(provider, message) {
+            Ok(processed) => {
+                let sender = BasicCredential::try_from(processed.credential().clone());
+                match (sender, processed.into_content()) {
+                    (Ok(sender), ProcessedMessageContent::ApplicationMessage(application))
+                        if sender.identity() == expected_sender.as_bytes() =>
+                    {
+                        Ok(Some(application.into_bytes()))
+                    }
+                    _ => Ok(None),
+                }
+            }
+            Err(
+                ProcessMessageError::StorageError(_)
+                | ProcessMessageError::LibraryError(_)
+                | ProcessMessageError::GroupStateError(_),
+            ) => Err(MlsError::protocol("application receive state")),
+            Err(_) => Ok(None),
+        };
+        if !matches!(&result, Ok(Some(_))) {
+            *provider
+                .storage()
+                .values
+                .write()
+                .map_err(|_| MlsError::SessionUnavailable)? = checkpoint;
+            *group = Some(
+                MlsGroup::load(provider.storage(), &group_id)
+                    .map_err(|_| MlsError::protocol("application receive rollback"))?
+                    .ok_or(MlsError::NotJoined)?,
+            );
+        }
+        result
+    }
+
     pub(crate) fn epoch(&self) -> Result<u64, MlsError> {
         Ok(self
             .lock()?
