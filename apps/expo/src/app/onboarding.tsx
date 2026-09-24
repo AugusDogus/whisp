@@ -1,6 +1,6 @@
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Platform, View } from "react-native";
 import {
   check,
@@ -21,8 +21,8 @@ import { Button } from "heroui-native/button";
 import { SafeAreaView } from "~/components/styled";
 import { Text } from "~/components/ui/text";
 import type { RootStackParamList } from "~/navigation/types";
-import { trpc } from "~/utils/api";
-import { EXPO_PROJECT_ID } from "~/utils/constants";
+import { authClient } from "~/utils/auth";
+import { registerPushToken } from "~/utils/push-notifications";
 
 type PermissionStep = "camera" | "microphone" | "notifications" | "complete";
 
@@ -33,7 +33,14 @@ export default function OnboardingScreen() {
   const [isRequesting, setIsRequesting] = useState(false);
   const [isCheckingPermissions, setIsCheckingPermissions] = useState(true);
 
-  const registerToken = trpc.notifications.registerPushToken.useMutation();
+  const { data: session } = authClient.useSession();
+  const currentSessionId = useRef(session?.session.id);
+  useEffect(() => {
+    currentSessionId.current = session?.session.id;
+    return () => {
+      currentSessionId.current = undefined;
+    };
+  }, [session?.session.id]);
 
   // Check existing permissions on mount and determine starting step
   useEffect(() => {
@@ -154,15 +161,10 @@ export default function OnboardingScreen() {
         // If permission granted, register the push token
         if (status === RESULTS.GRANTED) {
           try {
-            const pushToken = await Notifications.getExpoPushTokenAsync({
-              projectId: EXPO_PROJECT_ID,
-            });
-
-            // Register token with backend
-            registerToken.mutate({
-              token: pushToken.data,
-              platform: Platform.OS === "ios" ? "ios" : "android",
-            });
+            const sessionId = session?.session.id;
+            await registerPushToken(
+              () => sessionId != null && currentSessionId.current === sessionId,
+            );
           } catch (tokenError) {
             console.error("Error registering push token:", tokenError);
             // Don't block onboarding if token registration fails

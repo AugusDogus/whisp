@@ -3,7 +3,7 @@ import type { TRPCRouterRecord } from "@trpc/server";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod/v4";
 
-import { eq } from "@acme/db";
+import { and, eq, ne } from "@acme/db";
 import { PushToken, user } from "@acme/db/schema";
 
 import { protectedProcedure } from "../trpc";
@@ -19,52 +19,62 @@ export const notificationsRouter = {
     )
     .mutation(async ({ ctx, input }) => {
       const userId = ctx.session.user.id;
+      const sessionId = ctx.session.session.id;
 
-      // Check if this token already exists for this user
-      // Check if this token already exists for this user
-      const existing = await ctx.db.query.PushToken.findFirst({
-        where: (tokens, { and, eq: colEq }) =>
-          and(colEq(tokens.userId, userId), colEq(tokens.token, input.token)),
-      });
-
-      if (existing) {
-        // Update the existing token
-        await ctx.db
-          .update(PushToken)
-          .set({
+      // Replace the session's old address and transfer token ownership atomically.
+      // The session foreign key prevents revoked sessions from registering again.
+      const [, [registered]] = await ctx.db.batch([
+        ctx.db
+          .delete(PushToken)
+          .where(
+            and(
+              eq(PushToken.sessionId, sessionId),
+              ne(PushToken.token, input.token),
+            ),
+          ),
+        ctx.db
+          .insert(PushToken)
+          .values({
+            userId,
+            sessionId,
+            token: input.token,
             platform: input.platform,
-            updatedAt: new Date(),
           })
-          .where(eq(PushToken.id, existing.id));
+          .onConflictDoUpdate({
+            target: PushToken.token,
+            set: {
+              userId,
+              sessionId,
+              platform: input.platform,
+              updatedAt: new Date(),
+            },
+          })
+          .returning(),
+      ]);
 
-        return { success: true, tokenId: existing.id };
-      }
-
-      // Create a new token
-      const [newToken] = await ctx.db
-        .insert(PushToken)
-        .values({
-          userId,
-          token: input.token,
-          platform: input.platform,
-        })
-        .returning();
-
-      if (!newToken) {
+      if (!registered) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to create push token",
+          message:
+            "Could not register this device for notifications. Please try again.",
         });
       }
-
-      return { success: true, tokenId: newToken.id };
+      return { success: true, tokenId: registered.id };
     }),
 
   // Remove a push token (when user logs out or disables notifications)
   removePushToken: protectedProcedure
     .input(z.object({ token: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      await ctx.db.delete(PushToken).where(eq(PushToken.token, input.token));
+      await ctx.db
+        .delete(PushToken)
+        .where(
+          and(
+            eq(PushToken.token, input.token),
+            eq(PushToken.userId, ctx.session.user.id),
+            eq(PushToken.sessionId, ctx.session.session.id),
+          ),
+        );
 
       return { success: true };
     }),

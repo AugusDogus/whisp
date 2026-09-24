@@ -1,6 +1,6 @@
-import { eq } from "@acme/db";
+import { and, eq, sql } from "@acme/db";
 import type { db } from "@acme/db/client";
-import { PushToken } from "@acme/db/schema";
+import { PushToken, session } from "@acme/db/schema";
 
 import { EXPO_PUSH_URL, NOTIFICATION_TYPE } from "../constants";
 
@@ -70,10 +70,18 @@ export async function sendNotificationToUser(
   body: string,
   data?: Record<string, unknown>,
 ) {
-  // Get all push tokens for this user
-  const userTokens = await database.query.PushToken.findMany({
-    where: (t, { eq: colEq }) => colEq(t.userId, userId),
-  });
+  // Legacy, revoked, and expired sessions are never eligible for delivery.
+  const userTokens = await database
+    .select({ token: PushToken.token })
+    .from(PushToken)
+    .innerJoin(session, eq(PushToken.sessionId, session.id))
+    .where(
+      and(
+        eq(PushToken.userId, userId),
+        eq(session.userId, userId),
+        sql`${session.expiresAt} > ${Math.floor(Date.now() / 1000)}`,
+      ),
+    );
 
   if (userTokens.length === 0) {
     console.log(`No push tokens found for user ${userId}`);

@@ -2,6 +2,7 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
 import { useRef, useState } from "react";
 import {
+  Alert,
   Linking,
   Pressable,
   ScrollView,
@@ -30,6 +31,7 @@ export default function ProfileScreen() {
   const isFocused = useIsFocused();
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const [isSigningOut, setIsSigningOut] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [profileVisible, setProfileVisible] = useState(true);
   const profileHeight = useRef(0);
@@ -301,9 +303,26 @@ export default function ProfileScreen() {
 
           <Button
             variant="secondary"
+            isDisabled={isSigningOut}
             onPress={async () => {
-              console.log("[ProfileScreen] Signing out");
-              await authClient.signOut();
+              setIsSigningOut(true);
+              try {
+                const result = await authClient.signOut();
+                if (result.error) {
+                  Alert.alert(
+                    "Could not sign out",
+                    "Please check your connection and try again.",
+                  );
+                }
+              } catch (error) {
+                console.error("Sign-out failed:", error);
+                Alert.alert(
+                  "Could not sign out",
+                  "Please check your connection and try again.",
+                );
+              } finally {
+                setIsSigningOut(false);
+              }
             }}
             className="w-full"
           >
