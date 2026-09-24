@@ -49,22 +49,18 @@ export function ContentPolicyScreen({
   }
   return (
     <SafeAreaView className="flex-1 bg-background">
-      <ScrollView contentContainerClassName="flex-grow px-6 pb-8">
-        <View className="flex-1 justify-center gap-5 py-12">
-          <Text className="text-center text-3xl font-bold">
+      <ScrollView contentContainerClassName="flex-grow justify-center px-8 py-8">
+        <View className="w-full max-w-sm gap-3 self-center">
+          <Text
+            accessibilityRole="header"
+            className="text-center text-2xl font-semibold"
+          >
             Before you share
           </Text>
-          <Text className="text-center text-lg text-muted">
-            Respect each other. No harassment, abuse, or illegal content. Block
-            or report anyone who crosses the line.
+          <Text className="text-center text-base text-muted">
+            By continuing, you confirm you’re 13+ and agree to our terms.
           </Text>
           <TermsLinks />
-        </View>
-        <View className="gap-3">
-          <Text className="text-center text-sm text-muted">
-            By agreeing, you confirm you’re 13 or older and accept our Terms of
-            Service.
-          </Text>
           {(accept.error || status.isError) && (
             <Text accessibilityRole="alert" className="text-danger">
               {accept.error?.message ??
