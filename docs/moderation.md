@@ -101,7 +101,7 @@ No emails or external reports are sent by this tool.
 
 ## Release and operations
 
-1. Apply migrations through `0004_file_deletion_attempts.sql`. The migrations preserve
+1. Apply migrations through `0005_file_deletion_attempts.sql`. The migrations preserve
    valid data, remove old orphan rows, queue known orphan media keys, and delete
    reports whose account references were already cleared.
 2. Deploy server and privacy/terms changes with the mobile build. Accounts must
