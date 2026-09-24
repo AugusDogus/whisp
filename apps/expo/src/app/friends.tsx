@@ -96,7 +96,7 @@ export default function FriendsScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [outboxStatus, setOutboxStatus] = useState<
     Record<string, OutboxStatus | undefined>
-  >(() => getOutboxStatusSnapshot());
+  >(() => getOutboxStatusSnapshot(queryClient));
   const [searchQuery, setSearchQuery] = useState("");
   const [showAddFriends, setShowAddFriends] = useState(false);
   const [selectedFriend, setSelectedFriend] = useState<FriendRow | null>(null);
@@ -146,11 +146,11 @@ export default function FriendsScreen() {
 
   // Track background uploads so the list can show per-friend pending state.
   useEffect(() => {
-    const unsubscribe = subscribeOutboxStatus(setOutboxStatus);
+    const unsubscribe = subscribeOutboxStatus(queryClient, setOutboxStatus);
     return () => {
       unsubscribe();
     };
-  }, []);
+  }, [queryClient]);
 
   // Render backdrop for bottom sheet modal
   const renderBackdrop = useCallback(
@@ -286,7 +286,7 @@ export default function FriendsScreen() {
           if (!hasGroup && recipients.length === 0) return;
 
           if (!hasGroup) {
-            markWhispUploading(recipients);
+            markWhispUploading(queryClient, recipients);
           }
 
           let finalUri = localMediaUri(mediaParams.path);

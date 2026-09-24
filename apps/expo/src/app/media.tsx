@@ -357,7 +357,7 @@ export default function MediaScreen() {
       const rasterizationPromise = composeMediaWithCaptions();
 
       if (defaultRecipientId) {
-        markWhispUploading([defaultRecipientId]);
+        markWhispUploading(queryClient, [defaultRecipientId]);
         navigation.reset({ index: 0, routes: [{ name: "Main" }] });
         void rasterizationPromise
           .then((composedUri) => {
@@ -371,7 +371,7 @@ export default function MediaScreen() {
           })
           .catch((err) => {
             console.error("[Media] Rasterization failed:", err);
-            markWhispFailed([defaultRecipientId]);
+            markWhispFailed(queryClient, [defaultRecipientId]);
             toast.error("Failed to prepare media");
           });
       } else if (groupId) {

@@ -63,7 +63,7 @@ function applySuccessfulUploadSideEffects(params: {
 
   toast.success("whisp sent");
   if (!isGroupSend && recipients.length > 0) {
-    markWhispSent(recipients, mediaKind);
+    markWhispSent(queryClient, recipients, mediaKind);
   }
 
   if (!isGroupSend) {
@@ -91,6 +91,7 @@ function applySuccessfulUploadSideEffects(params: {
 }
 
 function applyFailedUploadSideEffects(params: {
+  queryClient: QueryClient;
   recipients: string[];
   isGroupSend: boolean;
   message?: string;
@@ -98,14 +99,19 @@ function applyFailedUploadSideEffects(params: {
   const { recipients, isGroupSend, message } = params;
 
   if (!isGroupSend && recipients.length > 0) {
-    markWhispFailed(recipients);
+    markWhispFailed(params.queryClient, recipients);
   }
   toast.error(message ?? "Upload failed");
 }
 
 // Native jobs are the durable source of truth. JS only enqueues and observes.
-const observed = new Map<string, string>();
+const observations = new WeakMap<QueryClient, Map<string, string>>();
 export async function reconcileNativeSends(queryClient: QueryClient) {
+  let observed = observations.get(queryClient);
+  if (!observed) {
+    observed = new Map();
+    observations.set(queryClient, observed);
+  }
   const cookie = authClient.getCookie();
   const jobs = await listNativeSends();
   if (cookie !== authClient.getCookie()) return;
@@ -140,6 +146,7 @@ export async function reconcileNativeSends(queryClient: QueryClient) {
         });
       else if (job.status === "failed")
         applyFailedUploadSideEffects({
+          queryClient,
           recipients: job.recipients,
           isGroupSend,
           message: job.error ?? undefined,
@@ -156,6 +163,7 @@ export async function reconcileNativeSends(queryClient: QueryClient) {
     if ((job.status !== "uploading" && job.status !== "blocked") || job.groupId)
       continue;
     markWhispPending(
+      queryClient,
       job.recipients,
       job.status === "blocked"
         ? "blocked"
@@ -170,7 +178,8 @@ export async function uploadMedia(params: UploadMediaParams): Promise<void> {
   const isGroupSend = Boolean(params.groupId?.trim());
   const cookie = authClient.getCookie();
   try {
-    if (!isGroupSend) markWhispUploading(params.recipients, params.type);
+    if (!isGroupSend)
+      markWhispUploading(params.queryClient, params.recipients, params.type);
     const messageId = await enqueueNativeSend({
       ...params,
       groupId: params.groupId?.trim() || undefined,
@@ -182,6 +191,7 @@ export async function uploadMedia(params: UploadMediaParams): Promise<void> {
       );
   } catch (error) {
     applyFailedUploadSideEffects({
+      queryClient: params.queryClient,
       recipients: params.recipients,
       isGroupSend,
       message:
