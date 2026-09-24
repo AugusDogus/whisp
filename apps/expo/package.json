@@ -23,6 +23,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@acme/validators": "workspace:*",
     "@better-auth/expo": "1.6.33",
     "@gorhom/bottom-sheet": "^5",
     "@legendapp/list": "^2.0.2",
@@ -96,8 +97,7 @@
     "uniwind": "^1.4.0",
     "uploadthing": "catalog:",
     "zod": "catalog:",
-    "zustand": "^5.0.11",
-    "@acme/validators": "workspace:*"
+    "zustand": "^5.0.11"
   },
   "devDependencies": {
     "@acme/api": "workspace:*",
