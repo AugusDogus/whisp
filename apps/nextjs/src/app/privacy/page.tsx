@@ -13,7 +13,7 @@ export default function PrivacyPage() {
           <h1 className="mb-8 text-4xl font-bold">Privacy Policy</h1>
           <div className="space-y-6 font-mono text-sm leading-relaxed">
             <p className="text-muted-foreground">
-              Last Updated: September 21, 2026
+              Last Updated: September 24, 2026
             </p>
 
             <section>
@@ -201,8 +201,46 @@ export default function PrivacyPage() {
                 outcome.
               </p>
 
+              <h3
+                id="delete-account"
+                className="mb-2 mt-4 scroll-mt-32 text-lg font-semibold"
+              >
+                4.3 Deleting Your Account
+              </h3>
+              <p className="mb-3">
+                You can delete your whisp account and its data in either of two
+                ways:
+              </p>
+              <ul className="ml-6 list-outside list-disc space-y-2">
+                <li>
+                  In the app, open Profile, tap Delete Account, and confirm.
+                  Deletion happens immediately and signs you out.
+                </li>
+                <li>
+                  Without the app, email{" "}
+                  <a
+                    href="mailto:augie@luebbers.email?subject=Delete%20my%20whisp%20account"
+                    className="underline hover:text-foreground"
+                  >
+                    augie@luebbers.email
+                  </a>{" "}
+                  with the subject &quot;Delete my whisp account&quot; and your
+                  Discord username. We will confirm that the account is yours,
+                  for example by asking you to message us from that Discord
+                  account, then delete it within 30 days and reply when it is
+                  done.
+                </li>
+              </ul>
+              <p className="mt-3">
+                Either way, deletion removes the data described in section 4.2.
+                Cloud files are deleted by a daily job, with retries if storage
+                deletion fails. The only data that may remain is the limited
+                suspension record described in section 4.2, and only after a
+                human review of confirmed serious abuse.
+              </p>
+
               <h3 className="mb-2 mt-4 text-lg font-semibold">
-                4.3 Analytics and Usage Data
+                4.4 Analytics and Usage Data
               </h3>
               <p>
                 Usage data and analytics are retained for a reasonable period to
@@ -276,11 +314,17 @@ export default function PrivacyPage() {
                 </li>
               </ul>
               <p className="mt-3">
-                You can exercise your right to deletion at any time by deleting
-                your account through the app settings. See the account-data and
-                safety-report sections above for what this removes. For other
-                requests, please contact us through our Discord server. We will
-                respond to your request within a reasonable timeframe.
+                You can exercise your right to deletion at any time, with or
+                without the app. See{" "}
+                <a
+                  href="#delete-account"
+                  className="underline hover:text-foreground"
+                >
+                  section 4.3
+                </a>{" "}
+                for how. For other requests, email augie@luebbers.email or
+                contact us through our Discord server. We will respond to your
+                request within a reasonable timeframe.
               </p>
             </section>
 
