@@ -108,14 +108,18 @@ test("reports store account-level details, deduplicate pending reports, and reje
     details: "Repeated unwanted requests",
     fileUrl: "https://example.com/private-photo",
   };
-  for (let i = 0; i < 2; i++)
-    expect(
-      await database.transaction((tx) =>
-        AbuseReports.submit(tx, "alice", input),
-      ),
-    ).toEqual({ status: "submitted" });
+  const first = await database.transaction((tx) =>
+    AbuseReports.submit(tx, "alice", input),
+  );
+  // A retry must not alert the operator a second time.
+  expect(
+    await database.transaction((tx) => AbuseReports.submit(tx, "alice", input)),
+  ).toEqual({ status: "duplicate" });
   const reports = await database.select().from(schema.AbuseReport);
   expect(reports).toHaveLength(1);
+  const [saved] = reports;
+  if (!saved) throw new Error("Expected the report to be saved");
+  expect(first).toEqual({ status: "submitted", reportId: saved.id });
   expect(reports[0]).toMatchObject({
     reporterId: "alice",
     reportedUserId: "bob",
@@ -163,7 +167,7 @@ test("a new safety concern is saved even when the same account has a pending rep
       await database.transaction((tx) =>
         AbuseReports.submit(tx, "alice", { userId: "bob", reason }),
       ),
-    ).toEqual({ status: "submitted" });
+    ).toMatchObject({ status: "submitted" });
   }
   const reports = await database.select().from(schema.AbuseReport);
   expect(reports).toHaveLength(2);
@@ -230,7 +234,7 @@ test("moderation actions are atomic and stop sharing without disabling reports",
       userId: "carol",
       reason: "spam",
     }),
-  ).toEqual({ status: "submitted" });
+  ).toMatchObject({ status: "submitted" });
   expect(
     await Moderation.resolve(database, "report", { action: "dismiss" }),
   ).toEqual({
