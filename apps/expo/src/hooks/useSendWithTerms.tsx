@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Modal, ScrollView, View } from "react-native";
+import { Linking, Modal, ScrollView, View } from "react-native";
 
 import { useIsFocused } from "@react-navigation/native";
 import { Button } from "heroui-native/button";
@@ -7,7 +7,6 @@ import { Button } from "heroui-native/button";
 import { CONTENT_POLICY_VERSION } from "@acme/validators";
 
 import { SafeAreaView } from "~/components/styled";
-import { TermsLinks } from "~/components/terms-links";
 import { Text } from "~/components/ui/text";
 import { trpc } from "~/utils/api";
 
@@ -108,54 +107,79 @@ export function useSendWithTerms() {
   const dialog =
     focused && prompt.status !== "closed" && prompt.status !== "checking" ? (
       <Modal transparent visible onRequestClose={() => finish(false)}>
-        <SafeAreaView className="flex-1 justify-center bg-black/60 p-6">
+        <SafeAreaView className="flex-1 justify-center bg-black/60 p-5">
           <View
             accessibilityViewIsModal
-            className="bg-surface max-h-full w-full max-w-sm self-center rounded-2xl p-5"
+            className="bg-overlay max-h-full w-full max-w-md self-center rounded-3xl p-5"
           >
-            <ScrollView contentContainerClassName="gap-1">
-              <Text
-                accessibilityRole="header"
-                className="text-center text-lg font-semibold"
-              >
+            <ScrollView contentContainerClassName="gap-2">
+              <Text accessibilityRole="header" className="text-lg font-medium">
                 {prompt.status === "terms"
                   ? "Accept terms to send"
                   : "Before you send"}
               </Text>
               {prompt.status === "terms" ? (
-                <>
-                  <TermsLinks />
-                  {prompt.error && (
-                    <Text accessibilityRole="alert" className="text-danger">
-                      {prompt.error}
-                    </Text>
-                  )}
+                <Text className="text-base text-muted">
+                  You only need to do this once. Review the{" "}
+                  <Text
+                    accessibilityRole="link"
+                    className="text-foreground underline"
+                    onPress={() =>
+                      void Linking.openURL("https://whisp.chat/terms")
+                    }
+                  >
+                    Terms of Service
+                  </Text>{" "}
+                  and{" "}
+                  <Text
+                    accessibilityRole="link"
+                    className="text-foreground underline"
+                    onPress={() =>
+                      void Linking.openURL("https://whisp.chat/privacy")
+                    }
+                  >
+                    Privacy Policy
+                  </Text>
+                  .
+                </Text>
+              ) : (
+                <Text
+                  accessibilityRole="alert"
+                  className="text-base text-muted"
+                >
+                  {prompt.message}
+                </Text>
+              )}
+              {prompt.status === "terms" && prompt.error && (
+                <Text accessibilityRole="alert" className="text-danger">
+                  {prompt.error}
+                </Text>
+              )}
+              <View className="flex-row justify-end gap-3 pt-2">
+                <Button variant="ghost" size="sm" onPress={() => finish(false)}>
+                  Cancel
+                </Button>
+                {prompt.status === "terms" ? (
                   <Button
+                    size="sm"
                     isDisabled={prompt.saving}
                     onPress={() => void accept()}
                   >
                     {prompt.saving ? "Saving…" : "Accept and send"}
                   </Button>
-                </>
-              ) : (
-                <>
-                  <Text accessibilityRole="alert">{prompt.message}</Text>
-                  {prompt.retry && (
+                ) : (
+                  prompt.retry && (
                     <Button
+                      size="sm"
                       onPress={() => {
                         if (pending.current) void check(pending.current);
                       }}
                     >
                       Try again
                     </Button>
-                  )}
-                </>
-              )}
-              <Button variant="ghost" onPress={() => finish(false)}>
-                <Button.Label className="text-sm text-muted">
-                  Cancel
-                </Button.Label>
-              </Button>
+                  )
+                )}
+              </View>
             </ScrollView>
           </View>
         </SafeAreaView>

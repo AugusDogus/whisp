@@ -156,6 +156,7 @@ export function FriendActionsSheet({
           {selectedFriend && (
             <FriendSafetyRows
               friend={selectedFriend}
+              iconColor={iconColor}
               dangerColor={dangerColor}
               onBlocked={() => bottomSheetRef.current?.close()}
             />
@@ -168,10 +169,12 @@ export function FriendActionsSheet({
 
 function FriendSafetyRows({
   friend,
+  iconColor,
   dangerColor,
   onBlocked,
 }: {
   friend: FriendRow;
+  iconColor: string;
   dangerColor: string;
   onBlocked: () => void;
 }) {
@@ -188,8 +191,8 @@ function FriendSafetyRows({
         className="active:bg-default flex-row items-center gap-3 rounded-lg px-3 py-3"
         onPress={safety.openReport}
       >
-        <Ionicons name="flag" size={22} color={dangerColor} />
-        <Text className="text-danger text-base">Report</Text>
+        <Ionicons name="flag" size={22} color={iconColor} />
+        <Text className="text-base">Report</Text>
       </Pressable>
       <Pressable
         ph-no-capture
