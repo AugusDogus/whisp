@@ -5,17 +5,23 @@ import type { AVPlaybackStatus, Video as VideoType } from "expo-av";
 import { ResizeMode, Video } from "expo-av";
 import { Image } from "expo-image";
 
-import { SafetyActions } from "~/components/safety-actions";
+import { PortalHost } from "heroui-native/portal";
+
+import { SafetyMenu } from "~/components/safety-actions";
 import type { ViewerState } from "~/hooks/useMessageViewerState";
 import { isVideoMime } from "~/utils/media-kind";
 
+const VIEWER_PORTAL_HOST = "message-viewer";
+
 export function MessageViewerModal({
   viewer,
+  getSenderName,
   insetsTop,
   onRequestClose,
   onTap,
 }: {
   viewer: ViewerState | null;
+  getSenderName: (senderId: string) => string;
   insetsTop: number;
   onRequestClose: () => void;
   onTap: () => void;
@@ -189,17 +195,20 @@ export function MessageViewerModal({
       </TouchableWithoutFeedback>
       {currentViewerMessage && (
         <View
-          className="bg-surface absolute right-3 rounded-xl"
-          style={{ top: insetsTop + 24 }}
+          className="absolute right-2 rounded-full bg-black/30"
+          style={{ top: insetsTop + 20 }}
         >
-          <SafetyActions
+          <SafetyMenu
             userId={currentViewerMessage.senderId}
-            name="Sender"
+            name={getSenderName(currentViewerMessage.senderId)}
             onBlocked={onRequestClose}
-            compact
+            iconColor="#fff"
+            portalHost={VIEWER_PORTAL_HOST}
           />
         </View>
       )}
+      {/* Menus and dialogs opened from the viewer must render above this Modal. */}
+      <PortalHost name={VIEWER_PORTAL_HOST} />
     </Modal>
   );
 }

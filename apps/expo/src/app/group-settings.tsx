@@ -12,7 +12,7 @@ import { Dialog } from "heroui-native/dialog";
 import { Input } from "heroui-native/input";
 import { toast } from "sonner-native";
 
-import { SafetyActions } from "~/components/safety-actions";
+import { SafetyMenu } from "~/components/safety-actions";
 import { Avatar } from "~/components/ui/avatar";
 import { Text } from "~/components/ui/text";
 import type { RootStackParamList } from "~/navigation/types";
@@ -177,11 +177,7 @@ export default function GroupSettingsScreen() {
                           size={36}
                         />
                         <Text className="flex-1 text-sm">{member.name}</Text>
-                        <SafetyActions
-                          userId={member.id}
-                          name={member.name}
-                          compact
-                        />
+                        <SafetyMenu userId={member.id} name={member.name} />
                       </View>
                       {index < group.members.length - 1 && (
                         <View className="bg-separator mx-4 h-px" />

@@ -15,6 +15,7 @@ import { usePostHog } from "posthog-react-native";
 import { Toaster } from "sonner-native";
 
 import BackgroundUploadTestScreen from "~/app/background-upload-test";
+import BlockedAccountsScreen from "~/app/blocked-accounts";
 import CameraScreen from "~/app/camera";
 import CreateGroupScreen from "~/app/create-group";
 import FriendsScreen from "~/app/friends";
@@ -114,6 +115,10 @@ export function RootNavigator() {
             component={BackgroundUploadTestScreen}
           />
           <Stack.Screen name="CreateGroup" component={CreateGroupScreen} />
+          <Stack.Screen
+            name="BlockedAccounts"
+            component={BlockedAccountsScreen}
+          />
         </Stack.Navigator>
         <Toaster />
       </NavigationContainer>

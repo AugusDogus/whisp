@@ -400,6 +400,10 @@ export default function FriendsScreen() {
       {/* Message viewer modal */}
       <MessageViewerModal
         viewer={viewer}
+        getSenderName={(senderId) =>
+          friends.find((friend) => friend.id === senderId)?.name ??
+          "this account"
+        }
         insetsTop={insets.top}
         onRequestClose={closeViewer}
         onTap={onViewerTap}
