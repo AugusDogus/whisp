@@ -31,7 +31,9 @@ mock.module("expo-network", () => ({
     return { remove: () => network.delete(listener) };
   },
 }));
+// Replaces the suite-wide mock, so keep its exports for later test files.
 mock.module("expo-notifications", () => ({
+  dismissAllNotificationsAsync: async () => undefined,
   getExpoPushTokenAsync: acquire,
   addPushTokenListener: (listener: (token: DevicePushToken) => void) => {
     rotation.add(listener);
