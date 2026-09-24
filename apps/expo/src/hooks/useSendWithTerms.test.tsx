@@ -147,7 +147,13 @@ async function show(
 function button(label: string) {
   const match = renderer?.root
     .findAllByType(Button)
-    .find((node) => node.props.children === label);
+    .find(
+      (node) =>
+        node.props.children === label ||
+        node
+          .findAllByType(Button.Label)
+          .some((child) => child.props.children === label),
+    );
   if (!match) throw new Error(`Missing button: ${label}`);
   return match;
 }
@@ -165,32 +171,32 @@ function screen() {
 
 test("skipped terms prompt on send and accepting resumes exactly once", async () => {
   const state = await show("acceptance_required");
-  expect(screen()).not.toContain("Before you send");
+  expect(screen()).not.toContain("Accept terms to send");
   await press("Send");
   await press("Send");
   expect(state.sent).toBe(0);
   expect(screen()).toContain("Photo and recipients");
-  expect(screen()).toContain("Before you send");
+  expect(screen()).toContain("Accept terms to send");
   await press("Accept and send");
   expect(state.accepted).toEqual([{ version: CONTENT_POLICY_VERSION }]);
   expect(state.sent).toBe(1);
-  expect(screen()).not.toContain("Before you send");
+  expect(screen()).not.toContain("Accept terms to send");
 });
 
 test("dismissing keeps the draft and requires a new Send tap", async () => {
   const state = await show("acceptance_required");
   await press("Send");
-  await press("Not now");
+  await press("Cancel");
   expect(state.sent).toBe(0);
   expect(state.accepted).toEqual([]);
   expect(screen()).toContain("Photo and recipients");
   await press("Send");
-  expect(screen()).toContain("Before you send");
+  expect(screen()).toContain("Accept terms to send");
   await act(async () =>
     renderer?.root.findByType(Modal).props.onRequestClose(),
   );
   expect(state.sent).toBe(0);
-  expect(screen()).not.toContain("Before you send");
+  expect(screen()).not.toContain("Accept terms to send");
 });
 
 test("failed acceptance preserves draft and retries without sending early", async () => {
@@ -208,11 +214,11 @@ test("already accepted sends without a modal, but a later policy change prompts"
   const state = await show("allowed");
   await press("Send");
   expect(state.sent).toBe(1);
-  expect(screen()).not.toContain("Before you send");
+  expect(screen()).not.toContain("Accept terms to send");
   state.status = "acceptance_required";
   await press("Send");
   expect(state.sent).toBe(1);
-  expect(screen()).toContain("Before you send");
+  expect(screen()).toContain("Accept terms to send");
 });
 
 test("permission check failures and suspensions never send", async () => {
@@ -220,7 +226,7 @@ test("permission check failures and suspensions never send", async () => {
   await press("Send");
   expect(state.sent).toBe(0);
   expect(screen()).toContain("Sharing is suspended");
-  await press("Not now");
+  await press("Cancel");
   state.failStatus = true;
   await press("Send");
   expect(screen()).toContain("Could not check sharing permissions");
@@ -247,7 +253,7 @@ test.each(["dismiss", "unmount"])(
     state.hold = held.promise;
     await press("Send");
     await press("Accept and send");
-    if (action === "dismiss") await press("Not now");
+    if (action === "dismiss") await press("Cancel");
     else await act(async () => renderer?.unmount());
     held.resolve();
     await settle();

@@ -111,20 +111,19 @@ export function useSendWithTerms() {
         <SafeAreaView className="flex-1 justify-center bg-black/60 p-6">
           <View
             accessibilityViewIsModal
-            className="bg-surface max-h-full rounded-3xl p-6"
+            className="bg-surface max-h-full w-full max-w-sm self-center rounded-2xl p-5"
           >
-            <ScrollView contentContainerClassName="gap-3">
+            <ScrollView contentContainerClassName="gap-1">
               <Text
                 accessibilityRole="header"
-                className="text-xl font-semibold"
+                className="text-center text-lg font-semibold"
               >
-                Before you send
+                {prompt.status === "terms"
+                  ? "Accept terms to send"
+                  : "Before you send"}
               </Text>
               {prompt.status === "terms" ? (
                 <>
-                  <Text className="text-muted">
-                    Accept our Terms of Service to send this whisp.
-                  </Text>
                   <TermsLinks />
                   {prompt.error && (
                     <Text accessibilityRole="alert" className="text-danger">
@@ -153,7 +152,9 @@ export function useSendWithTerms() {
                 </>
               )}
               <Button variant="ghost" onPress={() => finish(false)}>
-                Not now
+                <Button.Label className="text-sm text-muted">
+                  Cancel
+                </Button.Label>
               </Button>
             </ScrollView>
           </View>
