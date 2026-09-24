@@ -53,9 +53,8 @@ function AppContent() {
   const { data: session } = authClient.useSession();
   const queryClient = useQueryClient();
 
-  // Request notification permissions immediately (before auth)
-  // but only register token after authentication
-  usePushNotifications(session?.user != null);
+  // Reconcile notification ownership whenever the authenticated session changes.
+  usePushNotifications(session?.session.id ?? null);
 
   useEffect(() => {
     async function reconcileBackgroundUploads() {

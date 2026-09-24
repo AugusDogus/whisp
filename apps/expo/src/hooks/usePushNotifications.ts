@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AppState, Platform } from "react-native";
-import { checkNotifications } from "react-native-permissions";
+import { AppState } from "react-native";
 
-import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
 
 import { navigationRef } from "~/navigation/RootNavigator";
 import { trpc } from "~/utils/api";
-import { EXPO_PROJECT_ID } from "~/utils/constants";
+
+import { usePushTokenRegistration } from "./usePushTokenRegistration";
 
 // Configure notification behavior
 Notifications.setNotificationHandler({
@@ -21,11 +20,10 @@ Notifications.setNotificationHandler({
     }),
 });
 
-export function usePushNotifications(isAuthenticated: boolean) {
-  const [expoPushToken, setExpoPushToken] = useState<string | null>(null);
+export function usePushNotifications(sessionId: string | null) {
+  const expoPushToken = usePushTokenRegistration(sessionId);
   const [notification, setNotification] =
     useState<Notifications.Notification | null>(null);
-  const [permissionsGranted, setPermissionsGranted] = useState(false);
   const notificationListener = useRef<
     Notifications.EventSubscription | undefined
   >(undefined);
@@ -33,7 +31,6 @@ export function usePushNotifications(isAuthenticated: boolean) {
     undefined,
   );
 
-  const registerToken = trpc.notifications.registerPushToken.useMutation();
   const utils = trpc.useUtils();
 
   // Handle notification response (common logic for both tap scenarios)
@@ -139,31 +136,9 @@ export function usePushNotifications(isAuthenticated: boolean) {
     };
   }, []);
 
-  // Check permissions (don't request automatically - onboarding handles that)
-  useEffect(() => {
-    let mounted = true;
-
-    checkNotifications()
-      .then(({ status }) => {
-        if (mounted) {
-          setPermissionsGranted(status === "granted");
-        }
-      })
-      .catch((error) => {
-        console.error("Failed to check notification permissions:", error);
-        if (mounted) {
-          setPermissionsGranted(false);
-        }
-      });
-
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
   // Set up notification listeners
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (!sessionId) {
       return;
     }
 
@@ -220,79 +195,15 @@ export function usePushNotifications(isAuthenticated: boolean) {
       }
     };
   }, [
-    isAuthenticated,
+    sessionId,
     handleNotificationResponse,
     utils.messages.inbox,
     utils.friends.list,
     utils.friends.incomingRequests,
   ]);
 
-  // Register token only after authentication AND permissions are granted
-  useEffect(() => {
-    // Don't register push notifications until user is authenticated and permissions granted
-    if (!isAuthenticated || !permissionsGranted) {
-      return;
-    }
-
-    let mounted = true;
-
-    getExpoPushToken()
-      .then((token) => {
-        if (token && mounted) {
-          setExpoPushToken(token);
-          // Register token with backend
-          registerToken.mutate({
-            token,
-            platform: Platform.OS === "ios" ? "ios" : "android",
-          });
-        }
-      })
-      .catch((error) => {
-        console.error("Failed to get push token:", error);
-      });
-
-    return () => {
-      mounted = false;
-    };
-    // registerToken is intentionally excluded from deps because it's a stable
-    // tRPC mutation function that doesn't need to trigger re-registration.
-    // We only want to register the push token when auth or permission state changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated, permissionsGranted]);
-
   return {
     expoPushToken,
     notification,
   };
-}
-
-// Get Expo push token (called after auth and permissions are granted)
-async function getExpoPushToken(): Promise<string | null> {
-  if (!Device.isDevice) {
-    return null;
-  }
-
-  try {
-    if (!EXPO_PROJECT_ID) {
-      throw new Error("EXPO_PUBLIC_PROJECT_ID not found in environment");
-    }
-
-    const pushToken = await Notifications.getExpoPushTokenAsync({
-      projectId: EXPO_PROJECT_ID,
-    });
-    const tokenData: string = pushToken.data;
-    return tokenData;
-  } catch (error) {
-    console.error("Error getting push token:", error);
-
-    // Check if it's a Firebase configuration error
-    if (error instanceof Error && error.message.includes("FirebaseApp")) {
-      console.warn(
-        "Push notifications require Firebase configuration for Android. " +
-          "See: https://docs.expo.dev/push-notifications/fcm-credentials/",
-      );
-    }
-
-    return null;
-  }
 }

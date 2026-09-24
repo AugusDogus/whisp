@@ -30,6 +30,19 @@ await client.executeMultiple(
   ).text(),
 );
 
+await client.executeMultiple(`
+  CREATE TABLE push_token (id TEXT PRIMARY KEY, userId TEXT NOT NULL, token TEXT NOT NULL UNIQUE,
+    platform TEXT NOT NULL, createdAt INTEGER NOT NULL, updatedAt INTEGER);
+`);
+await client.executeMultiple(
+  await Bun.file(
+    new URL(
+      "../../../db/drizzle/0002_push_token_sessions.sql",
+      import.meta.url,
+    ),
+  ).text(),
+);
+
 const { initAuth } = await import("@acme/auth");
 const auth = initAuth({
   database: drizzleAdapter(db, { provider: "sqlite" }),
@@ -238,4 +251,33 @@ describe("Discord OAuth profile persistence", () => {
     expect(await oldRefresh).toEqual(signedIn);
     expect(await DiscordProfile.read(db, saved.id, saved.id)).toEqual(signedIn);
   });
+});
+
+test("Better Auth logout deletes the session's push registration without contacting Expo", async () => {
+  discordResponse = baseProfile;
+  const response = await signIn();
+  const headers = new Headers({
+    Cookie: response.headers
+      .getSetCookie()
+      .map((value) => value.split(";")[0])
+      .join("; "),
+    Origin: "http://localhost:3000",
+  });
+  const signedIn = await auth.api.getSession({ headers });
+  if (!signedIn) throw new Error("Expected an authenticated OAuth session");
+  await db.insert(schema.PushToken).values({
+    userId: signedIn.user.id,
+    sessionId: signedIn.session.id,
+    token: "logout-device",
+    platform: "ios",
+  });
+  const logout = await auth.handler(
+    new Request("http://localhost:3000/api/auth/sign-out", {
+      method: "POST",
+      headers,
+    }),
+  );
+  expect(logout.status).toBe(200);
+  expect(await db.query.PushToken.findMany()).toHaveLength(0);
+  expect(await auth.api.getSession({ headers })).toBeNull();
 });

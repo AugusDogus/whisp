@@ -2,7 +2,7 @@ import { index, sqliteTable } from "drizzle-orm/sqlite-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
-import { user } from "./auth-schema";
+import { session, user } from "./auth-schema";
 
 export * from "./auth-schema";
 
@@ -40,6 +40,8 @@ export const PushToken = sqliteTable(
       .primaryKey()
       .$defaultFn(() => crypto.randomUUID()),
     userId: t.text().notNull(),
+    // Null only for legacy registrations, which cannot receive notifications.
+    sessionId: t.text().references(() => session.id, { onDelete: "cascade" }),
     token: t.text().notNull().unique(),
     // platform: 'ios' | 'android' | 'web'
     platform: t.text().notNull(),
@@ -49,7 +51,10 @@ export const PushToken = sqliteTable(
       .notNull(),
     updatedAt: t.integer({ mode: "timestamp" }).$onUpdateFn(() => new Date()),
   }),
-  (table) => [index("push_token_userId_idx").on(table.userId)],
+  (table) => [
+    index("push_token_userId_idx").on(table.userId),
+    index("push_token_sessionId_idx").on(table.sessionId),
+  ],
 );
 
 export const FriendRequest = sqliteTable(
