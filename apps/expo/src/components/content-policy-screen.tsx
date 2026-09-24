@@ -31,63 +31,69 @@ export function ContentPolicyScreen({
     }
   }, [status.isFetching, status.data?.status, onContinue]);
 
-  if (
+  const checking =
     status.isFetching ||
     status.data?.status === "allowed" ||
-    status.data?.status === "suspended"
-  ) {
-    return (
-      <SafeAreaView className="flex-1 bg-background">
-        <View className="flex-1 items-center justify-center gap-5 p-6">
-          <Text className="text-muted">Checking account…</Text>
-          <Button variant="ghost" onPress={onContinue}>
-            Not now
-          </Button>
-        </View>
-      </SafeAreaView>
-    );
-  }
+    status.data?.status === "suspended";
+
   return (
     <SafeAreaView className="flex-1 bg-background">
-      <ScrollView contentContainerClassName="flex-grow justify-center px-8 py-8">
-        <View className="w-full max-w-sm gap-3 self-center">
-          <Text
-            accessibilityRole="header"
-            className="text-center text-2xl font-semibold"
-          >
-            Before you share
-          </Text>
-          <Text className="text-center text-base text-muted">
-            By continuing, you confirm you’re 13+ and agree to our terms.
-          </Text>
-          <TermsLinks />
-          {(accept.error || status.isError) && (
-            <Text accessibilityRole="alert" className="text-danger">
-              {accept.error?.message ??
-                "Could not load your terms acceptance. Try again, or come back from Profile."}
-            </Text>
+      <View className="flex-1 px-6 pb-8">
+        <ScrollView contentContainerClassName="flex-grow justify-center gap-4 py-8">
+          {checking ? (
+            <Text className="text-center text-muted">Checking account…</Text>
+          ) : (
+            <View className="items-center gap-4">
+              <View className="bg-default h-24 w-24 items-center justify-center rounded-full">
+                <Text className="text-5xl">🤝</Text>
+              </View>
+              <Text
+                accessibilityRole="header"
+                className="text-center text-3xl font-bold"
+              >
+                Before you share
+              </Text>
+              <Text className="text-center text-lg text-muted">
+                By continuing, you confirm you’re 13+ and agree to our terms.
+              </Text>
+              <TermsLinks />
+              {(accept.error || status.isError) && (
+                <Text
+                  accessibilityRole="alert"
+                  className="text-danger text-center"
+                >
+                  {accept.error?.message ??
+                    "Couldn’t load your terms acceptance. Try again, or accept later from Profile."}
+                </Text>
+              )}
+            </View>
           )}
-          {status.data?.status === "acceptance_required" && (
+        </ScrollView>
+
+        <View className="gap-3">
+          {status.data?.status === "acceptance_required" && !checking && (
             <Button
+              size="lg"
               isDisabled={accept.isPending}
               onPress={() => accept.mutate({ version: CONTENT_POLICY_VERSION })}
             >
-              {accept.isPending ? "Saving…" : "Agree and continue"}
+              <Button.Label className="text-lg font-semibold">
+                {accept.isPending ? "Saving…" : "Agree and continue"}
+              </Button.Label>
             </Button>
           )}
-          {status.isPending && (
-            <Text className="text-muted">Checking terms acceptance…</Text>
-          )}
-          {status.isError && (
-            <Button variant="outline" onPress={() => void status.refetch()}>
-              Try again
+          {status.isError && !checking && (
+            <Button size="lg" onPress={() => void status.refetch()}>
+              <Button.Label className="text-lg font-semibold">
+                Try again
+              </Button.Label>
             </Button>
           )}
-          <Button variant="ghost" onPress={onContinue}>
-            Not now
+          <Button variant="ghost" size="lg" onPress={onContinue}>
+            <Button.Label className="text-lg text-muted">Not now</Button.Label>
           </Button>
         </View>
-      </ScrollView>
+      </View>
     </SafeAreaView>
   );
 }

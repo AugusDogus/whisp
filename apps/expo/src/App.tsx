@@ -205,8 +205,8 @@ function AppContent() {
 export default Sentry.wrap(function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <HeroUINativeProvider>
-        <SafeAreaProvider initialMetrics={initialWindowMetrics}>
+      <SafeAreaProvider initialMetrics={initialWindowMetrics}>
+        <HeroUINativeProvider>
           <PostHogProvider
             apiKey={POSTHOG_API_KEY}
             options={{
@@ -222,8 +222,8 @@ export default Sentry.wrap(function App() {
               <AppContent />
             </QueryProvider>
           </PostHogProvider>
-        </SafeAreaProvider>
-      </HeroUINativeProvider>
+        </HeroUINativeProvider>
+      </SafeAreaProvider>
     </GestureHandlerRootView>
   );
 });

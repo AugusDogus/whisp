@@ -18,7 +18,6 @@ import { Button } from "heroui-native/button";
 import { Dialog } from "heroui-native/dialog";
 import { Switch } from "heroui-native/switch";
 
-import { BlockedUsers } from "~/components/blocked-users";
 import { DiscordProfileCard } from "~/components/discord-profile-card";
 import { PreviewSettings } from "~/components/preview-settings";
 import { SafeAreaView } from "~/components/styled";
@@ -146,7 +145,6 @@ export default function ProfileScreen() {
               <Text className="flex-1 text-base font-semibold">Settings</Text>
               <Ionicons name="chevron-forward" size={18} color={iconColor} />
             </Pressable>
-            <BlockedUsers />
             {/* Discord */}
             <Pressable
               onPress={() => {
@@ -202,6 +200,28 @@ export default function ProfileScreen() {
                 </View>
               </View>
             </View>
+
+            {/* Privacy */}
+            <Pressable
+              ph-no-capture
+              onPress={() => navigation.navigate("BlockedAccounts")}
+              className="bg-surface rounded-xl p-4 active:opacity-70"
+            >
+              <View className="flex-row items-center gap-3">
+                <View className="bg-default size-10 items-center justify-center rounded-full">
+                  <Ionicons name="ban" size={20} color={iconColor} />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-base font-semibold">
+                    Blocked accounts
+                  </Text>
+                  <Text className="text-xs text-muted">
+                    Manage who can contact you
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={iconColor} />
+              </View>
+            </Pressable>
 
             <PreviewSettings />
 

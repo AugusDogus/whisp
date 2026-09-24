@@ -19,7 +19,7 @@ import { useIsFocused } from "@react-navigation/native";
 import { useThemeColor } from "heroui-native/hooks";
 
 import { DiscordProfileCard } from "~/components/discord-profile-card";
-import { SafetyActions } from "~/components/safety-actions";
+import { useSafetyActions } from "~/components/safety-actions";
 import { Text } from "~/components/ui/text";
 
 export function FriendActionsSheet({
@@ -115,13 +115,6 @@ export function FriendActionsSheet({
         </View>
 
         <View className="gap-2 px-4">
-          {selectedFriend && (
-            <SafetyActions
-              userId={selectedFriend.id}
-              name={selectedFriend.name}
-              onBlocked={() => bottomSheetRef.current?.close()}
-            />
-          )}
           <Pressable
             className="active:bg-default flex-row items-center gap-3 rounded-lg px-3 py-3"
             onPress={() => {
@@ -159,8 +152,55 @@ export function FriendActionsSheet({
             <Ionicons name="person-remove" size={22} color={dangerColor} />
             <Text className="text-danger text-base">Remove Friend</Text>
           </Pressable>
+
+          {selectedFriend && (
+            <FriendSafetyRows
+              friend={selectedFriend}
+              dangerColor={dangerColor}
+              onBlocked={() => bottomSheetRef.current?.close()}
+            />
+          )}
         </View>
       </BottomSheetScrollView>
     </GorhomBottomSheetModal>
+  );
+}
+
+function FriendSafetyRows({
+  friend,
+  dangerColor,
+  onBlocked,
+}: {
+  friend: FriendRow;
+  dangerColor: string;
+  onBlocked: () => void;
+}) {
+  const safety = useSafetyActions({
+    userId: friend.id,
+    name: friend.name,
+    onBlocked,
+  });
+  if (safety.isSelf) return null;
+  return (
+    <>
+      <Pressable
+        ph-no-capture
+        className="active:bg-default flex-row items-center gap-3 rounded-lg px-3 py-3"
+        onPress={safety.openReport}
+      >
+        <Ionicons name="flag" size={22} color={dangerColor} />
+        <Text className="text-danger text-base">Report</Text>
+      </Pressable>
+      <Pressable
+        ph-no-capture
+        className="active:bg-default flex-row items-center gap-3 rounded-lg px-3 py-3"
+        disabled={safety.isBlocking}
+        onPress={safety.openBlock}
+      >
+        <Ionicons name="ban" size={22} color={dangerColor} />
+        <Text className="text-danger text-base">Block</Text>
+      </Pressable>
+      {safety.dialogs}
+    </>
   );
 }
