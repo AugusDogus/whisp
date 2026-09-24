@@ -22,6 +22,7 @@ import { BlockedUsers } from "~/components/blocked-users";
 import { DiscordProfileCard } from "~/components/discord-profile-card";
 import { PreviewSettings } from "~/components/preview-settings";
 import { SafeAreaView } from "~/components/styled";
+import { TermsAcceptance } from "~/components/terms-acceptance";
 import { Text } from "~/components/ui/text";
 import type { RootStackParamList } from "~/navigation/types";
 import { trpc } from "~/utils/api";
@@ -214,16 +215,12 @@ export default function ProfileScreen() {
                 <BuildInfo />
                 <Pressable
                   onPress={() => {
-                    navigation.navigate("Terms", { source: "profile" });
+                    void Linking.openURL("https://whisp.chat/terms");
                   }}
                   className="flex-row items-center justify-between active:opacity-70"
                 >
                   <Text className="text-sm">Terms of Service</Text>
-                  <Ionicons
-                    name="chevron-forward"
-                    size={14}
-                    color={iconColor}
-                  />
+                  <Ionicons name="open-outline" size={14} color={iconColor} />
                 </Pressable>
                 <Pressable
                   onPress={() => {
@@ -234,6 +231,7 @@ export default function ProfileScreen() {
                   <Text className="text-sm">Privacy Policy</Text>
                   <Ionicons name="open-outline" size={14} color={iconColor} />
                 </Pressable>
+                <TermsAcceptance />
               </View>
             </View>
 

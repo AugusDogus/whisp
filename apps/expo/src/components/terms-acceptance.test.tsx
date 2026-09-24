@@ -13,7 +13,7 @@ import { trpc } from "~/utils/api";
 
 import { settle } from "../test/discord-profile";
 import { native } from "../test/setup";
-import { ContentPolicyScreen } from "./content-policy-screen";
+import { TermsAcceptance } from "./terms-acceptance";
 
 let renderer: ReactTestRenderer | undefined;
 let client: QueryClient;
@@ -32,15 +32,13 @@ afterEach(async () => {
 async function show(
   initial: "acceptance_required" | "suspended" | "allowed",
   fail = false,
-  mode: "onboarding" | "review" = "onboarding",
 ) {
   const state: {
     status: "acceptance_required" | "suspended" | "allowed";
     fail: boolean;
     failStatus: boolean;
     accepted: unknown[];
-    continued: number;
-  } = { status: initial, fail, failStatus: false, accepted: [], continued: 0 };
+  } = { status: initial, fail, failStatus: false, accepted: [] };
   const api = trpc.createClient({
     links: [
       () =>
@@ -86,12 +84,8 @@ async function show(
   await act(async () => {
     renderer = create(
       <Provider>
-        <ContentPolicyScreen
-          mode={mode}
-          onContinue={() => {
-            state.continued++;
-          }}
-        />
+        <TermsAcceptance />
+        <Button>Delete account</Button>
       </Provider>,
     );
   });
@@ -107,70 +101,58 @@ function button(label: string) {
   return match;
 }
 
-test("onboarding requires explicit acceptance and preserves failed submissions", async () => {
+test("terms require explicit acceptance, and failed submissions can be retried", async () => {
   const state = await show("acceptance_required", true);
-  expect(state.continued).toBe(0);
-  expect(JSON.stringify(renderer?.toJSON())).toContain("Before you share");
-  await act(async () => button("Agree and continue").props.onPress());
+  expect(state.accepted).toEqual([]);
+  expect(JSON.stringify(renderer?.toJSON())).toContain(
+    "Accept the Terms of Service",
+  );
+  await act(async () => button("Accept terms").props.onPress());
   await settle();
   expect(state.accepted).toEqual([{ version: CONTENT_POLICY_VERSION }]);
-  expect(state.continued).toBe(0);
   expect(JSON.stringify(renderer?.toJSON())).toContain(
     "Could not save acceptance",
   );
+  expect(JSON.stringify(renderer?.toJSON())).toContain("Delete account");
   state.fail = false;
-  await act(async () => button("Agree and continue").props.onPress());
+  await act(async () => button("Accept terms").props.onPress());
   await settle();
-  expect(state.continued).toBe(1);
+  expect(JSON.stringify(renderer?.toJSON())).not.toContain(
+    "Accept the Terms of Service",
+  );
+  expect(JSON.stringify(renderer?.toJSON())).toContain("Delete account");
 });
 
-test("declining onboarding terms continues without recording acceptance", async () => {
+test.each(["allowed", "suspended"] as const)(
+  "%s accounts have no acceptance prompt",
+  async (status) => {
+    const state = await show(status);
+    expect(JSON.stringify(renderer?.toJSON())).not.toContain("Accept terms");
+    expect(state.accepted).toEqual([]);
+    expect(JSON.stringify(renderer?.toJSON())).toContain("Delete account");
+  },
+);
+
+test("acceptance can be ignored without hiding account controls", async () => {
   const state = await show("acceptance_required");
-  await act(async () => button("Not now").props.onPress());
-  expect(state.accepted).toEqual([]);
-  expect(state.continued).toBe(1);
-});
-
-test("accounts that already accepted skip the terms during onboarding", async () => {
-  const state = await show("allowed");
-  expect(state.continued).toBe(1);
-  expect(state.accepted).toEqual([]);
-  expect(JSON.stringify(renderer?.toJSON())).not.toContain("Before you share");
-});
-
-test("suspended accounts can reach their account controls without accepting", async () => {
-  const state = await show("suspended");
-  expect(state.continued).toBe(1);
+  expect(JSON.stringify(renderer?.toJSON())).toContain("Delete account");
   expect(state.accepted).toEqual([]);
 });
 
-test("terms can be reopened from Profile and accepted after declining", async () => {
-  const state = await show("acceptance_required", false, "review");
-  expect(state.continued).toBe(0);
-  await act(async () => button("Agree and continue").props.onPress());
-  await settle();
-  expect(state.continued).toBe(1);
-  expect(state.accepted).toEqual([{ version: CONTENT_POLICY_VERSION }]);
-});
-
-test("already accepted terms remain readable from Profile without resubmitting", async () => {
-  const state = await show("allowed", false, "review");
-  expect(state.continued).toBe(0);
-  expect(JSON.stringify(renderer?.toJSON())).toContain("Before you share");
-  await act(async () => button("Done").props.onPress());
-  expect(state.continued).toBe(1);
-  expect(state.accepted).toEqual([]);
-});
-
-test("a failed terms refresh retains the option to reach account controls", async () => {
+test("failed status refresh exposes a retry without hiding account controls", async () => {
   const state = await show("acceptance_required");
   state.failStatus = true;
   await act(async () => client.refetchQueries());
   await settle();
   expect(JSON.stringify(renderer?.toJSON())).toContain(
-    "Could not load your terms acceptance",
+    "Could not check terms acceptance",
   );
-  await act(async () => button("Not now").props.onPress());
-  expect(state.continued).toBe(1);
+  expect(JSON.stringify(renderer?.toJSON())).toContain("Delete account");
+  state.failStatus = false;
+  await act(async () => button("Try again").props.onPress());
+  await settle();
+  expect(JSON.stringify(renderer?.toJSON())).not.toContain(
+    "Could not check terms acceptance",
+  );
   expect(state.accepted).toEqual([]);
 });

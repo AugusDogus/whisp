@@ -188,13 +188,13 @@ export default function OnboardingScreen() {
     }
   };
 
-  // Finish onboarding with the account terms after device permissions.
+  // Handle navigation to Main when onboarding is complete
   useEffect(() => {
     if (currentStep === "complete") {
       // Mark onboarding as complete
       void SecureStore.setItemAsync("whisp_onboarding_complete", "true").then(
         () => {
-          navigation.replace("Terms", { source: "onboarding" });
+          navigation.replace("Main");
         },
       );
     }

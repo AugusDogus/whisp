@@ -68,7 +68,7 @@ export function createUploadRouter({ getSession }: CreateDeps) {
         );
         if (recipients.status !== "ready") {
           throw new UploadThingError(
-            "Cannot send to these recipients. Check your account's terms acceptance, friendship, and group membership, then try again.",
+            "Cannot send to these recipients. Check terms acceptance in Profile, your friendship, and group membership, then try again.",
           );
         }
         return {

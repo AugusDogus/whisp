@@ -238,7 +238,7 @@ export const sharingProcedure = protectedProcedure.use(
         code: "FORBIDDEN",
         message:
           access.status === "acceptance_required"
-            ? "Accept the current terms in Profile → Terms of Service before sharing."
+            ? "Accept the current Terms of Service in Profile before sharing."
             : "Sharing is unavailable for this account. Contact augie@luebbers.email for help.",
       });
     }
