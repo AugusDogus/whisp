@@ -70,10 +70,10 @@ export default function Splash() {
 
           if (onboardingComplete === "true") {
             console.log(
-              "[Splash] Cookie found, onboarding complete, checking account terms",
+              "[Splash] Cookie found, onboarding complete, redirecting to main",
             );
             await SplashScreen.hideAsync();
-            navigation.replace("Terms", { source: "onboarding" });
+            navigation.replace("Main");
           } else {
             console.log("[Splash] Cookie found, redirecting to onboarding");
             await SplashScreen.hideAsync();

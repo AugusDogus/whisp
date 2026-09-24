@@ -30,7 +30,6 @@ import MlsTestScreen from "~/app/mls-test";
 import OnboardingScreen from "~/app/onboarding";
 import ProfileScreen from "~/app/profile";
 import SettingsScreen from "~/app/settings";
-import TermsScreen from "~/app/terms";
 import { RecordingProvider, useRecording } from "~/contexts/RecordingContext";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -104,7 +103,6 @@ export function RootNavigator() {
           <Stack.Screen name="Splash" component={SplashScreen} />
           <Stack.Screen name="Login" component={LoginScreen} />
           <Stack.Screen name="Onboarding" component={OnboardingScreen} />
-          <Stack.Screen name="Terms" component={TermsScreen} />
           <Stack.Screen name="Main" component={MainTabs} />
           <Stack.Screen name="Settings" component={SettingsScreen} />
           <Stack.Screen name="Devices" component={DevicesScreen} />
