@@ -1,4 +1,11 @@
 // Operator-only CLI. There is deliberately no client-accessible moderation API.
+// Run with the target environment's DATABASE_URL and DATABASE_TOKEN, plus its
+// enforcement key file (production and preview use separate keys):
+//   bun --env-file ~/.config/whisp/enforcement-production.env packages/api/src/moderation/cli.ts list
+// Output is JSON; report text is escaped so it cannot act as terminal input.
+// `enforce` keeps a hashed identity after account deletion. Its final argument
+// attests that a human confirmed serious abuse and that a shorter period is not
+// enough; never infer that from the report category alone.
 import { asc, gt } from "drizzle-orm";
 import { z } from "zod/v4";
 
@@ -36,7 +43,7 @@ const args = z
 
 if (!args.success) {
   console.error(
-    "Usage: cli.ts list | show REPORT_ID | resolve REPORT_ID dismiss | resolve REPORT_ID suspend EXPIRY_ISO | enforce REPORT_ID REASON EXPIRY_ISO confirmed-necessary-proportionate | restore USER_ID | enforcements | revoke ENFORCEMENT_ID. Read docs/moderation.md before retaining identity after deletion.",
+    "Usage: cli.ts list | lookup (Discord ID on stdin) | show REPORT_ID | resolve REPORT_ID dismiss | resolve REPORT_ID suspend EXPIRY_ISO | enforce REPORT_ID REASON EXPIRY_ISO confirmed-necessary-proportionate | restore USER_ID | enforcements | revoke ENFORCEMENT_ID.",
   );
   process.exitCode = 1;
 } else {
