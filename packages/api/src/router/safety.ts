@@ -8,6 +8,7 @@ import { CONTENT_POLICY_VERSION, reportInput } from "@acme/validators";
 import { AbuseReports } from "../services/abuse-reports";
 import { Blocking } from "../services/blocking";
 import { ContentAccess } from "../services/content-access";
+import { ReportAlerts } from "../services/report-alerts";
 import { protectedProcedure } from "../trpc";
 
 const userInput = z.object({ userId: z.string().min(1).max(128) });
@@ -78,12 +79,22 @@ export const safetyRouter = {
           message:
             "You have reached the daily report limit. Try again tomorrow or contact augie@luebbers.email for urgent help.",
         });
+      if (result.status === "duplicate") return { ok: true };
       if (result.status !== "submitted")
         throw new TRPCError({
           code: "BAD_REQUEST",
           message:
             "This report could not be submitted. Refresh the account and try again.",
         });
+      // The report is already saved; a missed alert must not fail the request.
+      const alert = await ReportAlerts.notify(
+        process.env.DISCORD_REPORTS_WEBHOOK_URL,
+        { id: result.reportId, reason: input.reason },
+      );
+      if (alert.status === "failed" || alert.status === "misconfigured")
+        console.error(
+          `Report ${result.reportId} was saved, but its Discord alert was not sent (${alert.status === "failed" ? alert.reason : "DISCORD_REPORTS_WEBHOOK_URL is not a Discord webhook URL"}). Check the variable in Vercel; pending reports are listed by the moderation CLI's list command.`,
+        );
       return { ok: true };
     }),
 } satisfies TRPCRouterRecord;

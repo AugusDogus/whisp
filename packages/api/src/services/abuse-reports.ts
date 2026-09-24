@@ -30,7 +30,7 @@ export const AbuseReports = {
           eq(AbuseReport.details, report.details),
         ),
       );
-    if (duplicate) return { status: "submitted" } as const;
+    if (duplicate) return { status: "duplicate" } as const;
     const [count] = await database
       .select({ value: sql<number>`count(*)` })
       .from(AbuseReport)
@@ -41,12 +41,20 @@ export const AbuseReports = {
         ),
       );
     if ((count?.value ?? 0) >= 10) return { status: "rate_limited" } as const;
-    await database.insert(AbuseReport).values({
-      reporterId,
-      reportedUserId: report.userId,
-      reason: report.reason,
-      details: report.details,
-    });
-    return { status: "submitted" } as const;
+    const [created] = await database
+      .insert(AbuseReport)
+      .values({
+        reporterId,
+        reportedUserId: report.userId,
+        reason: report.reason,
+        details: report.details,
+      })
+      .returning({ id: AbuseReport.id });
+    // The transaction rolls back, so the reporter sees a failure and can retry.
+    if (!created)
+      throw new Error(
+        `AbuseReports.submit: inserting a report from ${reporterId} returned no row; nothing was saved.`,
+      );
+    return { status: "submitted", reportId: created.id } as const;
   },
 };
