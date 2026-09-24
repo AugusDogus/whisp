@@ -50,13 +50,12 @@ export default function EncryptionRecoveryScreen() {
         </Text>
         <Text className="text-sm text-muted">
           Existing whisps will become unreadable on this device. Your other
-          devices keep their keys. Someone in each conversation will need to
-          send you a new whisp before you can send there again.
+          devices keep their keys. You can send and receive new whisps after
+          resetting.
         </Text>
         {state.kind === "success" && (
           <Text accessibilityLiveRegion="polite">
-            Encryption reset. Ask someone in your conversation to send you a new
-            whisp.
+            Encryption reset. You can send and receive new whisps.
           </Text>
         )}
         <Button
