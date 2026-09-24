@@ -224,10 +224,10 @@ test("a new safety concern is saved even when the same account has a pending rep
     ).toEqual({ status: "submitted" });
   }
   const reports = await database.select().from(schema.AbuseReport);
-  expect(reports.map((report) => report.reason).toSorted()).toEqual([
-    "child_safety",
-    "spam",
-  ]);
+  expect(reports).toHaveLength(2);
+  expect(new Set(reports.map((report) => report.reason))).toEqual(
+    new Set(["child_safety", "spam"]),
+  );
 });
 
 test("blocked requests cannot be sent, accepted, or used to recreate a friendship", async () => {
