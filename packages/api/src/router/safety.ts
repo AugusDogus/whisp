@@ -93,7 +93,7 @@ export const safetyRouter = {
       );
       if (alert.status === "failed" || alert.status === "misconfigured")
         console.error(
-          `Report ${result.reportId} was saved, but its Discord alert was not sent (${alert.status === "failed" ? alert.reason : "DISCORD_REPORTS_WEBHOOK_URL is not a Discord webhook URL"}). Check the variable in Vercel; pending reports are listed by the moderation CLI's list command.`,
+          `Report ${result.reportId} was saved, but its Discord alert was not sent (${alert.status === "failed" ? alert.reason : "DISCORD_REPORTS_WEBHOOK_URL is not a Discord webhook URL"}). Check the variable in Vercel; the report is still in the abuse_report table.`,
         );
       return { ok: true };
     }),
