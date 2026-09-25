@@ -27,7 +27,7 @@ export const ReportAlerts = {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          content: `New whisp report (${report.reason}). Review it with:\n\`bun packages/api/src/moderation/cli.ts show ${report.id}\``,
+          content: `New whisp report (${report.reason}). Report ID: ${report.id}`,
           allowed_mentions: { parse: [] },
         }),
         signal: controller.signal,

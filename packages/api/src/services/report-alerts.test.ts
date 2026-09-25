@@ -21,7 +21,7 @@ test("posts only the report category and ID, without pinging anyone", async () =
     content: expect.stringContaining("harassment"),
     allowed_mentions: { parse: [] },
   });
-  expect(JSON.stringify(body)).toContain("show report-1");
+  expect(JSON.stringify(body)).toContain("report-1");
 });
 
 test("skips silently when no webhook is configured", async () => {
