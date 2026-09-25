@@ -21,6 +21,7 @@ import { Switch } from "heroui-native/switch";
 import { DiscordProfileCard } from "~/components/discord-profile-card";
 import { PreviewSettings } from "~/components/preview-settings";
 import { SafeAreaView } from "~/components/styled";
+import { TermsAcceptance } from "~/components/terms-acceptance";
 import { Text } from "~/components/ui/text";
 import type { RootStackParamList } from "~/navigation/types";
 import { trpc } from "~/utils/api";
@@ -79,16 +80,17 @@ export default function ProfileScreen() {
     },
   });
 
-  const deleteAccount = trpc.auth.deleteAccount.useMutation();
+  const deleteAccount = trpc.auth.deleteAccount.useMutation({
+    onSuccess: async () => {
+      setDeleteDialogOpen(false);
+      await authClient.signOut();
+    },
+  });
 
   const handleToggle = (key: keyof typeof preferences) => {
     updatePreferences.mutate({
       [key]: !preferences[key],
     });
-  };
-
-  const handleDeleteAccount = async () => {
-    await deleteAccount.mutateAsync();
   };
 
   return (
@@ -188,6 +190,28 @@ export default function ProfileScreen() {
               </View>
             </View>
 
+            {/* Privacy */}
+            <Pressable
+              ph-no-capture
+              onPress={() => navigation.navigate("BlockedAccounts")}
+              className="bg-surface rounded-xl p-4 active:opacity-70"
+            >
+              <View className="flex-row items-center gap-3">
+                <View className="bg-default size-10 items-center justify-center rounded-full">
+                  <Ionicons name="ban" size={20} color={iconColor} />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-base font-semibold">
+                    Blocked accounts
+                  </Text>
+                  <Text className="text-xs text-muted">
+                    Manage who can contact you
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={iconColor} />
+              </View>
+            </Pressable>
+
             <PreviewSettings />
 
             {/* About */}
@@ -227,6 +251,7 @@ export default function ProfileScreen() {
                   <Text className="text-sm">Privacy Policy</Text>
                   <Ionicons name="open-outline" size={14} color={iconColor} />
                 </Pressable>
+                <TermsAcceptance />
               </View>
             </View>
 
@@ -271,13 +296,23 @@ export default function ProfileScreen() {
               <Dialog.Content>
                 <Dialog.Title>Delete Account</Dialog.Title>
                 <Dialog.Description>
-                  Are you sure you want to delete your Whisp account? This will
-                  permanently delete all your messages, friend connections, and
-                  account data. This action cannot be undone.
+                  Are you sure you want to delete your whisp account? This will
+                  remove your account, messages, groups you created,
+                  friendships, and reports involving you. Cloud files are queued
+                  for deletion. This action cannot be undone.
+                  {"\n\n"}A confirmed serious-abuse decision may retain a
+                  protected account identifier until its suspension expires.
+                  Contact augie@luebbers.email to appeal or object to retention.
                   {"\n\n"}
-                  Note: This only deletes your Whisp account. Your Discord
+                  Note: This only deletes your whisp account. Your Discord
                   account will remain active.
                 </Dialog.Description>
+                {deleteAccount.error && (
+                  <Text accessibilityRole="alert" className="text-danger">
+                    Account deletion could not be confirmed. Try again. If you
+                    are signed out, contact augie@luebbers.email for help.
+                  </Text>
+                )}
                 <View className="flex-row justify-end gap-3 pt-4">
                   <Button
                     variant="ghost"
@@ -289,10 +324,8 @@ export default function ProfileScreen() {
                   <Button
                     variant="danger"
                     size="sm"
-                    onPress={() => {
-                      void handleDeleteAccount();
-                      setDeleteDialogOpen(false);
-                    }}
+                    isDisabled={deleteAccount.isPending}
+                    onPress={() => deleteAccount.mutate()}
                   >
                     Delete Account
                   </Button>

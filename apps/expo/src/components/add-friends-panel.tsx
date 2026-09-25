@@ -4,6 +4,7 @@ import { View } from "react-native";
 import { Button } from "heroui-native/button";
 import { Input } from "heroui-native/input";
 
+import { SafetyMenu } from "~/components/safety-actions";
 import { Avatar } from "~/components/ui/avatar";
 import { Text as UIText } from "~/components/ui/text";
 import { trpc } from "~/utils/api";
@@ -146,6 +147,9 @@ export function AddFriendsPanel() {
                 key={u.id}
                 className="bg-default items-center gap-5 rounded-2xl p-6"
               >
+                <View className="absolute right-3 top-3">
+                  <SafetyMenu userId={u.id} name={u.name} />
+                </View>
                 <Avatar userId={u.id} image={u.image} name={u.name} size={96} />
                 <UIText className="text-center text-2xl font-semibold">
                   {u.name}
@@ -196,8 +200,9 @@ export function AddFriendsPanel() {
               key={r.requestId}
               className="bg-default flex-row items-center justify-between rounded-md px-3 py-2"
             >
-              <UIText>{r.fromUser.name}</UIText>
-              <View className="flex-row gap-2">
+              <UIText className="flex-1">{r.fromUser.name}</UIText>
+              <View className="flex-row items-center gap-2">
+                <SafetyMenu userId={r.fromUser.id} name={r.fromUser.name} />
                 <Button
                   size="sm"
                   variant="outline"

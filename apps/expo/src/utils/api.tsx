@@ -9,13 +9,20 @@ import { getBaseUrl } from "./base-url";
 
 export const trpc = createTRPCReact<AppRouter>();
 
+// loggerLink supplies the operation path in both directions, but its downstream
+// enabled-callback type omits it. Inspect it without logging report input.
+function isSafetyReport(operation: object): boolean {
+  return "path" in operation && operation.path === "safety.report";
+}
+
 export function createExpoTRPCClient() {
   return createTRPCClient<AppRouter>({
     links: [
       loggerLink({
         enabled: (opts) =>
-          process.env.NODE_ENV === "development" ||
-          (opts.direction === "down" && opts.result instanceof Error),
+          !isSafetyReport(opts) &&
+          (process.env.NODE_ENV === "development" ||
+            (opts.direction === "down" && opts.result instanceof Error)),
         colorMode: "ansi",
       }),
       httpBatchLink({

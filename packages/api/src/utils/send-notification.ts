@@ -1,8 +1,14 @@
 import { and, eq, sql } from "@acme/db";
 import type { db } from "@acme/db/client";
-import { PushToken, session } from "@acme/db/schema";
+import {
+  FriendRequest,
+  MessageDelivery,
+  PushToken,
+  session,
+} from "@acme/db/schema";
 
 import { EXPO_PUSH_URL, NOTIFICATION_TYPE } from "../constants";
+import { Blocking } from "../services/blocking";
 
 interface NotificationPayload {
   to: string; // Expo push token
@@ -135,12 +141,20 @@ export async function notifyNewMessage(
   senderId: string,
   senderName: string,
   messageId: string,
-  fileUrl?: string,
-  mimeType?: string,
-  deliveryId?: string,
-  thumbhash?: string,
   group?: { groupId: string; groupName: string },
 ) {
+  if (!(await Blocking.canContact(database, senderId, recipientId)))
+    return { success: false, reason: "unavailable" };
+  const [delivery] = await database
+    .select({ id: MessageDelivery.id })
+    .from(MessageDelivery)
+    .where(
+      and(
+        eq(MessageDelivery.messageId, messageId),
+        eq(MessageDelivery.recipientId, recipientId),
+      ),
+    );
+  if (!delivery) return { success: false, reason: "unavailable" };
   const recipient = await database.query.user.findFirst({
     where: (users, { eq: colEq }) => colEq(users.id, recipientId),
     columns: {
@@ -162,10 +176,6 @@ export async function notifyNewMessage(
     type: NOTIFICATION_TYPE.MESSAGE,
     messageId,
     senderId,
-    fileUrl,
-    mimeType,
-    deliveryId,
-    thumbhash,
   };
   if (group) {
     data.groupId = group.groupId;
@@ -181,6 +191,20 @@ export async function notifyFriendRequest(
   senderName: string,
   requestId: string,
 ) {
+  const [request] = await database
+    .select()
+    .from(FriendRequest)
+    .where(
+      and(
+        eq(FriendRequest.id, requestId),
+        eq(FriendRequest.toUserId, recipientId),
+      ),
+    );
+  if (
+    !request ||
+    !(await Blocking.canContact(database, request.fromUserId, recipientId))
+  )
+    return { success: false, reason: "unavailable" };
   // Check if user has friend activity notifications enabled
   const recipient = await database.query.user.findFirst({
     where: (users, { eq: colEq }) => colEq(users.id, recipientId),
@@ -212,7 +236,10 @@ export async function notifyFriendAccept(
   database: typeof db,
   recipientId: string,
   accepterName: string,
+  accepterId: string,
 ) {
+  if (!(await Blocking.canContact(database, accepterId, recipientId)))
+    return { success: false, reason: "unavailable" };
   // Check if user has friend activity notifications enabled
   const recipient = await database.query.user.findFirst({
     where: (users, { eq: colEq }) => colEq(users.id, recipientId),

@@ -223,6 +223,7 @@ export default function GroupScreen() {
 
       <MessageViewerModal
         viewer={viewer}
+        getSenderName={(senderId) => getMemberInfo(senderId).name}
         insetsTop={insets.top}
         onRequestClose={closeViewer}
         onTap={onViewerTap}

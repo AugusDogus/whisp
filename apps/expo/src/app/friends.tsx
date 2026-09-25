@@ -34,6 +34,7 @@ import { useMessageViewerState } from "~/hooks/useMessageViewerState";
 import { usePreviewSettings } from "~/hooks/usePreviewSettings";
 import { useRemoveFriend } from "~/hooks/useRemoveFriend";
 import { useSendModeSelection } from "~/hooks/useSendModeSelection";
+import { useSendWithTerms } from "~/hooks/useSendWithTerms";
 import type { MainTabParamList, RootStackParamList } from "~/navigation/types";
 import { trpc } from "~/utils/api";
 import { authClient } from "~/utils/auth";
@@ -50,6 +51,7 @@ import WhispLogoDark from "../../assets/splash-icon-dark.png";
 import WhispLogoLight from "../../assets/splash-icon.png";
 
 export default function FriendsScreen() {
+  const { confirmSend, dialog: termsDialog } = useSendWithTerms();
   const queryClient = useQueryClient();
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -224,9 +226,6 @@ export default function FriendsScreen() {
    */
   useMessageFromNotification({
     senderId: mediaParams?.openMessageFromSender,
-    instantMessage: mediaParams?.instantMessage,
-    inbox,
-    inboxLoading,
     viewerOpen: !!viewer,
     utils,
     clearParams: () => {
@@ -238,7 +237,9 @@ export default function FriendsScreen() {
     openViewer: openViewerWithQueue,
     markAsRead: (deliveryId) => markRead.mutate({ deliveryId }),
     refetchInbox: () =>
-      refetchInbox().then((result) => ({ data: result.data })),
+      refetchInbox({ throwOnError: true }).then((result) => ({
+        data: result.data,
+      })),
   });
 
   const filteredRows = useMemo(() => {
@@ -260,72 +261,76 @@ export default function FriendsScreen() {
   // Send mode: Show media preview, search, and send button
   if (hasMedia) {
     return (
-      <SendModePanel
-        insets={insets}
-        mediaPath={mediaParams?.path ?? null}
-        rasterizedImagePath={rasterizedImagePath}
-        captionsCount={mediaParams?.captions?.length ?? 0}
-        thumbhash={mediaParams?.thumbhash}
-        searchQuery={searchQuery}
-        onChangeSearchQuery={setSearchQuery}
-        isLoading={isLoading}
-        groupRows={filteredGroupRows}
-        rows={filteredRows}
-        selectedFriends={selectedFriends}
-        selectedGroupId={selectedGroupId}
-        toggleFriend={toggleFriend}
-        toggleGroup={toggleGroup}
-        onBack={() => {
-          // If we came from the Media screen with media params, go back to Media
-          if (mediaParams?.path && mediaParams.type) {
-            navigation.navigate("Media", {
-              path: mediaParams.path,
-              type: mediaParams.type,
-              defaultRecipientId: mediaParams.defaultRecipientId,
-              groupId: mediaParams.groupId,
-              captions: mediaParams.captions,
-            });
-          } else {
-            navigation.goBack();
-          }
-        }}
-        onSend={async (opts) => {
-          if (!mediaParams?.type || !mediaParams.path) return;
-          const recipients = SelfMessages.recipients(
-            opts.recipients ?? [],
-            selfUserId,
-            allowSelfMessages,
-          );
-          const hasGroup = Boolean(opts.groupId);
-          if (!hasGroup && recipients.length === 0) return;
-
-          if (!hasGroup) {
-            markWhispUploading(recipients);
-          }
-
-          let finalUri = `file://${mediaParams.path}`;
-          if (mediaParams.rasterizationPromise) {
-            try {
-              const rasterizedUri = await mediaParams.rasterizationPromise;
-              finalUri = rasterizedUri;
-            } catch (error) {
-              console.error(
-                "[Friends] Rasterization failed, using original:",
-                error,
-              );
+      <>
+        {termsDialog}
+        <SendModePanel
+          insets={insets}
+          mediaPath={mediaParams?.path ?? null}
+          rasterizedImagePath={rasterizedImagePath}
+          captionsCount={mediaParams?.captions?.length ?? 0}
+          thumbhash={mediaParams?.thumbhash}
+          searchQuery={searchQuery}
+          onChangeSearchQuery={setSearchQuery}
+          isLoading={isLoading}
+          groupRows={filteredGroupRows}
+          rows={filteredRows}
+          selectedFriends={selectedFriends}
+          selectedGroupId={selectedGroupId}
+          toggleFriend={toggleFriend}
+          toggleGroup={toggleGroup}
+          onBack={() => {
+            // If we came from the Media screen with media params, go back to Media
+            if (mediaParams?.path && mediaParams.type) {
+              navigation.navigate("Media", {
+                path: mediaParams.path,
+                type: mediaParams.type,
+                defaultRecipientId: mediaParams.defaultRecipientId,
+                groupId: mediaParams.groupId,
+                captions: mediaParams.captions,
+              });
+            } else {
+              navigation.goBack();
             }
-          }
+          }}
+          onSend={async (opts) => {
+            if (!mediaParams?.type || !mediaParams.path) return;
+            const recipients = SelfMessages.recipients(
+              opts.recipients ?? [],
+              selfUserId,
+              allowSelfMessages,
+            );
+            const hasGroup = Boolean(opts.groupId);
+            if (!hasGroup && recipients.length === 0) return;
+            if (!(await confirmSend())) return;
 
-          void uploadMedia({
-            queryClient,
-            uri: finalUri,
-            type: mediaParams.type,
-            recipients,
-            groupId: opts.groupId,
-          });
-          navigation.reset({ index: 0, routes: [{ name: "Main" }] });
-        }}
-      />
+            if (!hasGroup) {
+              markWhispUploading(recipients);
+            }
+
+            let finalUri = `file://${mediaParams.path}`;
+            if (mediaParams.rasterizationPromise) {
+              try {
+                const rasterizedUri = await mediaParams.rasterizationPromise;
+                finalUri = rasterizedUri;
+              } catch (error) {
+                console.error(
+                  "[Friends] Rasterization failed, using original:",
+                  error,
+                );
+              }
+            }
+
+            void uploadMedia({
+              queryClient,
+              uri: finalUri,
+              type: mediaParams.type,
+              recipients,
+              groupId: opts.groupId,
+            });
+            navigation.reset({ index: 0, routes: [{ name: "Main" }] });
+          }}
+        />
+      </>
     );
   }
 
@@ -395,6 +400,10 @@ export default function FriendsScreen() {
       {/* Message viewer modal */}
       <MessageViewerModal
         viewer={viewer}
+        getSenderName={(senderId) =>
+          friends.find((friend) => friend.id === senderId)?.name ??
+          "this account"
+        }
         insetsTop={insets.top}
         onRequestClose={closeViewer}
         onTap={onViewerTap}

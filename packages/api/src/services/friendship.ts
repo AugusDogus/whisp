@@ -2,14 +2,21 @@ import { and, eq, or } from "@acme/db";
 import type { db } from "@acme/db/client";
 import { Friendship } from "@acme/db/schema";
 
+import { Blocking } from "./blocking";
+
 export async function getFriendIds(
-  dbClient: typeof db,
+  dbClient: Pick<typeof db, "select">,
   userId: string,
 ): Promise<string[]> {
   const rows = await dbClient
     .select()
     .from(Friendship)
-    .where(or(eq(Friendship.userIdA, userId), eq(Friendship.userIdB, userId)));
+    .where(
+      and(
+        or(eq(Friendship.userIdA, userId), eq(Friendship.userIdB, userId)),
+        Blocking.allowed(Friendship.userIdA, Friendship.userIdB),
+      ),
+    );
   return rows.map((r) => (r.userIdA === userId ? r.userIdB : r.userIdA));
 }
 

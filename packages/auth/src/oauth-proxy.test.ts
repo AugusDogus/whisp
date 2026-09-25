@@ -15,6 +15,7 @@ async function fixture(baseUrl: string) {
     Record<string, unknown>[]
   > = { user: [], session: [], account: [], verification: [] };
   const auth = initAuth({
+    enforceAccount: async () => {},
     database: memoryAdapter(store),
     baseUrl,
     productionUrl: productionURL,

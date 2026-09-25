@@ -1,7 +1,7 @@
 /// <reference lib="es2024.promise" />
 /// <reference types="bun-types/test" />
-import { useEffect, useImperativeHandle, useRef } from "react";
-import type { Ref } from "react";
+import { createElement, useEffect, useImperativeHandle, useRef } from "react";
+import type { ReactNode, Ref } from "react";
 
 import type { Image, ImageProps } from "expo-image";
 
@@ -53,6 +53,9 @@ function ImageStub(
 mock.module("react-native", () => ({
   View: "view",
   Text: "text",
+  ScrollView: "scroll-view",
+  Modal: "modal",
+  Linking: { openURL: async () => undefined },
   I18nManager: { isRTL: false },
   StyleSheet: {
     absoluteFill: { position: "absolute" },
@@ -84,6 +87,17 @@ mock.module("react-native", () => ({
   },
 }));
 mock.module("expo-image", () => ({ Image: ImageStub }));
+mock.module("expo-notifications", () => ({
+  dismissAllNotificationsAsync: async () => undefined,
+}));
+mock.module("expo-splash-screen", () => ({ hideAsync: async () => undefined }));
+mock.module("heroui-native/button", () => ({
+  Button: Object.assign(
+    (props: { children?: ReactNode }) => createElement("button", props),
+    { Label: "button-label" },
+  ),
+}));
+mock.module("~/components/styled", () => ({ SafeAreaView: "safe-area" }));
 mock.module("~/utils/auth", () => ({
   authClient: {
     getCookie: () => "test-session",

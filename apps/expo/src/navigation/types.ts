@@ -4,6 +4,7 @@ export interface RootStackParamList extends ParamListBase {
   Splash: undefined;
   Login: undefined;
   Onboarding: undefined;
+  Terms: undefined;
   Main: { screen?: string; params?: Record<string, unknown> } | undefined;
   Media: {
     path: string;
@@ -24,6 +25,7 @@ export interface RootStackParamList extends ParamListBase {
   GroupAddMembers: { groupId: string };
   CreateGroup: undefined;
   BackgroundUploadTest: undefined;
+  BlockedAccounts: undefined;
 }
 
 export type AppScreenName = keyof RootStackParamList;

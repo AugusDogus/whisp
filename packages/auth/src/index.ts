@@ -8,6 +8,7 @@ import { expoWithOAuthProxy } from "./expo-oauth-proxy";
 
 export function initAuth(options: {
   database: BetterAuthOptions["database"];
+  enforceAccount: (userId: string) => Promise<void>;
   baseUrl: string;
   productionUrl: string;
   secret: string | undefined;
@@ -20,7 +21,20 @@ export function initAuth(options: {
     database: options.database,
     baseURL: options.baseUrl,
     secret: options.secret,
-    databaseHooks: DiscordProfileAuth.databaseHooks,
+    databaseHooks: {
+      ...DiscordProfileAuth.databaseHooks,
+      session: {
+        create: {
+          before: async (session, context) => {
+            await options.enforceAccount(session.userId);
+            return DiscordProfileAuth.databaseHooks.session?.create?.before?.(
+              session,
+              context,
+            );
+          },
+        },
+      },
+    },
     user: {
       additionalFields: {
         discordUsername: { type: "string", required: false, input: false },

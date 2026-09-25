@@ -35,6 +35,7 @@ import { toast } from "sonner-native";
 
 import type { CaptionData } from "~/components/caption-editor";
 import { CaptionEditor } from "~/components/caption-editor";
+import { useSendWithTerms } from "~/hooks/useSendWithTerms";
 import type { RootStackParamList } from "~/navigation/types";
 import { uploadMedia } from "~/utils/media-upload";
 import { markWhispFailed, markWhispUploading } from "~/utils/outbox-status";
@@ -44,6 +45,7 @@ import {
 } from "~/utils/video-save-alert";
 
 export default function MediaScreen() {
+  const { confirmSend, dialog: termsDialog } = useSendWithTerms();
   const queryClient = useQueryClient();
   const route = useRoute<RouteProp<RootStackParamList, "Media">>();
   const navigation =
@@ -344,7 +346,8 @@ export default function MediaScreen() {
     }
   }
 
-  function handleSend() {
+  async function handleSend() {
+    if ((defaultRecipientId || groupId) && !(await confirmSend())) return;
     console.log("[Media] handleSend called");
 
     // If we have captions, compose in the background and navigate immediately.
@@ -439,6 +442,7 @@ export default function MediaScreen() {
 
   return (
     <View style={styles.container} onLayout={handleLayout}>
+      {termsDialog}
       {type === "photo" ? (
         <>
           {/* Display Image (visible to user) */}

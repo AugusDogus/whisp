@@ -23,6 +23,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@acme/validators": "workspace:*",
     "@better-auth/expo": "1.6.33",
     "@gorhom/bottom-sheet": "^5",
     "@legendapp/list": "^2.0.2",

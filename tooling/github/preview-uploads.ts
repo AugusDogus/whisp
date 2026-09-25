@@ -6,7 +6,7 @@ import { z } from "zod/v4";
 
 import { PreviewCleanup } from "../../packages/api/src/uploadthing/preview-cleanup";
 import { PreviewScope } from "../../packages/api/src/uploadthing/preview-scope";
-import { resetInheritedPushTokens } from "./preview-push-tokens";
+import { resetInheritedPreviewData } from "./preview-data-reset";
 
 function required(name: string) {
   return z
@@ -23,7 +23,7 @@ async function setState(scope: PreviewScope, state: "open" | "closed") {
     authToken: required("DATABASE_TOKEN"),
   });
   try {
-    if (state === "open") await resetInheritedPushTokens(client, scope);
+    if (state === "open") await resetInheritedPreviewData(client, scope);
     // Supports cleanup of databases created before upload tracking was installed.
     await client.execute(
       "CREATE TABLE IF NOT EXISTS preview_upload_control (scope TEXT PRIMARY KEY NOT NULL, state TEXT NOT NULL)",

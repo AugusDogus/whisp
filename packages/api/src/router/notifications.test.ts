@@ -16,7 +16,10 @@ const t = initTRPC
     session: { user: { id: string }; session: { id: string } };
   }>()
   .create();
-mock.module("../trpc", () => ({ protectedProcedure: t.procedure }));
+mock.module("../trpc", () => ({
+  protectedProcedure: t.procedure,
+  sharingProcedure: t.procedure,
+}));
 const { notificationsRouter } = await import("./notifications");
 const router = t.router(notificationsRouter);
 const account = (id: string, sessionId = id) =>

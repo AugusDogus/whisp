@@ -16,6 +16,7 @@ import type { Auth } from "@acme/auth";
 import { db } from "@acme/db/client";
 
 import { apiEnv } from "./env";
+import { ContentAccess } from "./services/content-access";
 
 const env = apiEnv();
 
@@ -226,3 +227,21 @@ export const protectedProcedure = t.procedure
     });
   })
   .use(protectedRateLimitMiddleware);
+
+// Reads, reporting, blocking, and account deletion remain available when sharing
+// is restricted. Older clients cannot bypass acceptance or a suspension.
+export const sharingProcedure = protectedProcedure.use(
+  async ({ ctx, next }) => {
+    const access = await ContentAccess.status(ctx.db, ctx.session.user.id);
+    if (access.status !== "allowed") {
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message:
+          access.status === "acceptance_required"
+            ? "Accept the current Terms of Service in Profile before sharing."
+            : "Sharing is unavailable for this account. Contact augie@luebbers.email for help.",
+      });
+    }
+    return next();
+  },
+);

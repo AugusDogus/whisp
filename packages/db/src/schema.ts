@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { index, sqliteTable } from "drizzle-orm/sqlite-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -5,6 +6,7 @@ import { z } from "zod/v4";
 import { session, user } from "./auth-schema";
 
 export * from "./auth-schema";
+export * from "./safety-schema";
 
 export const PreviewPushTokenReset = sqliteTable(
   "preview_push_token_reset",
@@ -39,7 +41,10 @@ export const PushToken = sqliteTable(
       .notNull()
       .primaryKey()
       .$defaultFn(() => crypto.randomUUID()),
-    userId: t.text().notNull(),
+    userId: t
+      .text()
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
     // Null only for legacy registrations, which cannot receive notifications.
     sessionId: t.text().references(() => session.id, { onDelete: "cascade" }),
     token: t.text().notNull().unique(),
@@ -65,8 +70,14 @@ export const FriendRequest = sqliteTable(
       .notNull()
       .primaryKey()
       .$defaultFn(() => crypto.randomUUID()),
-    fromUserId: t.text().notNull(),
-    toUserId: t.text().notNull(),
+    fromUserId: t
+      .text()
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    toUserId: t
+      .text()
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
     // status: 'pending' | 'accepted' | 'declined' | 'cancelled'
     status: t.text().notNull(),
     createdAt: t
@@ -96,8 +107,14 @@ export const Friendship = sqliteTable(
       .primaryKey()
       .$defaultFn(() => crypto.randomUUID()),
     // Store a normalized pair (lexicographically sorted in app code)
-    userIdA: t.text().notNull(),
-    userIdB: t.text().notNull(),
+    userIdA: t
+      .text()
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    userIdB: t
+      .text()
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
     createdAt: t
       .integer({ mode: "timestamp" })
       .$defaultFn(() => new Date())
@@ -165,7 +182,10 @@ export const Message = sqliteTable(
       .notNull()
       .primaryKey()
       .$defaultFn(() => crypto.randomUUID()),
-    senderId: t.text().notNull(),
+    senderId: t
+      .text()
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
     groupId: t.text().references(() => Group.id, { onDelete: "cascade" }),
     fileUrl: t.text().notNull(),
     // Store UploadThing file key for deletion when all recipients have read
@@ -197,8 +217,14 @@ export const MessageDelivery = sqliteTable(
       .notNull()
       .primaryKey()
       .$defaultFn(() => crypto.randomUUID()),
-    messageId: t.text().notNull(),
-    recipientId: t.text().notNull(),
+    messageId: t
+      .text()
+      .notNull()
+      .references(() => Message.id, { onDelete: "cascade" }),
+    recipientId: t
+      .text()
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
     groupId: t.text().references(() => Group.id, { onDelete: "cascade" }),
     createdAt: t
       .integer({ mode: "timestamp" })
@@ -281,3 +307,24 @@ export const Waitlist = sqliteTable("waitlist", (t) => ({
     .$defaultFn(() => new Date())
     .notNull(),
 }));
+
+// Removed only after the storage provider confirms deletion. No account identity.
+export const FileDeletion = sqliteTable(
+  "file_deletion",
+  (t) => ({
+    fileKey: t.text().primaryKey(),
+    createdAt: t
+      .integer({ mode: "timestamp" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    // Null means unattempted. Retain original queue age while retries rotate fairly.
+    lastAttemptAt: t.integer({ mode: "timestamp" }),
+  }),
+  (t) => [
+    index("file_deletion_attempt_order_idx").on(
+      sql`coalesce(${t.lastAttemptAt}, ${t.createdAt})`,
+      t.createdAt,
+      t.fileKey,
+    ),
+  ],
+);

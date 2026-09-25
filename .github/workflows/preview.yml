@@ -96,7 +96,7 @@ jobs:
           '
           bun scripts/migrate.ts
 
-      - name: Clear inherited push registrations and enable preview uploads
+      - name: Clear inherited device and enforcement data and enable preview uploads
         if: steps.pr.outputs.state == 'open'
         run: bun tooling/github/preview-uploads.ts open
 

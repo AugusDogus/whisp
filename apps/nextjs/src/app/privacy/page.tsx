@@ -13,13 +13,13 @@ export default function PrivacyPage() {
           <h1 className="mb-8 text-4xl font-bold">Privacy Policy</h1>
           <div className="space-y-6 font-mono text-sm leading-relaxed">
             <p className="text-muted-foreground">
-              Last Updated: October 20, 2025
+              Last Updated: September 24, 2026
             </p>
 
             <section>
               <h2 className="mb-3 text-xl font-semibold">1. Introduction</h2>
               <p>
-                Whisp is committed to protecting your privacy. This Privacy
+                whisp is committed to protecting your privacy. This Privacy
                 Policy explains how we collect, use, disclose, and safeguard
                 your information when you use our ephemeral messaging service.
                 We are a privacy-first platform, and we have designed our
@@ -36,7 +36,7 @@ export default function PrivacyPage() {
                 2.1 Discord Authentication Data
               </h3>
               <p className="mb-3">
-                When you sign in to Whisp using Discord, we collect the
+                When you sign in to whisp using Discord, we collect the
                 following information from your Discord account:
               </p>
               <ul className="ml-6 list-outside list-disc space-y-2">
@@ -50,7 +50,7 @@ export default function PrivacyPage() {
                 2.2 Usage Data and Analytics
               </h3>
               <p className="mb-3">
-                We collect information about how you use Whisp, including:
+                We collect information about how you use whisp, including:
               </p>
               <ul className="ml-6 list-outside list-disc space-y-2">
                 <li>
@@ -80,7 +80,7 @@ export default function PrivacyPage() {
                 2.4 Content Data
               </h3>
               <p>
-                When you send photos or videos through Whisp, we temporarily
+                When you send photos or videos through whisp, we temporarily
                 store this content on our servers only for the purpose of
                 delivering it to the intended recipient. This content is
                 permanently and automatically deleted from our servers
@@ -91,11 +91,40 @@ export default function PrivacyPage() {
 
             <section>
               <h2 className="mb-3 text-xl font-semibold">
+                Safety reports and blocks
+              </h2>
+              <p>
+                When you report an account, we store your account ID, the
+                reported account ID, the reason, any explanation you provide,
+                and the time and outcome of review. Reports are available to
+                authorized whisp operators for abuse prevention and moderation.
+                They are not shown to the reported account. Reporting does not
+                copy or preserve any photos or videos from your messages.
+              </p>
+              <p className="mt-3">
+                We store the accounts you block to enforce your contact
+                preferences, records of conduct-policy acceptance, and any
+                sharing suspension. Reports are stored separately from
+                disappearing messages and are not deleted when a message is
+                viewed. Report explanations are erased on resolution. Reports
+                are scheduled for deletion 30 days after submission and removed
+                by daily cleanup. Deleting either involved account removes the
+                report immediately. For questions or a request about report
+                data, contact{" "}
+                <a className="underline" href="mailto:augie@luebbers.email">
+                  augie@luebbers.email
+                </a>
+                .
+              </p>
+            </section>
+
+            <section>
+              <h2 className="mb-3 text-xl font-semibold">
                 3. How We Use Your Information
               </h2>
               <p className="mb-3">We use the information we collect to:</p>
               <ul className="ml-6 list-outside list-disc space-y-2">
-                <li>Provide, maintain, and improve the Whisp service</li>
+                <li>Provide, maintain, and improve the whisp service</li>
                 <li>Authenticate your identity and manage your account</li>
                 <li>Deliver messages and media to your intended recipients</li>
                 <li>Analyze usage patterns to improve user experience</li>
@@ -119,7 +148,7 @@ export default function PrivacyPage() {
                 4. Data Storage and Deletion
               </h2>
               <p className="mb-3">
-                Whisp is built with privacy as a core principle. Here&apos;s how
+                whisp is built with privacy as a core principle. Here&apos;s how
                 we handle your data:
               </p>
 
@@ -127,10 +156,10 @@ export default function PrivacyPage() {
                 4.1 Ephemeral Content
               </h3>
               <p>
-                All photos and videos sent through Whisp are automatically and
+                All photos and videos sent through whisp are automatically and
                 permanently deleted from our servers immediately after they are
                 viewed by the recipient. Once deleted, this content cannot be
-                recovered by anyone, including Whisp. We do not maintain backups
+                recovered by anyone, including whisp. We do not maintain backups
                 of ephemeral content.
               </p>
 
@@ -141,14 +170,77 @@ export default function PrivacyPage() {
                 Your account information (Discord username, user ID, email, and
                 profile picture) is stored for as long as your account is
                 active. You can delete your account at any time through the app
-                settings, which will permanently delete all information we have
-                stored about you, including your account data, friend
-                connections, and any associated metadata. This deletion is
-                immediate and irreversible.
+                settings. Deletion removes your Discord ID, credentials,
+                profile, sessions, notification tokens, friendships, blocks,
+                reports involving you, sent messages, and groups you created.
+                Cloud files are queued for deletion, with daily retries if
+                storage deletion fails. This does not delete your Discord
+                account or other people&apos;s messages outside groups you
+                created.
+              </p>
+              <p className="mt-3">
+                For confirmed serious abuse, a human reviewer may find that a
+                limited suspension must continue after deletion to prevent
+                further serious harm. In those cases we may retain a keyed hash
+                of your Discord ID, a decision reference, the reason and
+                necessity finding, policy revision, decision date, and expiry.
+                This is protected personal data, not anonymous data. We do not
+                retain your raw Discord ID, profile, report text, or media in
+                that record. This processing is subject to an approved
+                legitimate-interests assessment and individual necessity review,
+                including age and privacy interests. Reports alone do not
+                justify it.
+              </p>
+              <p className="mt-3">
+                The reviewer chooses the shortest justified suspension period.
+                Deletion and signing in again never extend it. Enforcement ends
+                at expiry, and daily cleanup removes the record. Contact
+                augie@luebbers.email to learn the reason and expiry, appeal,
+                request erasure, or object to retention without recreating your
+                account. We assess such requests individually and explain the
+                outcome.
+              </p>
+
+              <h3
+                id="delete-account"
+                className="mb-2 mt-4 scroll-mt-32 text-lg font-semibold"
+              >
+                4.3 Deleting Your Account
+              </h3>
+              <p className="mb-3">
+                You can delete your whisp account and its data in either of two
+                ways:
+              </p>
+              <ul className="ml-6 list-outside list-disc space-y-2">
+                <li>
+                  In the app, open Profile, tap Delete Account, and confirm.
+                  Deletion happens immediately and signs you out.
+                </li>
+                <li>
+                  Without the app, email{" "}
+                  <a
+                    href="mailto:augie@luebbers.email?subject=Delete%20my%20whisp%20account"
+                    className="underline hover:text-foreground"
+                  >
+                    augie@luebbers.email
+                  </a>{" "}
+                  with the subject &quot;Delete my whisp account&quot; and your
+                  Discord username. We will confirm that the account is yours,
+                  for example by asking you to message us from that Discord
+                  account, then delete it within 30 days and reply when it is
+                  done.
+                </li>
+              </ul>
+              <p className="mt-3">
+                Either way, deletion removes the data described in section 4.2.
+                Cloud files are deleted by a daily job, with retries if storage
+                deletion fails. The only data that may remain is the limited
+                suspension record described in section 4.2, and only after a
+                human review of confirmed serious abuse.
               </p>
 
               <h3 className="mb-2 mt-4 text-lg font-semibold">
-                4.3 Analytics and Usage Data
+                4.4 Analytics and Usage Data
               </h3>
               <p>
                 Usage data and analytics are retained for a reasonable period to
@@ -162,7 +254,7 @@ export default function PrivacyPage() {
                 5. Third-Party Services
               </h2>
               <p className="mb-3">
-                Whisp uses Discord for authentication. When you sign in with
+                whisp uses Discord for authentication. When you sign in with
                 Discord, you are subject to Discord&apos;s Privacy Policy and
                 Terms of Service. We encourage you to review Discord&apos;s
                 privacy practices. We do not share your information with any
@@ -176,7 +268,7 @@ export default function PrivacyPage() {
                 6. Children&apos;s Privacy
               </h2>
               <p>
-                Whisp is intended for users who are at least 13 years of age. We
+                whisp is intended for users who are at least 13 years of age. We
                 do not knowingly collect personal information from children
                 under 13. If we become aware that a user is under 13, we will
                 terminate their account and delete their information. If you
@@ -222,11 +314,17 @@ export default function PrivacyPage() {
                 </li>
               </ul>
               <p className="mt-3">
-                You can exercise your right to deletion at any time by deleting
-                your account through the app settings, which will permanently
-                remove all your data from our servers. For other requests,
-                please contact us through our Discord server. We will respond to
-                your request within a reasonable timeframe.
+                You can exercise your right to deletion at any time, with or
+                without the app. See{" "}
+                <a
+                  href="#delete-account"
+                  className="underline hover:text-foreground"
+                >
+                  section 4.3
+                </a>{" "}
+                for how. For other requests, email augie@luebbers.email or
+                contact us through our Discord server. We will respond to your
+                request within a reasonable timeframe.
               </p>
             </section>
 
@@ -238,7 +336,7 @@ export default function PrivacyPage() {
                 Your information may be transferred to and processed in
                 countries other than your country of residence. These countries
                 may have data protection laws that are different from the laws
-                of your country. By using Whisp, you consent to the transfer of
+                of your country. By using whisp, you consent to the transfer of
                 your information to these countries.
               </p>
             </section>
@@ -251,7 +349,7 @@ export default function PrivacyPage() {
                 We may update this Privacy Policy from time to time. We will
                 notify you of any material changes by posting the new Privacy
                 Policy on this page and updating the &quot;Last Updated&quot;
-                date. Your continued use of Whisp after such changes constitutes
+                date. Your continued use of whisp after such changes constitutes
                 your acceptance of the updated Privacy Policy.
               </p>
             </section>
