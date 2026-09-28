@@ -7,7 +7,8 @@ import { sql } from "@acme/db";
 import * as schema from "@acme/db/schema";
 
 const client = createClient({ url: "file::memory:" });
-const db = drizzle({ client, schema });
+let queries = 0;
+const db = drizzle({ client, schema, logger: { logQuery: () => queries++ } });
 const t = initTRPC
   .context<{ db: typeof db; session: { user: { id: string } } }>()
   .create();
@@ -156,4 +157,20 @@ test("the friend list includes saved cosmetics and freshness before opening a pr
     needsRefresh: true,
     profile: { cosmetics: null },
   });
+});
+
+test("incoming requests include only pending senders for this account in one query", async () => {
+  await db.run(sql`INSERT INTO friend_request (id, fromUserId, toUserId, status) VALUES
+    ('incoming', 'friend', 'me', 'pending'),
+    ('outgoing', 'me', 'friend', 'pending'),
+    ('declined', 'unrelated', 'me', 'declined'),
+    ('orphan', 'missing', 'me', 'pending')`);
+  queries = 0;
+  expect(await caller.incomingRequests()).toEqual([
+    {
+      requestId: "incoming",
+      fromUser: { id: "friend", name: "Friend Display" },
+    },
+  ]);
+  expect(queries).toBe(1);
 });

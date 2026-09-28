@@ -47,37 +47,39 @@ export const friendsRouter = {
           hasPendingRequest: boolean;
         }[];
 
-      const friendships = await ctx.db
-        .select()
-        .from(Friendship)
-        .where(
-          or(
-            and(
-              eq(Friendship.userIdA, me),
-              inArray(Friendship.userIdB, userIds),
-            ),
-            and(
-              eq(Friendship.userIdB, me),
-              inArray(Friendship.userIdA, userIds),
+      const [friendships, requests] = await Promise.all([
+        ctx.db
+          .select()
+          .from(Friendship)
+          .where(
+            or(
+              and(
+                eq(Friendship.userIdA, me),
+                inArray(Friendship.userIdB, userIds),
+              ),
+              and(
+                eq(Friendship.userIdB, me),
+                inArray(Friendship.userIdA, userIds),
+              ),
             ),
           ),
-        );
 
-      const requests = await ctx.db
-        .select()
-        .from(FriendRequest)
-        .where(
-          or(
-            and(
-              eq(FriendRequest.fromUserId, me),
-              inArray(FriendRequest.toUserId, userIds),
-            ),
-            and(
-              eq(FriendRequest.toUserId, me),
-              inArray(FriendRequest.fromUserId, userIds),
+        ctx.db
+          .select()
+          .from(FriendRequest)
+          .where(
+            or(
+              and(
+                eq(FriendRequest.fromUserId, me),
+                inArray(FriendRequest.toUserId, userIds),
+              ),
+              and(
+                eq(FriendRequest.toUserId, me),
+                inArray(FriendRequest.fromUserId, userIds),
+              ),
             ),
           ),
-        );
+      ]);
 
       return users.map((u) => {
         const isFriend = friendships.some(
@@ -123,7 +125,6 @@ export const friendsRouter = {
 
     if (friendIds.length === 0) return [];
 
-    const friends = await getFriendsWithDiscordIds(ctx.db, friendIds);
     const now = new Date();
 
     const friendshipMap = new Map(
@@ -172,12 +173,17 @@ export const friendsRouter = {
       (fid) => !friendIdsWhereSentLast.includes(fid),
     );
 
-    const [hasPendingSentTo, lastSentMessageMap, lastReceivedMessageMap] =
-      await Promise.all([
-        getPendingSentDeliveries(ctx.db, me, friendIdsWhereSentLast),
-        getLastSentMessages(ctx.db, me, friendIdsWhereSentLast),
-        getLastReceivedMessages(ctx.db, me, friendIdsWhereReceivedLast),
-      ]);
+    const [
+      friends,
+      hasPendingSentTo,
+      lastSentMessageMap,
+      lastReceivedMessageMap,
+    ] = await Promise.all([
+      getFriendsWithDiscordIds(ctx.db, friendIds),
+      getPendingSentDeliveries(ctx.db, me, friendIdsWhereSentLast),
+      getLastSentMessages(ctx.db, me, friendIdsWhereSentLast),
+      getLastReceivedMessages(ctx.db, me, friendIdsWhereReceivedLast),
+    ]);
 
     return friends.map((u) => {
       const streakInfo = friendshipMap.get(u.id);
@@ -212,29 +218,19 @@ export const friendsRouter = {
 
   incomingRequests: protectedProcedure.query(async ({ ctx }) => {
     const me = ctx.session.user.id;
-    const pending = await ctx.db
-      .select()
+    return ctx.db
+      .select({
+        requestId: FriendRequest.id,
+        fromUser: { id: User.id, name: User.name },
+      })
       .from(FriendRequest)
+      .innerJoin(User, eq(User.id, FriendRequest.fromUserId))
       .where(
         and(
           eq(FriendRequest.toUserId, me),
           eq(FriendRequest.status, FRIEND_REQUEST_STATUS.PENDING),
         ),
       );
-
-    const fromIds = pending.map((r) => r.fromUserId);
-    const users = fromIds.length
-      ? await ctx.db.select().from(User).where(inArray(User.id, fromIds))
-      : ([] as (typeof User.$inferSelect)[]);
-    const idToUser = new Map(users.map((u) => [u.id, u] as const));
-
-    return pending
-      .map((r) => {
-        const u = idToUser.get(r.fromUserId);
-        if (!u) return null;
-        return { requestId: r.id, fromUser: { id: u.id, name: u.name } };
-      })
-      .filter(Boolean);
   }),
 
   sendRequest: protectedProcedure

@@ -16,36 +16,20 @@ export async function getPendingSentDeliveries(
   if (friendIds.length === 0) return result;
 
   const unreadDeliveriesToFriends = await dbClient
-    .select({
-      messageId: MessageDelivery.messageId,
-      recipientId: MessageDelivery.recipientId,
-    })
+    .selectDistinct({ recipientId: MessageDelivery.recipientId })
     .from(MessageDelivery)
+    .innerJoin(Message, eq(Message.id, MessageDelivery.messageId))
     .where(
       and(
         inArray(MessageDelivery.recipientId, friendIds),
         isNull(MessageDelivery.groupId),
         isNull(MessageDelivery.readAt),
+        eq(Message.senderId, me),
       ),
     );
 
-  if (unreadDeliveriesToFriends.length === 0) return result;
-
-  const relevantMessageIds = [
-    ...new Set(unreadDeliveriesToFriends.map((d) => d.messageId)),
-  ];
-  const mySentMessages = await dbClient
-    .select({ id: Message.id })
-    .from(Message)
-    .where(
-      and(inArray(Message.id, relevantMessageIds), eq(Message.senderId, me)),
-    );
-  const mySentMessageIdSet = new Set(mySentMessages.map((m) => m.id));
-
-  for (const d of unreadDeliveriesToFriends) {
-    if (mySentMessageIdSet.has(d.messageId)) {
-      result.add(d.recipientId);
-    }
+  for (const delivery of unreadDeliveriesToFriends) {
+    result.add(delivery.recipientId);
   }
 
   return result;
