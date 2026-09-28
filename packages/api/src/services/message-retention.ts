@@ -1,10 +1,20 @@
 import { and, inArray, isNotNull, isNull, lt } from "@acme/db";
 import type { db } from "@acme/db/client";
-import { Message, MessageDelivery, MlsDraft } from "@acme/db/schema";
+import {
+  FileDeletion,
+  Message,
+  MessageDelivery,
+  MlsDraft,
+} from "@acme/db/schema";
+
+import { FileDeletions } from "./file-deletions";
 
 export const MessageRetention = {
   // Called inside the retention transaction, before any storage-provider requests.
-  async purge(database: Pick<typeof db, "select" | "delete">, now: Date) {
+  async purge(
+    database: Pick<typeof db, "select" | "insert" | "delete">,
+    now: Date,
+  ) {
     const softExpired = and(
       isNotNull(Message.deletedAt),
       lt(Message.deletedAt, new Date(now.getTime() - 30 * 86400_000)),
@@ -31,6 +41,24 @@ export const MessageRetention = {
         ),
       );
     const softMessages = await database.delete(Message).where(softExpired);
+    // Unread messages never reached cleanupIfAllRead, so their files still exist.
+    // This includes messages whose deliveries a block removed. Queue each file
+    // before deleting the row that holds its key. Soft-deleted files were
+    // already removed when the last viewer closed.
+    const unreadFiles = await database
+      .select({ fileKey: Message.fileKey, fileUrl: Message.fileUrl })
+      .from(Message)
+      .where(oldUnread);
+    const keys = [
+      ...new Set(
+        unreadFiles.map(FileDeletions.keyOf).filter((key) => key !== undefined),
+      ),
+    ];
+    if (keys.length > 0)
+      await database
+        .insert(FileDeletion)
+        .values(keys.map((fileKey) => ({ fileKey })))
+        .onConflictDoNothing();
     const oldDeliveries = await database
       .delete(MessageDelivery)
       .where(
