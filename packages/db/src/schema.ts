@@ -319,7 +319,7 @@ export const MlsConversation = sqliteTable("mls_conversation", (t) => ({
   groupId: t.text(),
   users: t.text({ mode: "json" }).$type<string[]>().notNull(),
   revision: t.integer().notNull().default(0),
-  // Maintained by the mls_event_epoch trigger (migration 0004), including writes
+  // Maintained by the mls_event_epoch trigger (migration 0005), including writes
   // from older servers. Distinct from the complete event-log cursor.
   epoch: t.integer().notNull().default(0),
   members: t.text({ mode: "json" }).$type<MlsMember[]>().notNull(),

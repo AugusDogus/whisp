@@ -21,7 +21,6 @@ const rotation = new Set<(token: DevicePushToken) => void>();
 mock.module("react-native-permissions", () => ({
   checkNotifications: permission,
 }));
-mock.module("expo-device", () => ({ isDevice: true }));
 mock.module("~/utils/constants", () => ({ EXPO_PROJECT_ID: "project" }));
 mock.module("expo-network", () => ({
   addNetworkStateListener: (

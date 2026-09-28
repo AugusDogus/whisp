@@ -220,7 +220,7 @@ before building the API. Application publication adds a separate epoch counter
 and durable attempt receipts. A database trigger counts inserted commits so
 older API deployments sharing the database also maintain the epoch correctly.
 Drizzle does not model this trigger; future table-rebuild migrations must preserve
-or recreate `mls_event_epoch` from migration `0004_mls_application_epochs.sql`.
+or recreate `mls_event_epoch` from migration `0005_mls_application_epochs.sql`.
 Deploy migrations and API before the rebuilt native client. Local databases use
 `bun db:migrate`. Coordinate native-client and server releases: the upload route
 rejects old plaintext clients, and recipients need to open the new app to
