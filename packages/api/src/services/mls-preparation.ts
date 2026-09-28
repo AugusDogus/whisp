@@ -6,10 +6,12 @@ import {
   MlsDraftConversation,
 } from "@acme/db/schema";
 
+import { ContentAccess } from "./content-access";
 import {
   mlsConflict,
   requireDevice,
   resolveRecipients,
+  sharingForbidden,
   type MlsDatabase,
 } from "./mls";
 
@@ -52,7 +54,12 @@ export async function prepareMlsDraft(
     groupId?: string;
   },
 ) {
-  await requireDevice(tx, me, input.deviceId);
+  // Independent checks share one pipeline instead of adding a round trip.
+  const [, access] = await Promise.all([
+    requireDevice(tx, me, input.deviceId),
+    ContentAccess.status(tx, me),
+  ]);
+  if (access.status !== "allowed") sharingForbidden();
   const recipients = await resolveRecipients(tx, me, input);
   const draftId = input.draftId ?? crypto.randomUUID();
   const [draft] = await tx

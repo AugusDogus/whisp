@@ -8,7 +8,6 @@ import { PreviewScope } from "../uploadthing/preview-scope";
 import { AccountDeletion } from "./account-deletion";
 import { Blocking } from "./blocking";
 import { ContentAccess } from "./content-access";
-import { MessageRecipients } from "./message-recipients";
 import { Moderation } from "./moderation";
 import { SafetyCleanup } from "./safety-cleanup";
 import { createSafetyTestDatabase } from "./safety-test-fixture";
@@ -107,9 +106,6 @@ test("ordinary deletion erases linked data and queues media, without retaining i
   expect(await ContentAccess.status(database, "alice")).toEqual({
     status: "unavailable",
   });
-  expect(
-    await MessageRecipients.resolve(database, "alice", { recipients: ["bob"] }),
-  ).toEqual({ status: "restricted" });
   await expect(
     database
       .insert(schema.PushToken)

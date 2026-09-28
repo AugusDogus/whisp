@@ -5,8 +5,10 @@ import { registerApplicationTests } from "../test/mls/applications";
 import { registerConversationTests } from "../test/mls/conversations";
 import { registerDeviceTests } from "../test/mls/devices";
 import { registerDraftTests } from "../test/mls/drafts";
+import { registerSharingTests } from "../test/mls/sharing";
 
 describe("devices", registerDeviceTests);
 describe("conversations", registerConversationTests);
 describe("drafts", registerDraftTests);
 describe("applications", registerApplicationTests);
+describe("sharing", registerSharingTests);

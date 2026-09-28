@@ -236,8 +236,7 @@ export function registerDraftTests() {
       (await validateDraft(db, "alice", draft.draftId)).recipients,
     ).toEqual(["bob", "mallory"]);
     // Recipient fanout must not add a separate sequence of DB round trips.
-    // Safety checks add three fixed queries (sender access, friends, recipients).
-    expect(metrics.queryCount - beforeValidation).toBeLessThanOrEqual(7);
+    expect(metrics.queryCount - beforeValidation).toBeLessThanOrEqual(4);
     await expect(
       validateDraft(db, "mallory", draft.draftId),
     ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
