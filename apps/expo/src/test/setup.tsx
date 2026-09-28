@@ -4,6 +4,7 @@ import { createElement, useEffect, useImperativeHandle, useRef } from "react";
 import type { ReactNode, Ref } from "react";
 
 import type { Image, ImageProps } from "expo-image";
+import type { DevicePushToken } from "expo-notifications";
 
 import { beforeEach, mock } from "bun:test";
 
@@ -15,6 +16,13 @@ export const native = {
   sessionPending: false,
   motionListeners: new Set<(enabled: boolean) => void>(),
   appListeners: new Set<(state: string) => void>(),
+  // Push registration tests replace this and read the listeners.
+  getExpoPushToken: async (_options?: {
+    devicePushToken?: DevicePushToken;
+  }) => ({
+    data: "device-token",
+  }),
+  pushTokenListeners: new Set<(token: DevicePushToken) => void>(),
 };
 export const images = new Set<ImageProps>();
 export const imageMounts: (string | undefined)[] = [];
@@ -92,8 +100,15 @@ mock.module("expo-device", () => ({
   osName: "Android",
 }));
 mock.module("expo-image", () => ({ Image: ImageStub }));
+// One suite-wide instance: Bun keeps the first mock a module is imported with.
 mock.module("expo-notifications", () => ({
   dismissAllNotificationsAsync: async () => undefined,
+  getExpoPushTokenAsync: (options?: { devicePushToken?: DevicePushToken }) =>
+    native.getExpoPushToken(options),
+  addPushTokenListener: (listener: (token: DevicePushToken) => void) => {
+    native.pushTokenListeners.add(listener);
+    return { remove: () => native.pushTokenListeners.delete(listener) };
+  },
 }));
 mock.module("expo-splash-screen", () => ({ hideAsync: async () => undefined }));
 mock.module("heroui-native/button", () => ({
