@@ -10,7 +10,7 @@ test("epoch migration backfills commits and tracks legacy writers transactionall
   try {
     await client.executeMultiple(
       await Bun.file(
-        new URL("../../../db/drizzle/0002_mls.sql", import.meta.url),
+        new URL("../../../db/drizzle/0003_mls.sql", import.meta.url),
       ).text(),
     );
     await client.executeMultiple(`
@@ -24,7 +24,7 @@ test("epoch migration backfills commits and tracks legacy writers transactionall
     await client.executeMultiple(
       await Bun.file(
         new URL(
-          "../../../db/drizzle/0004_mls_application_epochs.sql",
+          "../../../db/drizzle/0005_mls_application_epochs.sql",
           import.meta.url,
         ),
       ).text(),

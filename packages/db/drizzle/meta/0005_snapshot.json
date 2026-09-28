@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "417199ee-bc03-4e9d-997e-2a026ba7d734",
-  "prevId": "cd6df2a2-9cdc-44d5-86a2-676d2b842d12",
+  "id": "611c021b-d6c3-4d47-a43a-b8a2beede987",
+  "prevId": "417199ee-bc03-4e9d-997e-2a026ba7d734",
   "tables": {
     "background_upload_test_file": {
       "name": "background_upload_test_file",
@@ -508,6 +508,84 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
+    "mls_application_attempt": {
+      "name": "mls_application_attempt",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "draftId": {
+          "name": "draftId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "conversationId": {
+          "name": "conversationId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "deviceId": {
+          "name": "deviceId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "epoch": {
+          "name": "epoch",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ciphertextHash": {
+          "name": "ciphertextHash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "mls_application_attempt_conversationId_mls_conversation_id_fk": {
+          "name": "mls_application_attempt_conversationId_mls_conversation_id_fk",
+          "tableFrom": "mls_application_attempt",
+          "tableTo": "mls_conversation",
+          "columnsFrom": ["conversationId"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "mls_application_attempt_deviceId_mls_device_id_fk": {
+          "name": "mls_application_attempt_deviceId_mls_device_id_fk",
+          "tableFrom": "mls_application_attempt",
+          "tableTo": "mls_device",
+          "columnsFrom": ["deviceId"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
     "mls_conversation": {
       "name": "mls_conversation",
       "columns": {
@@ -541,6 +619,14 @@
         },
         "revision": {
           "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "epoch": {
+          "name": "epoch",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,

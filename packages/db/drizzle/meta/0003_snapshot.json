@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "417199ee-bc03-4e9d-997e-2a026ba7d734",
-  "prevId": "cd6df2a2-9cdc-44d5-86a2-676d2b842d12",
+  "id": "cd6df2a2-9cdc-44d5-86a2-676d2b842d12",
+  "prevId": "027beb85-422e-49c5-ac18-8c6f060a60d0",
   "tables": {
     "background_upload_test_file": {
       "name": "background_upload_test_file",
@@ -577,13 +577,6 @@
           "notNull": true,
           "autoincrement": false
         },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
         "userId": {
           "name": "userId",
           "type": "text",
@@ -1140,6 +1133,13 @@
           "notNull": true,
           "autoincrement": false
         },
+        "sessionId": {
+          "name": "sessionId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "token": {
           "name": "token",
           "type": "text",
@@ -1179,9 +1179,24 @@
           "name": "push_token_userId_idx",
           "columns": ["userId"],
           "isUnique": false
+        },
+        "push_token_sessionId_idx": {
+          "name": "push_token_sessionId_idx",
+          "columns": ["sessionId"],
+          "isUnique": false
         }
       },
-      "foreignKeys": {},
+      "foreignKeys": {
+        "push_token_sessionId_session_id_fk": {
+          "name": "push_token_sessionId_session_id_fk",
+          "tableFrom": "push_token",
+          "tableTo": "session",
+          "columnsFrom": ["sessionId"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}

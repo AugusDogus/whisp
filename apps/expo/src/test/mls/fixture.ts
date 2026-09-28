@@ -193,10 +193,6 @@ mock.module("../../utils/auth", () => ({
     },
   },
 }));
-mock.module("expo-device", () => ({
-  modelName: "Pixel 8 Pro",
-  osName: "Android",
-}));
 mock.module("expo-secure-store", () => ({
   getItemAsync: async (key: string) => secure.get(key) ?? null,
   setItemAsync: async (key: string, value: string) => {

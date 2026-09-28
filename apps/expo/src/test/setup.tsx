@@ -83,6 +83,11 @@ mock.module("react-native", () => ({
     },
   },
 }));
+mock.module("expo-device", () => ({
+  isDevice: true,
+  modelName: "Pixel 8 Pro",
+  osName: "Android",
+}));
 mock.module("expo-image", () => ({ Image: ImageStub }));
 mock.module("~/utils/auth", () => ({
   authClient: {

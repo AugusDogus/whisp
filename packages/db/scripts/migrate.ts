@@ -1,8 +1,8 @@
 import { createClient } from "@libsql/client";
-import { drizzle } from "drizzle-orm/libsql";
-import { migrate } from "drizzle-orm/libsql/migrator";
 import { fileURLToPath } from "node:url";
 import { z } from "zod/v4";
+
+import { applyMigrations } from "./apply-migrations";
 
 const env = z
   .object({
@@ -15,7 +15,7 @@ const client = createClient({
   authToken: env.DATABASE_TOKEN,
 });
 try {
-  await migrate(drizzle(client), {
+  await applyMigrations(client, {
     migrationsFolder: fileURLToPath(new URL("../drizzle", import.meta.url)),
   });
   console.log("Database migrations applied.");

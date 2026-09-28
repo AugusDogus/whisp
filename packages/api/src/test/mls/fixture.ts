@@ -52,13 +52,13 @@ CREATE TABLE message_delivery (id TEXT PRIMARY KEY, messageId TEXT, recipientId 
 `);
 await client.executeMultiple(
   await Bun.file(
-    new URL("../../../../db/drizzle/0002_mls.sql", import.meta.url),
+    new URL("../../../../db/drizzle/0003_mls.sql", import.meta.url),
   ).text(),
 );
 await client.executeMultiple(
   await Bun.file(
     new URL(
-      "../../../../db/drizzle/0003_mls_device_names.sql",
+      "../../../../db/drizzle/0004_mls_device_names.sql",
       import.meta.url,
     ),
   ).text(),
@@ -66,7 +66,7 @@ await client.executeMultiple(
 await client.executeMultiple(
   await Bun.file(
     new URL(
-      "../../../../db/drizzle/0004_mls_application_epochs.sql",
+      "../../../../db/drizzle/0005_mls_application_epochs.sql",
       import.meta.url,
     ),
   ).text(),
