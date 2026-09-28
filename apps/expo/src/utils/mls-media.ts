@@ -69,6 +69,7 @@ type WhispMessage = {
   fileUrl: string;
   mimeType?: string;
   thumbhash?: string;
+  conversationId?: string;
 };
 
 async function prepareWhisp(message: WhispMessage, signal?: AbortSignal) {
@@ -135,6 +136,34 @@ export async function readWhispMediaKind(
   if (signal?.aborted) throw new Error("Inbox metadata sync canceled.");
   if (message.mimeType !== ENCRYPTED_MIME)
     return mimeToMediaKind(message.mimeType);
+  // The authenticated inbox already identifies this delivery's direct session.
+  // Resolve its display type locally (syncing MLS only if missing). Never reuse
+  // this shortcut for opening media or acknowledging a view.
+  const conversationId = message.conversationId;
+  if (conversationId && !message.groupId) {
+    const device = await getEncryptionDevice();
+    if (signal?.aborted) throw new Error("Inbox metadata sync canceled.");
+    const descriptor = await withEncryptionDevice(async () => {
+      if (signal?.aborted) throw new Error("Inbox metadata sync canceled.");
+      return readConversationDescriptor(
+        device,
+        conversationId,
+        message.messageId,
+      );
+    }, device);
+    await assertEncryptionDeviceCurrent(device);
+    if (signal?.aborted) throw new Error("Inbox metadata sync canceled.");
+    if (
+      !descriptor ||
+      descriptor.messageId !== message.messageId ||
+      descriptor.senderId !== message.senderId ||
+      descriptor.groupId !== null
+    )
+      throw new Error(
+        "This whisp's type could not be verified. Tap to open it or refresh your inbox.",
+      );
+    return mimeToMediaKind(descriptor.mimeType);
+  }
   const prepared = await prepareWhisp(message, signal);
   await assertEncryptionDeviceCurrent(prepared.device);
   if (signal?.aborted) throw new Error("Inbox metadata sync canceled.");

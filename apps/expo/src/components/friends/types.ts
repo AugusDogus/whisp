@@ -29,6 +29,7 @@ export interface FriendRow {
   hoursRemaining: number | null;
   lastMessageStatus: MessageStatus;
   lastMediaKind: MediaKind | null;
+  incomingMediaState: "ready" | "loading" | "unavailable";
   lastMessageAt: Date | null;
   outboxState: OutboxState | null;
   outboxUpdatedAt: Date | null;

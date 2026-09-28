@@ -19,6 +19,7 @@ interface UseFriendRowsParams {
   outboxStatus: Record<string, OutboxStatus | undefined>;
   selfUserId: string | null;
   mediaKinds?: ReadonlyMap<string, MediaKind>;
+  unavailableMedia?: ReadonlySet<string>;
   sentMediaKinds?: ReadonlyMap<string, MediaKind>;
 }
 
@@ -31,6 +32,7 @@ export function useFriendRows({
   selfUserId,
   mediaKinds,
   sentMediaKinds,
+  unavailableMedia,
 }: UseFriendRowsParams) {
   return useMemo<FriendRow[]>(() => {
     const now = Date.now();
@@ -141,6 +143,13 @@ export function useFriendRows({
         hoursRemaining,
         lastMessageStatus,
         lastMediaKind,
+        incomingMediaState:
+          lastMessageStatus === "received" && lastMediaKind === null
+            ? incoming?.mimeType === "application/vnd.whisp.mls.v1" &&
+              !unavailableMedia?.has(incoming.deliveryId)
+              ? "loading"
+              : "unavailable"
+            : "ready",
         lastMessageAt,
         outboxState,
         outboxUpdatedAt,
@@ -155,5 +164,6 @@ export function useFriendRows({
     selfUserId,
     mediaKinds,
     sentMediaKinds,
+    unavailableMedia,
   ]);
 }

@@ -106,6 +106,22 @@ export function FriendListRow({
               Failed to send
             </Text>
           </View>
+        ) : item.incomingMediaState !== "ready" ? (
+          <View className="mt-0.5 flex-row items-center gap-1.5">
+            {item.incomingMediaState === "loading" ? (
+              <ActivityIndicator
+                size="small"
+                accessibilityLabel="Loading whisp type"
+              />
+            ) : (
+              <Ionicons name="alert-circle-outline" size={14} color="#ef4444" />
+            )}
+            <Text className="text-xs text-foreground">
+              {item.incomingMediaState === "loading"
+                ? "Loading whisp…"
+                : "New whisp · Tap to open"}
+            </Text>
+          </View>
         ) : item.lastMessageStatus ? (
           <View className="mt-0.5 flex-row items-center gap-1.5">
             <MessageStatusIcon

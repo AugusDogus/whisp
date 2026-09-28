@@ -36,9 +36,15 @@ export function useInboxMediaKinds(inbox: InboxMessage[], enabled: boolean) {
     })),
   });
   const mediaKinds = new Map<string, MediaKind>();
+  const unavailable = new Set<string>();
   for (const [index, message] of messages.entries()) {
     const kind = queries[index]?.data;
     if (kind) mediaKinds.set(message.deliveryId, kind);
+    else if (queries[index]?.isError) unavailable.add(message.deliveryId);
   }
-  return { mediaKinds, hasError: queries.some((query) => query.isError) };
+  return {
+    mediaKinds,
+    unavailable,
+    hasError: queries.some((query) => query.isError),
+  };
 }
