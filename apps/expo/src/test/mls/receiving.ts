@@ -9,6 +9,9 @@ import { setTimeout as delay } from "node:timers/promises";
 import { z } from "zod/v4";
 
 import type { InboxMessage } from "~/components/friends/types";
+import { useFriendRows } from "~/hooks/useFriendRows";
+import { mediaKindColor, whispMediaKindKey } from "~/utils/media-kind";
+import { SelfMessages } from "~/utils/self-messages";
 
 import {
   state,
@@ -32,6 +35,139 @@ import {
 } from "./fixture";
 
 export function registerReceivingTests() {
+  test.each(["photo", "video", "unavailable", "cached photo"] as const)(
+    "incoming %s status waits for verified metadata",
+    async (scenario) => {
+      await selfConversation();
+      await seedDescriptor();
+      const kind = scenario === "video" ? "video" : "photo";
+      state.descriptors[messageId] = {
+        ...descriptor,
+        mimeType: kind === "video" ? "video/mp4" : "image/jpeg",
+      };
+      const blocked = gate();
+      state.syncDescriptors = async () => {
+        await blocked.promise;
+        if (scenario === "unavailable") throw new Error("Missing descriptor");
+        return JSON.stringify(state.descriptors);
+      };
+      const inbox: InboxMessage[] = [
+        {
+          ...message,
+          conversationId,
+          createdAt: new Date(),
+          groupId: undefined,
+          thumbhash: undefined,
+        },
+      ];
+      const client = new QueryClient({
+        defaultOptions: { queries: { retryDelay: 0 } },
+      });
+      if (scenario === "cached photo")
+        client.setQueryData(whispMediaKindKey(messageId), "photo");
+      const renders: {
+        kind: string | null;
+        status: string | null;
+        color: string;
+        display: string;
+      }[] = [];
+      let renderer: ReactTestRenderer | undefined;
+      function Harness() {
+        const { mediaKinds, unavailable } = useInboxMediaKinds(inbox, true);
+        const rows = useFriendRows({
+          friends: SelfMessages.friends(
+            [],
+            { id: "alice" },
+            inbox,
+            true,
+            false,
+          ),
+          inbox,
+          hasMedia: false,
+          defaultRecipientId: undefined,
+          outboxStatus: {},
+          selfUserId: "alice",
+          mediaKinds,
+          unavailableMedia: unavailable,
+        });
+        const row = rows[0];
+        if (row)
+          renders.push({
+            kind: row.lastMediaKind,
+            status: row.lastMessageStatus,
+            color: mediaKindColor(row.lastMediaKind),
+            display: row.incomingMediaState,
+          });
+        return null;
+      }
+      try {
+        await act(async () => {
+          renderer = create(
+            createElement(
+              QueryClientProvider,
+              { client },
+              createElement(Harness),
+            ),
+          );
+        });
+        expect(renders[0]?.status).toBe("received");
+        expect(renders[0]?.display).toBe(
+          scenario === "cached photo" ? "ready" : "loading",
+        );
+        await act(async () => {
+          blocked.release();
+          await delay(50);
+        });
+        expect(renders.at(-1)?.kind).toBe(
+          scenario === "unavailable" ? null : kind,
+        );
+        expect(renders.at(-1)?.display).toBe(
+          scenario === "unavailable" ? "unavailable" : "ready",
+        );
+        expect(
+          renders
+            .filter((row) => row.display === "ready")
+            .every((row) => row.color !== "#9ca3af"),
+        ).toBe(true);
+        expect(state.apiCalls).not.toContain("mls.delivery");
+        expect(state.apiCalls).not.toContain("messages.markRead");
+      } finally {
+        blocked.release();
+        await act(async () => renderer?.unmount());
+        client.clear();
+      }
+    },
+  );
+  test("inbox session resolves types without a delivery request but opening still authorizes", async () => {
+    await selfConversation();
+    await seedDescriptor();
+    const located = { ...message, conversationId };
+    state.apiCalls = [];
+    expect(await readWhispMediaKind(located)).toBe("video");
+    expect(state.apiCalls).toEqual([]);
+    expect(state.nativeSyncs).toBe(1);
+    state.cachedDescriptors[messageId] = descriptor;
+    expect(await readWhispMediaKind(located)).toBe("video");
+    expect(state.nativeSyncs).toBe(1);
+    state.handlers["mls.delivery"] = () => {
+      throw new Error("Already read");
+    };
+    await expect(openWhisp(located)).rejects.toThrow("Already read");
+    expect(state.apiCalls).toEqual(["mls.delivery"]);
+  });
+  test("inbox session lookup rejects mismatched descriptor identities", async () => {
+    await selfConversation();
+    for (const mismatch of [
+      { messageId: crypto.randomUUID() },
+      { senderId: "other" },
+      { groupId: "other" },
+    ]) {
+      state.cachedDescriptors[messageId] = { ...descriptor, ...mismatch };
+      await expect(
+        readWhispMediaKind({ ...message, conversationId }),
+      ).rejects.toThrow("type could not be verified");
+    }
+  });
   for (const scenario of [
     "arrival",
     "return from send",

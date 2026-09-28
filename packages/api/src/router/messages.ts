@@ -4,52 +4,18 @@ import { TRPCError } from "@trpc/server";
 import { UTApi } from "uploadthing/server";
 import { z } from "zod/v4";
 
-import { and, eq, inArray, isNull } from "@acme/db";
+import { and, eq, isNull } from "@acme/db";
 import { Message, MessageDelivery } from "@acme/db/schema";
 
+import { getMessageInbox } from "../services/message-inbox";
 import { protectedProcedure } from "../trpc";
 import { PreviewScope } from "../uploadthing/preview-scope";
 import { PreviewUploads } from "../uploadthing/preview-uploads";
 
 export const messagesRouter = {
-  inbox: protectedProcedure.query(async ({ ctx }) => {
-    const me = ctx.session.user.id;
-    const deliveries = await ctx.db
-      .select()
-      .from(MessageDelivery)
-      .where(
-        and(
-          eq(MessageDelivery.recipientId, me),
-          isNull(MessageDelivery.readAt),
-        ),
-      );
-
-    const messageIds = deliveries.map((d) => d.messageId);
-    const messages = messageIds.length
-      ? await ctx.db
-          .select()
-          .from(Message)
-          .where(inArray(Message.id, messageIds))
-      : ([] as (typeof Message.$inferSelect)[]);
-    const idToMessage = new Map(messages.map((m) => [m.id, m] as const));
-
-    return deliveries
-      .map((d) => {
-        const m = idToMessage.get(d.messageId);
-        if (!m) return null;
-        return {
-          deliveryId: d.id,
-          messageId: d.messageId,
-          senderId: m.senderId,
-          groupId: d.groupId ?? undefined,
-          fileUrl: m.fileUrl,
-          mimeType: m.mimeType ?? undefined,
-          thumbhash: m.thumbhash ?? undefined,
-          createdAt: m.createdAt,
-        };
-      })
-      .filter(Boolean);
-  }),
+  inbox: protectedProcedure.query(({ ctx }) =>
+    getMessageInbox(ctx.db, ctx.session.user.id),
+  ),
 
   outbox: protectedProcedure.query(async ({ ctx }) => {
     const me = ctx.session.user.id;

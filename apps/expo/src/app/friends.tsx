@@ -202,6 +202,7 @@ export default function FriendsScreen() {
     outboxStatus,
     selfUserId,
     mediaKinds: mediaTypes.mediaKinds,
+    unavailableMedia: mediaTypes.unavailable,
     sentMediaKinds: useSentMediaKinds(visibleFriends),
   });
 
