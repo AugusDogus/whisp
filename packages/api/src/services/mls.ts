@@ -1,7 +1,7 @@
 /* eslint-disable unicorn/no-array-sort -- This package targets ES2022; every sorted array is newly allocated. */
 import { TRPCError } from "@trpc/server";
 
-import { and, eq, inArray, isNull, or } from "@acme/db";
+import { and, eq, inArray, isNull, or, sql } from "@acme/db";
 import type { db } from "@acme/db/client";
 import {
   Friendship,
@@ -12,7 +12,8 @@ import {
   MlsDraftConversation,
 } from "@acme/db/schema";
 
-import { MessageRecipients } from "./message-recipients";
+import { Blocking } from "./blocking";
+import { ContentAccess } from "./content-access";
 
 export type MlsDatabase = Pick<
   typeof db,
@@ -45,46 +46,36 @@ export async function requireDevice(
   return device;
 }
 
+export function sharingForbidden(): never {
+  throw new TRPCError({
+    code: "FORBIDDEN",
+    message:
+      "Accept the current Terms of Service in Profile before sharing. If you already have, your account may be suspended; contact augie@luebbers.email.",
+  });
+}
+
 export async function resolveRecipients(
   database: MlsDatabase,
   senderId: string,
   input: { recipients?: string[]; groupId?: string },
 ) {
-  const candidates = await candidateRecipients(database, senderId, input);
-  // Terms acceptance, suspensions, and blocks apply when a draft is prepared and
-  // again when its upload is delivered. Blocked group members get no keys.
-  const allowed = await MessageRecipients.resolve(
-    database,
-    senderId,
-    // Group drafts also carry their encrypted recipient list; membership decides.
-    input.groupId
-      ? { groupId: input.groupId }
-      : { recipients: input.recipients },
-  );
-  if (allowed.status === "restricted")
-    throw new TRPCError({
-      code: "FORBIDDEN",
-      message:
-        "Accept the current Terms of Service in Profile before sharing. If you already have, your account may be suspended; contact augie@luebbers.email.",
-    });
-  if (allowed.status !== "ready")
-    mlsConflict(
-      "One or more recipients can no longer receive whisps from you. Refresh and choose recipients again.",
-    );
-  const permitted = new Set(allowed.recipientIds);
-  return candidates.filter((id) => permitted.has(id));
-}
-
-async function candidateRecipients(
-  database: MlsDatabase,
-  senderId: string,
-  input: { recipients?: string[]; groupId?: string },
-) {
   if (input.groupId) {
+    // Blocked or suspended members get no keys or delivery for this whisp.
     const members = await database
       .select()
       .from(GroupMember)
-      .where(eq(GroupMember.groupId, input.groupId));
+      .where(
+        and(
+          eq(GroupMember.groupId, input.groupId),
+          or(
+            eq(GroupMember.userId, senderId),
+            and(
+              Blocking.allowed(senderId, GroupMember.userId),
+              ContentAccess.notSuspended(GroupMember.userId),
+            ),
+          ),
+        ),
+      );
     if (!members.some((m) => m.userId === senderId))
       mlsConflict(
         "You are no longer a member of this group. Refresh your groups before sending.",
@@ -108,11 +99,16 @@ async function candidateRecipients(
     recipients[0] === senderId
   )
     return recipients;
+  const friend = sql`case when ${Friendship.userIdA} = ${senderId} then ${Friendship.userIdB} else ${Friendship.userIdA} end`;
   const friends = await database
     .select()
     .from(Friendship)
     .where(
-      or(eq(Friendship.userIdA, senderId), eq(Friendship.userIdB, senderId)),
+      and(
+        or(eq(Friendship.userIdA, senderId), eq(Friendship.userIdB, senderId)),
+        Blocking.allowed(senderId, friend),
+        ContentAccess.notSuspended(friend),
+      ),
     );
   const friendIds = new Set(
     friends.map((f) => (f.userIdA === senderId ? f.userIdB : f.userIdA)),
@@ -179,7 +175,14 @@ export async function validateDraft(
   draftId: string,
 ) {
   const [row] = await database
-    .select({ draft: MlsDraft, device: MlsDevice })
+    .select({
+      draft: MlsDraft,
+      device: MlsDevice,
+      sharingAllowed:
+        sql<boolean>`${ContentAccess.sharingAllowed(senderId)}`.mapWith(
+          Boolean,
+        ),
+    })
     .from(MlsDraft)
     .leftJoin(
       MlsDevice,
@@ -199,6 +202,7 @@ export async function validateDraft(
     mlsConflict(
       "This encryption device is unavailable. Register this device before sending or opening whisps.",
     );
+  if (!row.sharingAllowed) sharingForbidden();
   const current = await resolveRecipients(database, senderId, {
     recipients: draft.recipients,
     groupId: draft.groupId ?? undefined,

@@ -7,7 +7,7 @@ import { AbuseReports } from "./abuse-reports";
 import { Blocking } from "./blocking";
 import { ContentAccess } from "./content-access";
 import { FriendRequests } from "./friend-requests";
-import { MessageRecipients } from "./message-recipients";
+import { resolveRecipients } from "./mls";
 import { Moderation } from "./moderation";
 import { createSafetyTestDatabase } from "./safety-test-fixture";
 
@@ -33,9 +33,9 @@ test("blocking is idempotent, removes pending contact, and works in both directi
   expect(await database.select().from(schema.FriendRequest)).toHaveLength(0);
   expect(await database.select().from(schema.MessageDelivery)).toHaveLength(0);
   await database.delete(schema.UserBlock);
-  expect(
-    await MessageRecipients.resolve(database, "alice", { recipients: ["bob"] }),
-  ).toEqual({ status: "unavailable" });
+  await expect(
+    resolveRecipients(database, "alice", { recipients: ["bob"] }),
+  ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
 });
 
 test("rejects self-blocking and missing accounts without writing", async () => {
@@ -48,16 +48,18 @@ test("rejects self-blocking and missing accounts without writing", async () => {
   expect(await database.select().from(schema.UserBlock)).toHaveLength(0);
 });
 
-test("an upload started before a block cannot deliver afterward", async () => {
+test("an upload started before a block or suspension cannot deliver afterward", async () => {
   expect(
-    await MessageRecipients.resolve(database, "alice", {
-      recipients: ["bob", "bob"],
-    }),
-  ).toEqual({ status: "ready", recipientIds: ["bob"] });
+    await resolveRecipients(database, "alice", { recipients: ["bob", "bob"] }),
+  ).toEqual(["bob"]);
+  await database.insert(schema.AccountSuspension).values({ userId: "carol" });
+  await expect(
+    resolveRecipients(database, "alice", { recipients: ["carol"] }),
+  ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
   await database.transaction((tx) => Blocking.block(tx, "bob", "alice"));
-  expect(
-    await MessageRecipients.resolve(database, "alice", { recipients: ["bob"] }),
-  ).toEqual({ status: "unavailable" });
+  await expect(
+    resolveRecipients(database, "alice", { recipients: ["bob"] }),
+  ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
 });
 
 test("shared groups exclude blocked recipients and require current membership", async () => {
@@ -70,15 +72,15 @@ test("shared groups exclude blocked recipients and require current membership", 
       ["alice", "bob", "carol"].map((userId) => ({ groupId: "g", userId })),
     );
   await database.transaction((tx) => Blocking.block(tx, "bob", "alice"));
-  expect(
-    await MessageRecipients.resolve(database, "alice", { groupId: "g" }),
-  ).toEqual({ status: "ready", recipientIds: ["carol"] });
+  expect(await resolveRecipients(database, "alice", { groupId: "g" })).toEqual([
+    "carol",
+  ]);
   await database
     .delete(schema.GroupMember)
     .where(eq(schema.GroupMember.userId, "alice"));
-  expect(
-    await MessageRecipients.resolve(database, "alice", { groupId: "g" }),
-  ).toEqual({ status: "unavailable" });
+  await expect(
+    resolveRecipients(database, "alice", { groupId: "g" }),
+  ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
 });
 
 test("sharing requires current acceptance and stops on suspension or account deletion", async () => {
@@ -89,9 +91,6 @@ test("sharing requires current acceptance and stops on suspension or account del
   expect(await ContentAccess.status(database, "alice")).toEqual({
     status: "acceptance_required",
   });
-  expect(
-    await MessageRecipients.resolve(database, "alice", { recipients: ["bob"] }),
-  ).toEqual({ status: "restricted" });
   await database.insert(schema.AccountSuspension).values({ userId: "alice" });
   expect(await ContentAccess.status(database, "alice")).toEqual({
     status: "suspended",
@@ -223,9 +222,6 @@ test("moderation actions are atomic and stop sharing without disabling reports",
   expect(await ContentAccess.status(database, "bob")).toEqual({
     status: "suspended",
   });
-  expect(
-    await MessageRecipients.resolve(database, "bob", { recipients: ["alice"] }),
-  ).toEqual({ status: "restricted" });
   expect(await FriendRequests.send(database, "bob", "carol")).toEqual({
     status: "unavailable",
   });

@@ -37,6 +37,12 @@ export const ContentAccess = {
     return { status: "allowed" } as const;
   },
 
+  // Correlated predicate for queries that already read the sender, so checking
+  // sharing access does not add a round trip.
+  sharingAllowed(userId: string | SQLWrapper) {
+    return sql`(exists (select 1 from ${ContentPolicyAcceptance} where ${ContentPolicyAcceptance.userId} = ${userId} and ${ContentPolicyAcceptance.version} = ${CONTENT_POLICY_VERSION}) and ${ContentAccess.notSuspended(userId)})`;
+  },
+
   // Correlated predicate used again when reading deliveries and sending pushes.
   notSuspended(userId: string | SQLWrapper) {
     return sql`not exists (select 1 from ${AccountSuspension} where ${AccountSuspension.userId} = ${userId} and (${AccountSuspension.expiresAt} is null or ${AccountSuspension.expiresAt} > unixepoch()))`;
