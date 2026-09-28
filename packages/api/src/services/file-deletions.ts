@@ -11,6 +11,16 @@ import { PreviewUploads } from "../uploadthing/preview-uploads";
 type DeleteFile = (key: string) => Promise<{ success: boolean }>;
 
 export const FileDeletions = {
+  // Legacy messages predate fileKey. Only accept the provider's /f/ URL.
+  keyOf(message: { fileKey: string | null; fileUrl: string }) {
+    return (
+      message.fileKey ??
+      /^https:\/\/(?:[^/]+\.)?(?:ufs\.sh|utfs\.io)\/f\/([^/?#]+)(?:[?#].*)?$/.exec(
+        message.fileUrl,
+      )?.[1]
+    );
+  },
+
   async process(
     database: typeof db,
     scope: PreviewScope | undefined,

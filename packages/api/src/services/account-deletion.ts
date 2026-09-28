@@ -11,6 +11,7 @@ import {
 } from "@acme/db/schema";
 
 import { PreviewUploads } from "../uploadthing/preview-uploads";
+import { FileDeletions } from "./file-deletions";
 
 export const AccountDeletion = {
   async remove(
@@ -38,12 +39,7 @@ export const AccountDeletion = {
         .where(eq(BackgroundUploadTestFile.userId, userId));
       const keys = new Set(testFiles.map((file) => file.fileKey));
       for (const message of messages) {
-        // Legacy messages predate fileKey. Only accept the provider's /f/ URL.
-        const legacy =
-          /^https:\/\/(?:[^/]+\.)?(?:ufs\.sh|utfs\.io)\/f\/([^/?#]+)(?:[?#].*)?$/.exec(
-            message.fileUrl,
-          )?.[1];
-        const key = message.fileKey ?? legacy;
+        const key = FileDeletions.keyOf(message);
         if (key) keys.add(key);
       }
       for (const fileKey of keys) {

@@ -433,3 +433,36 @@ test("new arrivals do not starve an older retry", async () => {
   expect(attempted[0]).toBe("retry");
   expect(await database.select().from(schema.FileDeletion)).toHaveLength(1);
 });
+
+test("retention queues media that no viewer will clean up, including after a block", async () => {
+  const old = new Date(Date.now() - 91 * 86400_000);
+  await database.insert(schema.Message).values([
+    {
+      id: "blocked-direct",
+      senderId: "bob",
+      fileKey: "blocked-file",
+      fileUrl: "https://test.ufs.sh/f/blocked-file",
+      createdAt: old,
+    },
+    {
+      id: "legacy-unread",
+      senderId: "bob",
+      fileUrl: "https://utfs.io/f/legacy-file",
+      createdAt: old,
+    },
+  ]);
+  await database.insert(schema.MessageDelivery).values([
+    { messageId: "blocked-direct", recipientId: "alice" },
+    { messageId: "legacy-unread", recipientId: "carol" },
+  ]);
+  // Blocking removes the only delivery, so nobody will open the message.
+  await database.transaction((tx) => Blocking.block(tx, "alice", "bob"));
+  const removed: string[] = [];
+  await SafetyCleanup.run(database, undefined, async (key) => {
+    removed.push(key);
+    return { success: true };
+  });
+  expect(await database.select().from(schema.Message)).toHaveLength(0);
+  expect(removed.sort()).toEqual(["blocked-file", "legacy-file"]);
+  expect(await database.select().from(schema.FileDeletion)).toHaveLength(0);
+});
