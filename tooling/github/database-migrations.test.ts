@@ -174,16 +174,18 @@ test.each(["main", "preview"] as const)(
     const entries =
       history === "main"
         ? journal.entries.slice(0, 3)
-        : journal.entries
+        : // The preview database predates main's session migration and every
+          // migration added after 0005, so its history stops there.
+          journal.entries
             .filter((entry) => entry.tag !== "0002_push_token_sessions")
+            .slice(0, 5)
             .map((entry, idx) => ({
               ...entry,
               idx,
-              when:
-                [
-                  1789800959047, 1789801233176, 1789803323810, 1789957550912,
-                  1790017079446,
-                ][idx] ?? entry.when,
+              when: [
+                1789800959047, 1789801233176, 1789803323810, 1789957550912,
+                1790017079446,
+              ][idx],
             }));
     await writeFile(
       join(migrationsFolder, "meta/_journal.json"),
