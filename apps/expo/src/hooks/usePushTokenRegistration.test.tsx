@@ -17,7 +17,8 @@ const acquire = mock(
   }),
 );
 const network = new Set<(state: { isInternetReachable: boolean }) => void>();
-const rotation = new Set<(token: DevicePushToken) => void>();
+const rotation = native.pushTokenListeners;
+native.getExpoPushToken = acquire;
 mock.module("react-native-permissions", () => ({
   checkNotifications: permission,
 }));
@@ -28,15 +29,6 @@ mock.module("expo-network", () => ({
   ) => {
     network.add(listener);
     return { remove: () => network.delete(listener) };
-  },
-}));
-// Replaces the suite-wide mock, so keep its exports for later test files.
-mock.module("expo-notifications", () => ({
-  dismissAllNotificationsAsync: async () => undefined,
-  getExpoPushTokenAsync: acquire,
-  addPushTokenListener: (listener: (token: DevicePushToken) => void) => {
-    rotation.add(listener);
-    return { remove: () => rotation.delete(listener) };
   },
 }));
 
