@@ -4,10 +4,19 @@ import { drizzle } from "drizzle-orm/libsql";
 
 import * as schema from "@acme/db/schema";
 
-import { getLastReceivedMessages, getLastSentMessages } from "./message-status";
+import {
+  getLastReceivedMessages,
+  getLastSentMessages,
+  getPendingSentDeliveries,
+} from "./message-status";
 
 const client = createClient({ url: ":memory:" });
-const database = drizzle({ client, schema });
+let queries = 0;
+const database = drizzle({
+  client,
+  schema,
+  logger: { logQuery: () => queries++ },
+});
 await client.executeMultiple(`
   CREATE TABLE message (id TEXT PRIMARY KEY, senderId TEXT, mimeType TEXT);
   CREATE TABLE message_delivery (id TEXT PRIMARY KEY, messageId TEXT, recipientId TEXT, groupId TEXT, createdAt INTEGER, readAt INTEGER);
@@ -52,4 +61,29 @@ test("received status identifies the latest direct message from the requested fr
       ],
     ]),
   );
+});
+
+test("pending sent status uses one query and excludes read, group, and other-sender deliveries", async () => {
+  await client.executeMultiple(`
+    INSERT INTO message VALUES ('read', 'me', 'image/jpeg'), ('foreign', 'stranger', 'image/jpeg');
+    INSERT INTO message_delivery VALUES
+      ('read-delivery', 'read', 'read-only', NULL, 6, 7),
+      ('foreign-delivery', 'foreign', 'foreign-only', NULL, 6, NULL),
+      ('group-only', 'group-video', 'group-only', 'group', 6, NULL),
+      ('orphan', 'missing', 'orphan-only', NULL, 6, NULL);
+  `);
+  queries = 0;
+  expect(
+    await getPendingSentDeliveries(database, "me", [
+      "friend",
+      "read-only",
+      "foreign-only",
+      "group-only",
+      "orphan-only",
+    ]),
+  ).toEqual(new Set(["friend"]));
+  expect(queries).toBe(1);
+  queries = 0;
+  expect(await getPendingSentDeliveries(database, "me", [])).toEqual(new Set());
+  expect(queries).toBe(0);
 });

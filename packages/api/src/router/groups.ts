@@ -84,39 +84,58 @@ export const groupsRouter = {
       }[];
     }
 
-    const [groups, groupToMembers] = await Promise.all([
+    const [
+      groups,
+      groupToMembers,
+      unreadDeliveries,
+      lastMessages,
+      lastSentMessages,
+    ] = await Promise.all([
       ctx.db.select().from(Group).where(inArray(Group.id, groupIds)),
       getGroupMemberAvatars(ctx.db, groupIds),
-    ]);
-
-    const groupToUnread = new Map<string, number>();
-    const unreadDeliveries = await ctx.db
-      .select({
-        groupId: MessageDelivery.groupId,
-      })
-      .from(MessageDelivery)
-      .where(
-        and(
-          eq(MessageDelivery.recipientId, me),
-          isNull(MessageDelivery.readAt),
-          inArray(MessageDelivery.groupId, groupIds),
+      ctx.db
+        .select({
+          groupId: MessageDelivery.groupId,
+        })
+        .from(MessageDelivery)
+        .where(
+          and(
+            eq(MessageDelivery.recipientId, me),
+            isNull(MessageDelivery.readAt),
+            inArray(MessageDelivery.groupId, groupIds),
+          ),
         ),
-      );
-
+      ctx.db
+        .select({
+          groupId: Message.groupId,
+          createdAt: Message.createdAt,
+        })
+        .from(Message)
+        .where(
+          and(inArray(Message.groupId, groupIds), isNull(Message.deletedAt)),
+        )
+        .orderBy(desc(Message.createdAt)),
+      ctx.db
+        .select({
+          groupId: Message.groupId,
+          senderId: Message.senderId,
+        })
+        .from(Message)
+        .where(
+          and(
+            inArray(Message.groupId, groupIds),
+            isNull(Message.deletedAt),
+            eq(Message.senderId, me),
+          ),
+        )
+        .orderBy(desc(Message.createdAt)),
+    ]);
+    const groupToUnread = new Map<string, number>();
     for (const d of unreadDeliveries) {
       if (d.groupId) {
         groupToUnread.set(d.groupId, (groupToUnread.get(d.groupId) ?? 0) + 1);
       }
     }
-
-    const lastMessages = await ctx.db
-      .select({
-        groupId: Message.groupId,
-        createdAt: Message.createdAt,
-      })
-      .from(Message)
-      .where(and(inArray(Message.groupId, groupIds), isNull(Message.deletedAt)))
-      .orderBy(desc(Message.createdAt));
 
     const groupToLastAt = new Map<string, Date>();
     for (const m of lastMessages) {
@@ -124,21 +143,6 @@ export const groupsRouter = {
         groupToLastAt.set(m.groupId, m.createdAt);
       }
     }
-
-    const lastSentMessages = await ctx.db
-      .select({
-        groupId: Message.groupId,
-        senderId: Message.senderId,
-      })
-      .from(Message)
-      .where(
-        and(
-          inArray(Message.groupId, groupIds),
-          isNull(Message.deletedAt),
-          eq(Message.senderId, me),
-        ),
-      )
-      .orderBy(desc(Message.createdAt));
 
     const groupToLastSentAt = new Map<string, Date>();
     for (const m of lastSentMessages) {
@@ -358,8 +362,17 @@ export const groupsRouter = {
         }[];
 
       const deliveries = await ctx.db
-        .select()
+        .select({
+          deliveryId: MessageDelivery.id,
+          messageId: Message.id,
+          senderId: Message.senderId,
+          fileUrl: Message.fileUrl,
+          mimeType: Message.mimeType,
+          thumbhash: Message.thumbhash,
+          createdAt: Message.createdAt,
+        })
         .from(MessageDelivery)
+        .innerJoin(Message, eq(Message.id, MessageDelivery.messageId))
         .where(
           and(
             eq(MessageDelivery.recipientId, me),
@@ -368,38 +381,10 @@ export const groupsRouter = {
           ),
         );
 
-      const messageIds = deliveries.map((d) => d.messageId);
-      const messages =
-        messageIds.length > 0
-          ? await ctx.db
-              .select()
-              .from(Message)
-              .where(inArray(Message.id, messageIds))
-          : ([] as (typeof Message.$inferSelect)[]);
-      const idToMessage = new Map(messages.map((m) => [m.id, m] as const));
-
-      return deliveries
-        .map((d) => {
-          const m = idToMessage.get(d.messageId);
-          if (!m) return null;
-          return {
-            deliveryId: d.id,
-            messageId: d.messageId,
-            senderId: m.senderId,
-            fileUrl: m.fileUrl,
-            mimeType: m.mimeType ?? undefined,
-            thumbhash: m.thumbhash ?? undefined,
-            createdAt: m.createdAt,
-          };
-        })
-        .filter(Boolean) as {
-        deliveryId: string;
-        messageId: string;
-        senderId: string;
-        fileUrl: string;
-        mimeType?: string;
-        thumbhash?: string;
-        createdAt: Date;
-      }[];
+      return deliveries.map((delivery) => ({
+        ...delivery,
+        mimeType: delivery.mimeType ?? undefined,
+        thumbhash: delivery.thumbhash ?? undefined,
+      }));
     }),
 } satisfies TRPCRouterRecord;
