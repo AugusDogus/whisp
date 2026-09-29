@@ -2,6 +2,7 @@ import { View } from "react-native";
 
 import { Switch } from "heroui-native/switch";
 
+import { SettingsGroup } from "~/components/settings-group";
 import { Text } from "~/components/ui/text";
 import { isPreviewApp, usePreviewSettings } from "~/hooks/usePreviewSettings";
 
@@ -11,9 +12,8 @@ export function PreviewSettings() {
   if (!isPreviewApp) return null;
 
   return (
-    <View className="bg-surface gap-4 rounded-xl p-4">
-      <Text className="text-base font-semibold">Developer settings</Text>
-      <View className="flex-row items-center gap-4">
+    <SettingsGroup title="Developer settings">
+      <View className="flex-row items-center gap-4 px-4 py-3">
         <View className="flex-1 gap-1">
           <Text className="text-sm">Send to myself</Text>
           <Text className="text-xs text-muted">
@@ -27,10 +27,13 @@ export function PreviewSettings() {
         />
       </View>
       {error && (
-        <Text accessibilityRole="alert" className="text-danger text-sm">
+        <Text
+          accessibilityRole="alert"
+          className="text-danger px-4 py-3 text-sm"
+        >
           {error}
         </Text>
       )}
-    </View>
+    </SettingsGroup>
   );
 }
