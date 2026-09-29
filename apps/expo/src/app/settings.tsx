@@ -1,52 +1,81 @@
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
-import { Pressable, useColorScheme, View } from "react-native";
+import { Linking } from "react-native";
 
-import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 
+import { AccountSettings } from "~/components/account-settings";
+import { BuildInfo } from "~/components/build-info";
+import { NotificationSettings } from "~/components/notification-settings";
+import { SendToMyselfRow } from "~/components/preview-settings";
+import { SettingsGroup, SettingsRow } from "~/components/settings-group";
 import { SettingsPage } from "~/components/settings-page";
-import { Text } from "~/components/ui/text";
+import { TermsAcceptance } from "~/components/terms-acceptance";
+import { isPreviewApp } from "~/hooks/usePreviewSettings";
 import type { RootStackParamList } from "~/navigation/types";
+
+const isBackgroundUploadTestEnabled =
+  process.env.EXPO_PUBLIC_ENABLE_BACKGROUND_UPLOAD_TEST_PAGE === "true";
 
 export default function SettingsScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const colorScheme = useColorScheme();
-  const iconColor = colorScheme === "dark" ? "#aaa" : "#666";
   return (
     <SettingsPage title="Settings">
-      <Text accessibilityRole="header" className="text-base font-semibold">
-        Security
-      </Text>
-      <View className="gap-3">
-        <Pressable
-          accessibilityRole="button"
+      <NotificationSettings />
+
+      <SettingsGroup title="Privacy & security">
+        <SettingsRow
+          label="Blocked accounts"
+          end={{ kind: "navigate" }}
+          onPress={() => navigation.navigate("BlockedAccounts")}
+        />
+        <SettingsRow
+          label="Devices"
+          end={{ kind: "navigate" }}
           onPress={() => navigation.navigate("Devices")}
-          className="bg-surface flex-row items-center gap-3 rounded-xl p-4 active:opacity-70"
-        >
-          <View className="flex-1 gap-1">
-            <Text className="text-base font-semibold">Devices</Text>
-            <Text className="text-sm text-muted">
-              Manage which devices receive your whisps
-            </Text>
-          </View>
-          <Ionicons name="chevron-forward" size={20} color={iconColor} />
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
+        />
+        <SettingsRow
+          label="Encryption recovery"
+          end={{ kind: "navigate" }}
           onPress={() => navigation.navigate("EncryptionRecovery")}
-          className="bg-surface flex-row items-center gap-3 rounded-xl p-4 active:opacity-70"
-        >
-          <View className="flex-1 gap-1">
-            <Text className="text-base font-semibold">Encryption recovery</Text>
-            <Text className="text-sm text-muted">
-              Get help with missing or damaged encryption keys
-            </Text>
-          </View>
-          <Ionicons name="chevron-forward" size={20} color={iconColor} />
-        </Pressable>
-      </View>
+        />
+      </SettingsGroup>
+
+      <SettingsGroup title="Developer">
+        {isPreviewApp && <SendToMyselfRow />}
+        {__DEV__ && (
+          <SettingsRow
+            label="MLS bridge test"
+            end={{ kind: "navigate" }}
+            onPress={() => navigation.navigate("MlsTest")}
+          />
+        )}
+        {isBackgroundUploadTestEnabled && (
+          <SettingsRow
+            label="Background upload test"
+            end={{ kind: "navigate" }}
+            onPress={() => navigation.navigate("BackgroundUploadTest")}
+          />
+        )}
+      </SettingsGroup>
+
+      <SettingsGroup title="About">
+        <BuildInfo />
+        <SettingsRow
+          label="Terms of Service"
+          end={{ kind: "external" }}
+          onPress={() => void Linking.openURL("https://whisp.chat/terms")}
+        />
+        <SettingsRow
+          label="Privacy Policy"
+          end={{ kind: "external" }}
+          onPress={() => void Linking.openURL("https://whisp.chat/privacy")}
+        />
+      </SettingsGroup>
+      <TermsAcceptance />
+
+      <AccountSettings />
     </SettingsPage>
   );
 }
