@@ -75,7 +75,6 @@ export function BuildInfo() {
         <Dialog.Portal>
           <Dialog.Overlay />
           <Dialog.Content>
-            <Dialog.Close />
             <Dialog.Title>Environment</Dialog.Title>
             <Dialog.Description>
               Current environment configuration
