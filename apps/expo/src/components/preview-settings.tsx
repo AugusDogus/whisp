@@ -8,6 +8,7 @@ export function SendToMyselfRow() {
 
   return (
     <SettingsRow
+      icon="paper-plane"
       label="Send to myself"
       description="Show Me (testing) when choosing recipients. Saved on this device."
       alert={error ?? undefined}

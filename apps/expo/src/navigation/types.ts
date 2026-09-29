@@ -27,7 +27,8 @@ export interface RootStackParamList extends ParamListBase {
   CreateGroup: undefined;
   BackgroundUploadTest: undefined;
   MlsTest: undefined;
-  Settings: undefined;
+  Account: undefined;
+  Notifications: undefined;
   Devices: undefined;
   EncryptionRecovery: undefined;
   BlockedAccounts: undefined;

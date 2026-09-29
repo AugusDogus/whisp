@@ -48,7 +48,7 @@ export function NotificationSettings() {
   };
 
   return (
-    <SettingsGroup title="Notifications">
+    <SettingsGroup title="Push notifications">
       <SettingsRow
         label="New whisps"
         end={{
