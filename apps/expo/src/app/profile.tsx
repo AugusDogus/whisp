@@ -1,6 +1,7 @@
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
-import { useRef, useState } from "react";
+import type { ComponentProps, ReactNode } from "react";
+import { Children, useRef, useState } from "react";
 import {
   Alert,
   Linking,
@@ -95,295 +96,272 @@ export default function ProfileScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-background">
-      <View className="h-full w-full">
-        <View className="items-center px-4 py-3">
-          <Text className="text-lg font-semibold">Profile</Text>
-        </View>
-
-        <ScrollView
-          className="flex-1 px-4"
-          scrollEventThrottle={100}
-          onScroll={({ nativeEvent }) => {
-            setProfileVisible(
-              nativeEvent.contentOffset.y < profileHeight.current,
-            );
+      <ScrollView
+        className="flex-1 px-4"
+        scrollEventThrottle={100}
+        onScroll={({ nativeEvent }) => {
+          setProfileVisible(
+            nativeEvent.contentOffset.y < profileHeight.current,
+          );
+        }}
+      >
+        {/* Avatar and info */}
+        <View
+          className="gap-3 pt-2"
+          onLayout={({ nativeEvent }) => {
+            profileHeight.current = nativeEvent.layout.height;
           }}
         >
-          {/* Avatar and info */}
-          <View
-            className="gap-3 pt-2"
-            onLayout={({ nativeEvent }) => {
-              profileHeight.current = nativeEvent.layout.height;
-            }}
-          >
-            {session?.user && (
-              <DiscordProfileCard
-                key={session.user.id}
-                userId={session.user.id}
-                name={session.user.name}
-                image={session.user.image ?? null}
-                active={isFocused && profileVisible}
-              />
-            )}
-            {session?.user.email && (
-              <Text className="text-center text-sm text-muted">
-                {session.user.email}
-              </Text>
-            )}
-          </View>
+          {session?.user && (
+            <DiscordProfileCard
+              key={session.user.id}
+              userId={session.user.id}
+              name={session.user.name}
+              image={session.user.image ?? null}
+              active={isFocused && profileVisible}
+            />
+          )}
+          {session?.user.email && (
+            <Text className="text-center text-sm text-muted">
+              {session.user.email}
+            </Text>
+          )}
+        </View>
 
-          {/* Cards */}
-          <View className="mt-8 gap-3 pb-4">
-            <Pressable
+        <View className="mt-6 gap-4 pb-6">
+          <Group>
+            <LinkRow
               accessibilityRole="button"
-              onPress={() => navigation.navigate("Settings")}
-              className="bg-surface flex-row items-center gap-3 rounded-xl p-4 active:opacity-70"
-            >
-              <View className="bg-default size-10 items-center justify-center rounded-full">
+              icon={
                 <Ionicons name="settings-outline" size={20} color={iconColor} />
-              </View>
-              <Text className="flex-1 text-base font-semibold">Settings</Text>
-              <Ionicons name="chevron-forward" size={18} color={iconColor} />
-            </Pressable>
-            {/* Discord */}
-            <Pressable
+              }
+              label="Settings"
+              trailing="chevron-forward"
+              iconColor={iconColor}
+              onPress={() => navigation.navigate("Settings")}
+            />
+            <LinkRow
+              ph-no-capture
+              accessibilityRole="button"
+              icon={<Ionicons name="ban" size={20} color={iconColor} />}
+              label="Blocked accounts"
+              trailing="chevron-forward"
+              iconColor={iconColor}
+              onPress={() => navigation.navigate("BlockedAccounts")}
+            />
+            <LinkRow
+              accessibilityRole="link"
+              icon={
+                <MaterialIcons name="discord" size={20} color={iconColor} />
+              }
+              label="Join our Discord"
+              trailing="open-outline"
+              iconColor={iconColor}
               onPress={() => {
                 void Linking.openURL("https://discord.gg/DkFmaDDqgW");
               }}
-              className="bg-surface rounded-xl p-4 active:opacity-70"
-            >
-              <View className="flex-row items-center gap-3">
-                <View className="bg-default size-10 items-center justify-center rounded-full">
-                  <MaterialIcons name="discord" size={20} color={iconColor} />
-                </View>
-                <View className="flex-1">
-                  <Text className="text-base font-semibold">
-                    Join our Discord
-                  </Text>
-                  <Text className="text-xs text-muted">
-                    Connect with the community
-                  </Text>
-                </View>
-                <Ionicons name="open-outline" size={18} color={iconColor} />
-              </View>
-            </Pressable>
+            />
+          </Group>
 
-            {/* Notifications */}
-            <View className="bg-surface rounded-xl p-4">
-              <View className="flex-row items-center gap-3">
-                <View className="bg-default size-10 items-center justify-center rounded-full">
-                  <Ionicons name="notifications" size={20} color={iconColor} />
-                </View>
-                <View className="flex-1">
-                  <Text className="text-base font-semibold">Notifications</Text>
-                  <Text className="text-xs text-muted">
-                    Manage push notifications
-                  </Text>
-                </View>
-              </View>
-              <View className="mt-4 gap-4">
-                <View className="flex-row items-center justify-between">
-                  <Text className="text-sm">New whisps</Text>
-                  <Switch
-                    isSelected={preferences.notifyOnMessages}
-                    onSelectedChange={() => handleToggle("notifyOnMessages")}
-                  />
-                </View>
-                <View className="flex-row items-center justify-between">
-                  <Text className="text-sm">Friend requests</Text>
-                  <Switch
-                    isSelected={preferences.notifyOnFriendActivity}
-                    onSelectedChange={() =>
-                      handleToggle("notifyOnFriendActivity")
-                    }
-                  />
-                </View>
-              </View>
+          <Group title="Notifications">
+            <View className="flex-row items-center justify-between px-4 py-3">
+              <Text className="text-sm">New whisps</Text>
+              <Switch
+                isSelected={preferences.notifyOnMessages}
+                onSelectedChange={() => handleToggle("notifyOnMessages")}
+              />
             </View>
+            <View className="flex-row items-center justify-between px-4 py-3">
+              <Text className="text-sm">Friend requests</Text>
+              <Switch
+                isSelected={preferences.notifyOnFriendActivity}
+                onSelectedChange={() => handleToggle("notifyOnFriendActivity")}
+              />
+            </View>
+          </Group>
 
-            {/* Privacy */}
+          <PreviewSettings />
+
+          <Group title="About">
+            <BuildInfo />
             <Pressable
-              ph-no-capture
-              onPress={() => navigation.navigate("BlockedAccounts")}
-              className="bg-surface rounded-xl p-4 active:opacity-70"
+              accessibilityRole="link"
+              onPress={() => {
+                void Linking.openURL("https://whisp.chat/terms");
+              }}
+              className="flex-row items-center justify-between px-4 py-3 active:opacity-70"
             >
-              <View className="flex-row items-center gap-3">
-                <View className="bg-default size-10 items-center justify-center rounded-full">
-                  <Ionicons name="ban" size={20} color={iconColor} />
-                </View>
-                <View className="flex-1">
-                  <Text className="text-base font-semibold">
-                    Blocked accounts
-                  </Text>
-                  <Text className="text-xs text-muted">
-                    Manage who can contact you
-                  </Text>
-                </View>
-                <Ionicons name="chevron-forward" size={16} color={iconColor} />
-              </View>
+              <Text className="text-sm">Terms of Service</Text>
+              <Ionicons name="open-outline" size={14} color={iconColor} />
             </Pressable>
+            <Pressable
+              accessibilityRole="link"
+              onPress={() => {
+                void Linking.openURL("https://whisp.chat/privacy");
+              }}
+              className="flex-row items-center justify-between px-4 py-3 active:opacity-70"
+            >
+              <Text className="text-sm">Privacy Policy</Text>
+              <Ionicons name="open-outline" size={14} color={iconColor} />
+            </Pressable>
+          </Group>
+          <TermsAcceptance />
 
-            <PreviewSettings />
+          {__DEV__ ? (
+            <Button
+              variant="secondary"
+              onPress={() => navigation.navigate("MlsTest")}
+            >
+              MLS bridge test
+            </Button>
+          ) : null}
 
-            {/* About */}
-            <View className="bg-surface rounded-xl p-4">
-              <View className="flex-row items-center gap-3">
-                <View className="bg-default size-10 items-center justify-center rounded-full">
-                  <Ionicons
-                    name="information-circle"
-                    size={20}
-                    color={iconColor}
-                  />
-                </View>
-                <View className="flex-1">
-                  <Text className="text-base font-semibold">About</Text>
-                  <Text className="text-xs text-muted">
-                    App information and legal
-                  </Text>
-                </View>
-              </View>
-              <View className="mt-4 gap-3">
-                <BuildInfo />
-                <Pressable
-                  onPress={() => {
-                    void Linking.openURL("https://whisp.chat/terms");
-                  }}
-                  className="flex-row items-center justify-between active:opacity-70"
-                >
-                  <Text className="text-sm">Terms of Service</Text>
-                  <Ionicons name="open-outline" size={14} color={iconColor} />
-                </Pressable>
-                <Pressable
-                  onPress={() => {
-                    void Linking.openURL("https://whisp.chat/privacy");
-                  }}
-                  className="flex-row items-center justify-between active:opacity-70"
-                >
-                  <Text className="text-sm">Privacy Policy</Text>
-                  <Ionicons name="open-outline" size={14} color={iconColor} />
-                </Pressable>
-                <TermsAcceptance />
-              </View>
-            </View>
-
-            {__DEV__ ? (
-              <Button
-                variant="secondary"
-                onPress={() => navigation.navigate("MlsTest")}
-              >
-                MLS bridge test
-              </Button>
-            ) : null}
-
-            {isBackgroundUploadTestEnabled ? (
-              <Pressable
+          {isBackgroundUploadTestEnabled ? (
+            <Group>
+              <LinkRow
+                accessibilityRole="button"
+                icon={<Ionicons name="flask" size={20} color={iconColor} />}
+                label="Background Upload Test"
+                trailing="chevron-forward"
+                iconColor={iconColor}
                 onPress={() => navigation.navigate("BackgroundUploadTest")}
-                className="bg-surface rounded-xl p-4 active:opacity-70"
-              >
-                <View className="flex-row items-center gap-3">
-                  <View className="bg-default size-10 items-center justify-center rounded-full">
-                    <Ionicons name="flask" size={20} color={iconColor} />
-                  </View>
-                  <View className="flex-1">
-                    <Text className="text-base font-semibold">
-                      Background Upload Test
-                    </Text>
-                    <Text className="text-xs text-muted">
-                      Upload files without sending whisps
-                    </Text>
-                  </View>
-                  <Ionicons
-                    name="chevron-forward"
-                    size={16}
-                    color={iconColor}
-                  />
-                </View>
-              </Pressable>
-            ) : null}
-          </View>
-        </ScrollView>
+              />
+            </Group>
+          ) : null}
 
-        {/* Bottom actions */}
-        <View className="gap-2 px-4 pb-4">
-          <Dialog isOpen={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-            <Dialog.Trigger asChild>
-              <Button variant="ghost" className="w-full">
-                Delete Account
-              </Button>
-            </Dialog.Trigger>
-            <Dialog.Portal>
-              <Dialog.Overlay />
-              <Dialog.Content>
-                <Dialog.Title>Delete Account</Dialog.Title>
-                <Dialog.Description>
-                  Are you sure you want to delete your whisp account? This will
-                  remove your account, messages, groups you created,
-                  friendships, and reports involving you. Cloud files are queued
-                  for deletion. This action cannot be undone.
-                  {"\n\n"}A confirmed serious-abuse decision may retain a
-                  protected account identifier until its suspension expires.
-                  Contact augie@luebbers.email to appeal or object to retention.
-                  {"\n\n"}
-                  Note: This only deletes your whisp account. Your Discord
-                  account will remain active.
-                </Dialog.Description>
-                {deleteAccount.error && (
-                  <Text accessibilityRole="alert" className="text-danger">
-                    Account deletion could not be confirmed. Try again. If you
-                    are signed out, contact augie@luebbers.email for help.
-                  </Text>
-                )}
-                <View className="flex-row justify-end gap-3 pt-4">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onPress={() => setDeleteDialogOpen(false)}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    variant="danger"
-                    size="sm"
-                    isDisabled={deleteAccount.isPending}
-                    onPress={() => deleteAccount.mutate()}
-                  >
-                    Delete Account
-                  </Button>
-                </View>
-              </Dialog.Content>
-            </Dialog.Portal>
-          </Dialog>
+          <View className="gap-2">
+            <Dialog
+              isOpen={deleteDialogOpen}
+              onOpenChange={setDeleteDialogOpen}
+            >
+              <Dialog.Trigger asChild>
+                <Button variant="ghost" className="w-full">
+                  Delete Account
+                </Button>
+              </Dialog.Trigger>
+              <Dialog.Portal>
+                <Dialog.Overlay />
+                <Dialog.Content>
+                  <Dialog.Title>Delete Account</Dialog.Title>
+                  <Dialog.Description>
+                    Are you sure you want to delete your whisp account? This
+                    will remove your account, messages, groups you created,
+                    friendships, and reports involving you. Cloud files are
+                    queued for deletion. This action cannot be undone.
+                    {"\n\n"}A confirmed serious-abuse decision may retain a
+                    protected account identifier until its suspension expires.
+                    Contact augie@luebbers.email to appeal or object to
+                    retention.
+                    {"\n\n"}
+                    Note: This only deletes your whisp account. Your Discord
+                    account will remain active.
+                  </Dialog.Description>
+                  {deleteAccount.error && (
+                    <Text accessibilityRole="alert" className="text-danger">
+                      Account deletion could not be confirmed. Try again. If you
+                      are signed out, contact augie@luebbers.email for help.
+                    </Text>
+                  )}
+                  <View className="flex-row justify-end gap-3 pt-4">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onPress={() => setDeleteDialogOpen(false)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      isDisabled={deleteAccount.isPending}
+                      onPress={() => deleteAccount.mutate()}
+                    >
+                      Delete Account
+                    </Button>
+                  </View>
+                </Dialog.Content>
+              </Dialog.Portal>
+            </Dialog>
 
-          <Button
-            variant="secondary"
-            isDisabled={isSigningOut}
-            onPress={async () => {
-              setIsSigningOut(true);
-              try {
-                const result = await authClient.signOut();
-                if (result.error) {
+            <Button
+              variant="secondary"
+              isDisabled={isSigningOut}
+              onPress={async () => {
+                setIsSigningOut(true);
+                try {
+                  const result = await authClient.signOut();
+                  if (result.error) {
+                    Alert.alert(
+                      "Could not sign out",
+                      "Please check your connection and try again.",
+                    );
+                  }
+                } catch (error) {
+                  console.error("Sign-out failed:", error);
                   Alert.alert(
                     "Could not sign out",
                     "Please check your connection and try again.",
                   );
+                } finally {
+                  setIsSigningOut(false);
                 }
-              } catch (error) {
-                console.error("Sign-out failed:", error);
-                Alert.alert(
-                  "Could not sign out",
-                  "Please check your connection and try again.",
-                );
-              } finally {
-                setIsSigningOut(false);
-              }
-            }}
-            className="w-full"
-          >
-            Sign Out
-          </Button>
+              }}
+              className="w-full"
+            >
+              Sign Out
+            </Button>
+          </View>
         </View>
-      </View>
+      </ScrollView>
     </SafeAreaView>
+  );
+}
+
+/** Rounded card whose children are single rows separated by hairlines. */
+function Group({ title, children }: { title?: string; children: ReactNode }) {
+  return (
+    <View className="gap-2">
+      {title && (
+        <Text
+          accessibilityRole="header"
+          className="px-1 text-sm font-semibold text-muted"
+        >
+          {title}
+        </Text>
+      )}
+      <View className="bg-surface overflow-hidden rounded-xl">
+        {Children.toArray(children).map((child, index) => (
+          <View key={index}>
+            {index > 0 && <View className="bg-separator mx-4 h-px" />}
+            {child}
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function LinkRow({
+  icon,
+  label,
+  trailing,
+  iconColor,
+  ...props
+}: ComponentProps<typeof Pressable> & {
+  icon: ReactNode;
+  label: string;
+  trailing: "chevron-forward" | "open-outline";
+  iconColor: string;
+}) {
+  return (
+    <Pressable
+      {...props}
+      className="flex-row items-center gap-3 px-4 py-3 active:opacity-70"
+    >
+      {icon}
+      <Text className="flex-1 text-base">{label}</Text>
+      <Ionicons name={trailing} size={16} color={iconColor} />
+    </Pressable>
   );
 }
 
@@ -442,7 +420,7 @@ function BuildInfo() {
     <>
       <Pressable
         onPress={handleTap}
-        className="flex-row items-center justify-between active:opacity-70"
+        className="flex-row items-center justify-between px-4 py-3 active:opacity-70"
       >
         <Text className="text-sm">Version</Text>
         <Text className="text-sm tabular-nums text-muted">
