@@ -79,6 +79,14 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO",
       ],
+      // Saving captures does not require reading the user's media library.
+      blockedPermissions: [
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.READ_MEDIA_AUDIO",
+        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
+      ],
     },
     extra: {
       eas: {

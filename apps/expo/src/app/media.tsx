@@ -7,6 +7,7 @@ import {
   Alert,
   BackHandler,
   Keyboard,
+  Platform,
   Pressable,
   StyleSheet,
   View,
@@ -313,7 +314,9 @@ export default function MediaScreen() {
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
       // Request permissions
-      const { status } = await MediaLibrary.requestPermissionsAsync();
+      const { status } = await MediaLibrary.requestPermissionsAsync(
+        Platform.OS === "android",
+      );
       if (status !== MediaLibrary.PermissionStatus.GRANTED) {
         Alert.alert(
           "Permission Required",
