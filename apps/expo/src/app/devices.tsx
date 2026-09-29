@@ -5,6 +5,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "heroui-native/button";
 import { Dialog } from "heroui-native/dialog";
+import { Skeleton } from "heroui-native/skeleton";
 
 import { SettingsPage } from "~/components/settings-page";
 import { Text } from "~/components/ui/text";
@@ -37,6 +38,7 @@ export default function DevicesScreen() {
     },
   });
   const { refetch: refetchIdentity } = identity;
+  const isLoading = devices.isLoading || identity.isPending;
   useFocusEffect(
     useCallback(() => {
       void refetchIdentity();
@@ -67,42 +69,51 @@ export default function DevicesScreen() {
           </Button>
         </View>
       )}
-      {(devices.isLoading || identity.isPending) && (
-        <Text className="text-sm text-muted">Loading devices…</Text>
-      )}
-      {devices.data?.map((device) => {
-        const current = identity.isSuccess && device.id === identity.data;
-        const name =
-          device.name ?? (current ? "This device" : "Unnamed device");
-        return (
+      {isLoading &&
+        [0, 1].map((index) => (
           <View
-            key={device.id}
-            className="bg-surface flex-row items-center gap-3 rounded-xl p-4"
+            key={index}
+            accessibilityLabel={index === 0 ? "Loading devices" : undefined}
+            className="bg-surface gap-2 rounded-xl p-4"
           >
-            <View className="flex-1 gap-1">
-              <Text className="font-semibold">{name}</Text>
-              {current && device.name && (
-                <Text className="text-sm text-muted">This device</Text>
-              )}
-              <Text className="text-xs text-muted">
-                Added {device.createdAt.toLocaleString()}
-              </Text>
-            </View>
-            {identity.isSuccess && !current && (
-              <Button
-                variant="secondary"
-                accessibilityLabel={`Remove ${name}`}
-                onPress={() => {
-                  revoke.reset();
-                  setSelected({ id: device.id, name });
-                }}
-              >
-                <Button.Label>Remove</Button.Label>
-              </Button>
-            )}
+            <Skeleton className="h-4 w-36 rounded" />
+            <Skeleton className="h-3 w-48 rounded" />
           </View>
-        );
-      })}
+        ))}
+      {!isLoading &&
+        devices.data?.map((device) => {
+          const current = identity.isSuccess && device.id === identity.data;
+          const name =
+            device.name ?? (current ? "This device" : "Unnamed device");
+          return (
+            <View
+              key={device.id}
+              className="bg-surface flex-row items-center gap-3 rounded-xl p-4"
+            >
+              <View className="flex-1 gap-1">
+                <Text className="font-semibold">{name}</Text>
+                {current && device.name && (
+                  <Text className="text-sm text-muted">This device</Text>
+                )}
+                <Text className="text-xs text-muted">
+                  Added {device.createdAt.toLocaleString()}
+                </Text>
+              </View>
+              {identity.isSuccess && !current && (
+                <Button
+                  variant="secondary"
+                  accessibilityLabel={`Remove ${name}`}
+                  onPress={() => {
+                    revoke.reset();
+                    setSelected({ id: device.id, name });
+                  }}
+                >
+                  <Button.Label>Remove</Button.Label>
+                </Button>
+              )}
+            </View>
+          );
+        })}
       {devices.data?.some((device) => !device.name) && (
         <Text className="text-sm text-muted">
           Older installations will show their model name after opening the

@@ -33,29 +33,25 @@ export default function EncryptionRecoveryScreen() {
         message:
           error instanceof Error
             ? error.message
-            : "Encryption could not be reset. Try again.",
+            : "Couldn't reset your encryption keys. Check your connection and try again.",
       });
     }
   };
   return (
     <SettingsPage title="Encryption recovery">
       <View className="bg-surface gap-3 rounded-xl p-4">
-        <Text className="text-base font-semibold">
-          Reset this device's encryption
+        <Text className="text-base font-semibold">Reset encryption keys</Text>
+        <Text className="text-sm text-muted">
+          If whisp says your encryption keys are missing or damaged, resetting
+          gives this device new keys so you can send and receive whisps again.
         </Text>
         <Text className="text-sm text-muted">
-          Only use this if whisp reports missing or damaged encryption keys.
-          Resetting creates new keys for this device. It does not recover old
-          whisps or fix sign-in problems.
-        </Text>
-        <Text className="text-sm text-muted">
-          Existing whisps will become unreadable on this device. Your other
-          devices keep their keys. You can send and receive new whisps after
-          resetting.
+          Whisps you received before the reset won't open on this device. Your
+          other devices aren't affected.
         </Text>
         {state.kind === "success" && (
           <Text accessibilityLiveRegion="polite">
-            Encryption reset. You can send and receive new whisps.
+            Done. This device has new keys and is ready to go.
           </Text>
         )}
         <Button
@@ -65,7 +61,7 @@ export default function EncryptionRecoveryScreen() {
             setOpen(true);
           }}
         >
-          <Button.Label>Reset encryption…</Button.Label>
+          <Button.Label>Reset keys</Button.Label>
         </Button>
       </View>
       <Dialog
@@ -77,10 +73,10 @@ export default function EncryptionRecoveryScreen() {
         <Dialog.Portal>
           <Dialog.Overlay />
           <Dialog.Content>
-            <Dialog.Title>Reset this device's encryption?</Dialog.Title>
+            <Dialog.Title>Reset encryption keys?</Dialog.Title>
             <Dialog.Description>
-              Existing whisps will become unreadable on this device. This cannot
-              be undone. Your other devices will keep their keys.
+              Whisps you received before now won't open on this device. This
+              can't be undone.
             </Dialog.Description>
             {state.kind === "error" && (
               <Text accessibilityRole="alert">{state.message}</Text>
@@ -92,7 +88,7 @@ export default function EncryptionRecoveryScreen() {
                 onPress={() => void reset()}
               >
                 <Button.Label>
-                  {state.kind === "pending" ? "Resetting…" : "Reset encryption"}
+                  {state.kind === "pending" ? "Resetting…" : "Reset keys"}
                 </Button.Label>
               </Button>
               <Button
