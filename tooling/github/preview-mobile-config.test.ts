@@ -23,15 +23,20 @@ afterEach(() => {
   }
 });
 
-test("production keeps its existing native identity", () => {
-  process.env.APP_VARIANT = "production";
+test("store builds enable compatible updates and keep their native identity", () => {
+  process.env.APP_VARIANT = eas.build.production.env.APP_VARIANT;
   const config = configure(context);
   expect(config.android?.package).toBe("whisp.chat");
   expect(config.ios?.bundleIdentifier).toBe("whisp.chat");
   expect(config.scheme).toBe("whisp");
-  expect(config.runtimeVersion).toBeUndefined();
-  expect(config.updates?.url).toBeUndefined();
-  expect(config.updates?.enabled).toBe(false);
+  expect(config.runtimeVersion).toEqual({ policy: "fingerprint" });
+  expect(config.updates?.url).toBe(
+    "https://u.expo.dev/9d685be4-a82e-4a29-885f-4fbb76fb008c",
+  );
+  expect(config.updates?.enabled).toBe(true);
+  expect(config.updates?.fallbackToCacheTimeout).toBe(0);
+  expect(eas.build.production.channel).toBe("production");
+  expect(eas.build.production.environment).toBe("production");
 });
 
 test("the EAS preview profile selects a separate identity and deep-link scheme", () => {
