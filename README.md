@@ -141,42 +141,6 @@ Better Auth includes an [auth proxy plugin](https://www.better-auth.com/docs/plu
 
 Add your local IP (e.g., `192.168.x.y:3000`) to your OAuth provider settings. Note that this is unreliable as your IP may change.
 
-## Mobile store updates
-
-The EAS `production` build profile enables EAS Update for both iOS TestFlight
-and Android Play Store beta builds. Both use the `production` update channel and
-EAS environment. PR previews continue using their separate update branches and
-preview app identity. The channel belongs to the binary, so promoting the same
-binary to a public store release also keeps it on the `production` channel.
-
-Existing store builds have updates disabled. Build and distribute one new binary
-per platform from this configuration before publishing updates:
-
-```bash
-cd apps/expo
-eas build --profile production --platform all
-```
-
-After testers install those builds, publish compatible JavaScript and asset
-changes from `apps/expo`:
-
-```bash
-APP_VARIANT=production eas update --channel production --environment production --platform all --message "Describe the change"
-```
-
-Use the same production environment and native configuration as the builds,
-including the Android Google Services file. EAS secret variables are unavailable
-to local update commands; if `GOOGLE_SERVICES_JSON` is a secret file variable,
-provide the matching file locally at `apps/expo/google-services.json` (ignored by
-Git) or via `GOOGLE_SERVICES_JSON`. Keep `EXPO_PUBLIC_API_URL` pointed at the
-production backend when publishing.
-
-The fingerprint runtime policy only delivers updates to compatible native
-builds. Native library, permission, or Expo SDK changes require new store builds.
-The app checks for updates on launch without waiting for a download; a downloaded
-update takes effect on a subsequent cold launch. Publishing is manual and is not
-triggered by merging a PR.
-
 ## 📊 Database Maintenance
 
 ### Automatic production migrations
