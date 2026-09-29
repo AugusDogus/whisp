@@ -1,14 +1,15 @@
-# whisp
+<h1 align="center">whisp</h1>
 
-whisp is a mobile app for sending ephemeral messages and photos.
+<p align="center">Ephemeral messages and photos for your closest friends.</p>
 
-![whisp friends, camera, and profile screens with sample accounts](docs/screenshots/overview.webp)
+<p align="center">
+  <img src="docs/screenshots/overview.webp" alt="whisp friends, camera, and profile screens with sample accounts" width="900" />
+</p>
 
-[Visit whisp](https://whisp.chat)
-
-## Development
-
-Built with Expo, React Native, Next.js, and tRPC.
-
-- [Local setup and commands](docs/development.md)
-- [Deployment, previews, and maintenance](docs/operations.md)
+<p align="center">
+  <a href="https://whisp.chat">Visit whisp</a>
+  &middot;
+  <a href="docs/development.md">Development</a>
+  &middot;
+  <a href="docs/operations.md">Deployment &amp; maintenance</a>
+</p>
