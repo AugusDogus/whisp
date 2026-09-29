@@ -1,7 +1,7 @@
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
 import type { ComponentProps, ReactNode } from "react";
-import { Children, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import {
   Alert,
   Linking,
@@ -21,6 +21,7 @@ import { Switch } from "heroui-native/switch";
 
 import { DiscordProfileCard } from "~/components/discord-profile-card";
 import { PreviewSettings } from "~/components/preview-settings";
+import { SettingsGroup as Group } from "~/components/settings-group";
 import { SafeAreaView } from "~/components/styled";
 import { TermsAcceptance } from "~/components/terms-acceptance";
 import { Text } from "~/components/ui/text";
@@ -107,7 +108,7 @@ export default function ProfileScreen() {
       >
         {/* Avatar and info */}
         <View
-          className="gap-3 pt-2"
+          className="pt-2"
           onLayout={({ nativeEvent }) => {
             profileHeight.current = nativeEvent.layout.height;
           }}
@@ -120,11 +121,6 @@ export default function ProfileScreen() {
               image={session.user.image ?? null}
               active={isFocused && profileVisible}
             />
-          )}
-          {session?.user.email && (
-            <Text className="text-center text-sm text-muted">
-              {session.user.email}
-            </Text>
           )}
         </View>
 
@@ -314,30 +310,6 @@ export default function ProfileScreen() {
         </View>
       </ScrollView>
     </SafeAreaView>
-  );
-}
-
-/** Rounded card whose children are single rows separated by hairlines. */
-function Group({ title, children }: { title?: string; children: ReactNode }) {
-  return (
-    <View className="gap-2">
-      {title && (
-        <Text
-          accessibilityRole="header"
-          className="px-1 text-sm font-semibold text-muted"
-        >
-          {title}
-        </Text>
-      )}
-      <View className="bg-surface overflow-hidden rounded-xl">
-        {Children.toArray(children).map((child, index) => (
-          <View key={index}>
-            {index > 0 && <View className="bg-separator mx-4 h-px" />}
-            {child}
-          </View>
-        ))}
-      </View>
-    </View>
   );
 }
 
