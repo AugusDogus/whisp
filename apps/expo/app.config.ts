@@ -48,8 +48,9 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       supportsTablet: true,
       icon: "./assets/icon.png",
       infoPlist: {
-        // Native MLS encryption must go through Apple's export-compliance review.
-        ITSAppUsesNonExemptEncryption: true,
+        // Apple's questionnaire exempts standard crypto when France is excluded.
+        // Reassess export documentation before enabling distribution in France.
+        ITSAppUsesNonExemptEncryption: false,
         UIBackgroundModes: ["processing", "remote-notification"],
         BGTaskSchedulerPermittedIdentifiers: ["whisp.chat.send"],
         NSCameraUsageDescription:
