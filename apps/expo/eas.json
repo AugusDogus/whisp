@@ -39,6 +39,8 @@
     },
     "production": {
       "extends": "base",
+      "environment": "production",
+      "channel": "production",
       "android": {
         "autoIncrement": true,
         "buildType": "app-bundle"
