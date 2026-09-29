@@ -268,4 +268,3 @@ The app includes health check endpoints for uptime monitoring:
 
 - **`/api/health`** - API server uptime check
 - **`/api/health/db`** - Database connectivity check
-
