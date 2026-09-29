@@ -39,12 +39,23 @@
     },
     "production": {
       "extends": "base",
+      "android": {
+        "autoIncrement": true,
+        "buildType": "app-bundle"
+      },
+      "ios": {
+        "autoIncrement": true
+      },
       "env": {
         "APP_VARIANT": "production"
       }
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "ios": {
+        "ascAppId": "6814084087"
+      }
+    }
   }
 }

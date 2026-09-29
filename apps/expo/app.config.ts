@@ -29,7 +29,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     name: isPreview ? "whisp preview" : "whisp",
     slug: "whisp",
     scheme: isPreview ? "whisp-preview" : "whisp",
-    version: "0.1.0",
+    version: "0.2.0",
     orientation: "portrait",
     icon: "./assets/icon.png",
     userInterfaceStyle: "automatic",
@@ -48,7 +48,8 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       supportsTablet: true,
       icon: "./assets/icon.png",
       infoPlist: {
-        ITSAppUsesNonExemptEncryption: false,
+        // Native MLS encryption must go through Apple's export-compliance review.
+        ITSAppUsesNonExemptEncryption: true,
         UIBackgroundModes: ["processing", "remote-notification"],
         BGTaskSchedulerPermittedIdentifiers: ["whisp.chat.send"],
         NSCameraUsageDescription:
@@ -110,6 +111,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       [
         "react-native-vision-camera",
         {
+          enableLocation: false,
           cameraPermissionText: "$(PRODUCT_NAME) needs access to your Camera.",
           enableMicrophonePermission: true,
           microphonePermissionText:
