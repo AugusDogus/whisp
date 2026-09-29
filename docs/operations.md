@@ -1,0 +1,271 @@
+# Operations
+
+[Back to README](../README.md) · [Development](development.md)
+
+## 📊 Database Maintenance
+
+### Automatic production migrations
+
+Vercel applies committed Drizzle migrations before every production build, outside
+Turbo's build cache. A migration failure stops the deployment. Already-applied
+migrations are skipped, so redeployments do not repeat them. No manual database
+command is needed after merging a PR.
+
+When changing the schema, run `bun db:generate` and commit the SQL and metadata in
+`packages/db/drizzle` with the code change. CI checks that the committed migrations
+match the schema. Use a custom Drizzle migration for data transformations. Do not
+edit applied migrations; add a forward migration instead.
+
+The initial baseline adopts the existing production tables without replacing
+them or their data. Keep future migrations compatible with the running app,
+because they run before the new deployment replaces it. `bun db:push` remains a
+development tool for disposable databases. Local application builds do not apply
+migrations automatically; `bun db:migrate` is available when needed.
+
+### Pull request previews
+
+[The preview workflow](../.github/workflows/preview.yml) deploys same-repository
+PRs to Vercel with a Turso database branch named `whisp-pr-<number>`.
+Fork and Dependabot PRs do not receive preview deployments.
+
+Each branch copies the main database's schema and data using Turso's native
+branching API, equivalent to `turso db create whisp-pr-<number> --from-db <main-db>`.
+It uses the source database's existing group; no separate preview group is needed.
+The workflow then applies the PR's committed Drizzle migrations
+and passes the branch's credentials to both the Vercel build and runtime.
+Before deploying, initialization clears inherited `push_token` rows in the branch.
+A transactional marker makes this a one-time operation per branch, including
+existing previews upgraded to this workflow. Later deployments retain tokens
+registered by preview devices. The source database is never changed.
+Later pushes reuse the branch without copying the source again. Changes to the branch do not
+affect the source database and are not merged back into it.
+Previews exercise the same migrations that production will apply on merge.
+When adopting migrations, recreate older disposable preview databases that had
+already received untracked schema changes through `db:push`.
+
+Closing or merging the PR disables new uploads, deletes its completed UploadThing
+files, then deletes its database branch. Reopening branches from the current main
+database again.
+Deployment and cleanup share a concurrency group and run serially. Pending runs
+are queued so sweeps cannot replace a waiting deployment or cleanup. Database
+tokens do not expire while the PR is open; deleting the database ends access.
+Old Vercel deployments remain listed, but their database stops working after
+cleanup. UploadThing uses the existing app: upload middleware assigns each preview
+file a server-generated `whisp-pr-<number>:<uuid>` custom ID before uploading.
+Cleanup lists files directly from UploadThing, so a failed database callback does
+not orphan the upload. It never deletes untagged files or another PR's files.
+Normal message cleanup checks a preview-only ownership registry before deleting
+files, protecting production references inherited from the database branch.
+
+[An hourly sweep](../.github/workflows/preview-upload-sweep.yml) catches uploads that
+were still in progress when the PR closed. It also discovers remaining
+`whisp-pr-<number>` Turso databases, so failed database deletions are retried even
+when no uploads remain. It checks the current GitHub PR state
+under the same concurrency lock as deployment, skips open/reopened PRs, and retries
+cleanup for closed PRs. GitHub can delay scheduled runs; file removal is eventual.
+Other services still use the Vercel Preview environment configuration.
+
+#### Mobile preview builds
+
+Every same-repository PR automatically gets a mobile preview. The
+[preview workflow](../.github/workflows/preview.yml) deploys the PR backend first,
+then starts the [EAS workflow](../apps/expo/.eas/workflows/preview.yml). Subsequent
+pushes redeploy both. Fork and Dependabot PRs are excluded, just like backend
+previews. The GitHub repository needs an
+`EXPO_TOKEN` secret; GitHub supplies its own token for posting the PR comment.
+
+EAS fingerprints the native app for each platform, reuses a compatible
+`preview:dev` build or creates one, and publishes the JavaScript and assets to the
+`pr-<number>` update branch. Fingerprinting runs on EAS so it can read the same
+Google Services file secret as native builds. The PR backend URL is passed into
+each job, overriding the shared preview environment's URL without changing it.
+
+The workflow updates one PR comment with Android/iOS install links and QR codes.
+Install the linked development build once, then scan the PR's QR code. Native
+changes require installing the newly linked build. These previews use the Expo
+development client, not Expo Go. iOS devices must be included in the provisioning
+profile. The initial build for each platform requires signing credentials to be
+configured in EAS. Build minutes and update usage count toward the Expo plan.
+
+In whisp Preview, **Profile → Developer settings → Send to myself** adds a
+**Me (testing)** recipient. It defaults off and remembers your choice on the
+device. Turning it off removes the recipient, while unread self-messages remain
+accessible in the inbox. This setting is unavailable in production and needs no
+environment flag, server redeployment, or native rebuild.
+
+The workflow runs after backend deployment and shares its per-PR concurrency
+lock, so closing the PR waits for mobile deployment before backend cleanup.
+Builds and update branches remain in EAS after closure, but the PR backend is
+removed and those previews are no longer usable.
+
+The EAS `preview` profile sets `APP_VARIANT=preview`. Preview builds use the name
+**whisp Preview**, Android application ID (and iOS bundle ID) `whisp.chat.preview`,
+and deep-link scheme `whisp-preview://`. They install alongside production with
+separate app data. All PRs share this preview app identity; installing another
+preview build replaces the previous preview app, not production.
+
+For a manual standalone build, set `EXPO_PUBLIC_API_URL` in the EAS **preview**
+environment before running `eas build --profile preview --platform android`. The
+profile produces an APK. Local builds need `APP_VARIANT=preview` and the same URL
+when generating native files and bundling JavaScript. Preview configuration
+rejects a missing URL or the production `whisp.chat` URL instead of silently
+using production.
+
+Android push delivery still uses Expo's existing FCM setup. Register
+`whisp.chat.preview` as an additional Android app in the existing Firebase project
+and use its downloaded config as `apps/expo/google-services.preview.json` for local
+builds, or as the EAS preview environment's `GOOGLE_SERVICES_JSON` file variable.
+The config must include a client matching `whisp.chat.preview`. Associate the
+existing project's FCM V1 credentials with the preview application in EAS.
+Production keeps its current package and Google Services configuration. iOS
+preview builds need provisioning and push credentials for the new bundle ID.
+
+OAuth and navigation read the build's scheme, and the backend accepts both mobile
+schemes. Regenerate local native projects when switching variants so the installed
+package and intent filters match the selected configuration.
+
+Preview login uses Better Auth's OAuth proxy, as in Ask AMLI. Discord keeps its
+registered callback at `https://whisp.chat/api/auth/callback/discord`. Production
+relays the encrypted identity back to the preview, where the user and session are
+stored. This requires Better Auth 1.6 on both servers; the old 1.3 proxy expects a
+shared database. The Expo adapter enables proxying and returns the preview cookie
+to `whisp-preview://`. It also preserves the browser state handoff for older APKs.
+
+#### One-time configuration
+
+1. Identify whisp's main Turso **libSQL** database and its organization.
+   Its name must not use the reserved `whisp-pr-` prefix.
+2. Add these **repository-level GitHub Actions secrets**:
+
+   | Secret              | Purpose                                                                            |
+   | ------------------- | ---------------------------------------------------------------------------------- |
+   | `TURSO_API_TOKEN`   | Turso Platform API access to provision/delete databases and create database tokens |
+   | `VERCEL_TOKEN`      | Deploy to the whisp Vercel project                                                 |
+   | `UPLOADTHING_TOKEN` | Existing UploadThing app's V7 token, used by previews and file cleanup             |
+
+3. Add these **repository-level GitHub Actions variables**:
+
+   | Variable                | Value                                   |
+   | ----------------------- | --------------------------------------- |
+   | `TURSO_ORGANIZATION`    | Turso organization slug                 |
+   | `TURSO_SOURCE_DATABASE` | Main Turso database name to branch from |
+   | `VERCEL_ORG_ID`         | Vercel team/account ID                  |
+   | `VERCEL_PROJECT_ID`     | whisp's Vercel project ID               |
+
+   Keep Turso credentials at repository scope so cleanup can access them without
+   an environment approval. Mint a token scoped to the source database's group with
+   `read`, `db:create`, `db:delete`, and `db:mint-token` scopes. The platform token
+   is never passed to the deployed app.
+
+4. Configure the Vercel project's Root Directory as `apps/nextjs`, with access to
+   files outside that directory enabled for the workspace packages. Keep its
+   existing build settings and configure the application's other Preview secrets
+   (auth, etc.). The workflow explicitly passes `UPLOADTHING_TOKEN` and
+   `PREVIEW_PR_NUMBER` to preview builds and runtime. No separate UploadThing app
+   or Turso Marketplace integration is needed.
+   Set the same randomly generated `OAUTH_PROXY_SECRET` (at least 32 characters)
+   in Vercel Production and Preview. This is a dedicated proxy encryption key;
+   keep it separate from `AUTH_SECRET`. Deploy the updated production proxy before
+   testing preview login. No account-schema migration or Discord callback change
+   is required.
+5. Merge the workflows and helpers into `main` before relying on cleanup.
+   Cleanup checks out the current base branch, including for unmerged PRs.
+   Scheduled sweeps only run after their workflow reaches the default branch.
+
+[`apps/nextjs/vercel.json`](../apps/nextjs/vercel.json) allows automatic Git
+deployments only for `main`. GitHub Actions owns preview deployments, preventing
+an automatic build from racing ahead of database provisioning. Configure the
+secrets and variables before enabling this change. Missing configuration fails
+the workflow with an actionable error.
+
+The preview URL appears in the GitHub `preview` environment and workflow summary.
+If provisioning or deployment fails, rerun the workflow; an existing database is
+reused. If cleanup fails, rerun the closed-PR workflow. Only HTTP 404 (already
+absent) is treated as successful cleanup in addition to successful deletions;
+authentication, rate-limit, and service errors fail the job. A cleanup rerun after
+the PR has reopened skips deletion.
+
+File API failures stop cleanup before database deletion, leaving uploads disabled
+until cleanup is rerun or the PR reopens. Deletion collects all pages before
+mutating files and verifies completed files are gone or pending deletion.
+Files uploaded before this tracking was installed have no PR tag and are left
+untouched. Old deployments also need replacing before they can tag new uploads;
+there is no safe automatic way to attribute earlier untagged uploads to a PR.
+
+To verify the lifecycle after setup, open a same-repository PR, check
+`/api/health/db` on its preview, push another commit, and close the PR. Confirm the
+same database is reused on the push and absent after closure. Upload a preview
+file and confirm only that PR's tagged files are removed; production and other
+open previews' files must remain. The sweep can also be run manually from Actions.
+
+This follows the lifecycle demonstrated by
+[visa-calculator's preview workflow](https://github.com/mankatcheung/visa-calculator/blob/d48b78c21225a4ae44285357d2a1d90527124cfd/.github/workflows/preview.yml),
+using the [Turso Platform API](https://docs.turso.tech/api-reference/introduction)
+for [native database branching](https://docs.turso.tech/features/branching) and
+to distinguish a missing database from a failed cleanup request.
+
+### Discord profile storage
+
+Discord cosmetics are stored in nullable columns on `user`: `discordBannerUrl`,
+`discordAccentColor`, `discordAvatarDecorationUrl`, `discordGuildTag`,
+`discordGuildBadgeUrl`, `discordNameplateUrl`, `discordPublicFlags`, and
+`discordProfileSyncedAt`, plus an internal `discordProfileRevision` used to reject
+outdated refresh writes. Colors and public badge flags are integers; the sync
+time is a timestamp. Badge labels and display colors are derived when reading.
+`auth.discordProfile` reads only the database. When an opened profile has never synced or its saved sync is
+at least 24 hours old, the app calls the existing `auth.refreshAvatar` mutation
+in `if-stale` mode. The server checks the saved timestamp before contacting
+Discord, so all devices share the same freshness check. Syncing and retries run
+in the background, without profile sync controls or error messages. Saved
+profile details remain visible when syncing fails. Avatar image recovery uses
+a forced refresh.
+
+Discord sign-in and refresh share the same validated profile mapping. Sign-in
+persists server-managed fields through database hooks; clients cannot edit them.
+For preview sign-in, the OAuth proxy forwards only standard identity fields, so
+the preview fetches the full Discord profile with the verified OAuth token before
+creating the session. If this extra fetch fails or returns invalid data, sign-in
+continues with saved cosmetics and the sync timestamp unchanged. Unsynced or stale
+profiles retry through the existing automatic sync when opened. This writes only
+to the preview database. Refresh saves the avatar URL, Discord username, and
+cosmetics in one database update.
+A revision check prevents a delayed refresh from overwriting a profile saved
+by another refresh or sign-in. Failed Discord requests preserve the saved data;
+automatic refresh can retry when the profile is revisited. Existing users need
+no bulk backfill: their next successful sign-in or refresh populates the columns.
+
+Avatars, banners, decorations, and nameplates animate only while the profile is
+visible and the app is active. System reduced-motion changes take effect live.
+Nameplates load Discord's transparent APNG directly through `expo-image`, using
+`img.png?passthrough=true` beside the stored `static.png` asset. The static image
+stays visible during loading or animation failures and is used when motion is
+disabled. No conversion endpoint, native server binary, or schema change is needed.
+
+Public badges are labels. Discord does not provide profile badge icon URLs in the
+User API. Private profile themes and effects are not included.
+
+The generated forward migration is
+`packages/db/drizzle/0001_discord_cosmetics.sql`. Merge the deployment automation
+in PR #21 before this change so production applies it automatically before the
+new app builds. It preserves existing users and avatar URLs.
+
+For phone testing, use the PR preview workflow described above. It provisions
+the isolated database branch and applies these columns through Drizzle. Set
+`EXPO_PUBLIC_API_URL` to that deployment when building whisp Preview. Recreate
+older disposable preview branches when switching them from schema push to
+migrations, since their existing cosmetic columns have no migration receipt.
+
+### Scheduled message cleanup
+
+The app includes an automated cleanup system that runs daily via Vercel Cron to prevent the database from growing indefinitely:
+
+- **Soft-deleted messages** (30+ days old) are permanently purged
+- **Old unread messages** (90+ days old) are automatically removed
+
+## 🏥 Backend Monitoring
+
+The app includes health check endpoints for uptime monitoring:
+
+- **`/api/health`** - API server uptime check
+- **`/api/health/db`** - Database connectivity check
+
