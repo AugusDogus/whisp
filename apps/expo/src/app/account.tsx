@@ -1,17 +1,17 @@
 import { useState } from "react";
-import { Alert, View } from "react-native";
+import { View } from "react-native";
 
 import { Button } from "heroui-native/button";
 import { Dialog } from "heroui-native/dialog";
 
 import { SettingsGroup, SettingsRow } from "~/components/settings-group";
+import { SettingsPage } from "~/components/settings-page";
 import { Text } from "~/components/ui/text";
 import { trpc } from "~/utils/api";
 import { authClient } from "~/utils/auth";
 
-/** Sign out and delete account. */
-export function AccountSettings() {
-  const [isSigningOut, setIsSigningOut] = useState(false);
+export default function AccountScreen() {
+  const { data: session } = authClient.useSession();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const deleteAccount = trpc.auth.deleteAccount.useMutation({
     onSuccess: async () => {
@@ -20,35 +20,22 @@ export function AccountSettings() {
     },
   });
 
-  async function signOut() {
-    setIsSigningOut(true);
-    try {
-      const result = await authClient.signOut();
-      if (result.error) {
-        Alert.alert(
-          "Could not sign out",
-          "Please check your connection and try again.",
-        );
-      }
-    } catch (error) {
-      console.error("Sign-out failed:", error);
-      Alert.alert(
-        "Could not sign out",
-        "Please check your connection and try again.",
-      );
-    } finally {
-      setIsSigningOut(false);
-    }
-  }
-
   return (
-    <>
-      <SettingsGroup title="Account">
-        <SettingsRow
-          label="Sign out"
-          disabled={isSigningOut}
-          onPress={() => void signOut()}
-        />
+    <SettingsPage title="Account">
+      {session?.user && (
+        <SettingsGroup title="Account information">
+          <SettingsRow
+            label="Display name"
+            end={{ kind: "value", value: session.user.name }}
+          />
+          <SettingsRow
+            label="Signed in with"
+            end={{ kind: "value", value: "Discord" }}
+          />
+        </SettingsGroup>
+      )}
+
+      <SettingsGroup title="Account management">
         <SettingsRow
           label="Delete account"
           tone="danger"
@@ -99,6 +86,6 @@ export function AccountSettings() {
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog>
-    </>
+    </SettingsPage>
   );
 }

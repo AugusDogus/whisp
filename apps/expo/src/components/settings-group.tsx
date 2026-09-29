@@ -1,14 +1,15 @@
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import { Children } from "react";
-import { Pressable, useColorScheme, View } from "react-native";
+import { Pressable, View } from "react-native";
 
 import { Ionicons } from "@expo/vector-icons";
+import { useThemeColor } from "heroui-native/hooks";
 import { Switch } from "heroui-native/switch";
 
 import { Text } from "~/components/ui/text";
 import { cn } from "~/lib/utils";
 
-/** Rounded card whose children are `SettingsRow`s separated by hairlines. */
+/** Rounded card of `SettingsRow`s separated by hairlines, with an optional header. */
 export function SettingsGroup({
   title,
   children,
@@ -21,17 +22,14 @@ export function SettingsGroup({
   return (
     <View className="gap-2">
       {title && (
-        <Text
-          accessibilityRole="header"
-          className="px-1 text-sm font-semibold text-muted"
-        >
+        <Text accessibilityRole="header" className="px-1 text-sm text-muted">
           {title}
         </Text>
       )}
-      <View className="bg-surface overflow-hidden rounded-xl">
+      <View className="bg-surface overflow-hidden rounded-2xl">
         {rows.map((row, index) => (
           <View key={index}>
-            {index > 0 && <View className="bg-separator mx-4 h-px" />}
+            {index > 0 && <View className="bg-separator ml-4 h-px" />}
             {row}
           </View>
         ))}
@@ -42,7 +40,7 @@ export function SettingsGroup({
 
 type SettingsRowEnd =
   | { kind: "none" }
-  | { kind: "navigate" }
+  | { kind: "navigate"; value?: string }
   | { kind: "external" }
   | { kind: "value"; value: string }
   | {
@@ -53,6 +51,7 @@ type SettingsRowEnd =
 
 /** One settings row. Every row shares the same height and label style. */
 export function SettingsRow({
+  icon,
   label,
   description,
   alert,
@@ -61,6 +60,7 @@ export function SettingsRow({
   disabled = false,
   onPress,
 }: {
+  icon?: ComponentProps<typeof Ionicons>["name"];
   label: string;
   description?: string;
   /** Error shown under the label and announced to screen readers. */
@@ -70,10 +70,20 @@ export function SettingsRow({
   disabled?: boolean;
   onPress?: () => void;
 }) {
-  const colorScheme = useColorScheme();
-  const iconColor = colorScheme === "dark" ? "#aaa" : "#666";
+  const [foregroundColor, mutedColor, dangerColor] = useThemeColor([
+    "foreground",
+    "muted",
+    "danger",
+  ]);
   const body = (
     <>
+      {icon && (
+        <Ionicons
+          name={icon}
+          size={22}
+          color={tone === "danger" ? dangerColor : foregroundColor}
+        />
+      )}
       <View className="flex-1 gap-0.5">
         <Text className={cn("text-base", tone === "danger" && "text-danger")}>
           {label}
@@ -87,14 +97,19 @@ export function SettingsRow({
           </Text>
         )}
       </View>
+      {(end.kind === "value" || end.kind === "navigate") && end.value && (
+        <Text
+          numberOfLines={1}
+          className="shrink text-sm tabular-nums text-muted"
+        >
+          {end.value}
+        </Text>
+      )}
       {end.kind === "navigate" && (
-        <Ionicons name="chevron-forward" size={18} color={iconColor} />
+        <Ionicons name="chevron-forward" size={18} color={mutedColor} />
       )}
       {end.kind === "external" && (
-        <Ionicons name="open-outline" size={18} color={iconColor} />
-      )}
-      {end.kind === "value" && (
-        <Text className="text-base tabular-nums text-muted">{end.value}</Text>
+        <Ionicons name="open-outline" size={18} color={mutedColor} />
       )}
       {end.kind === "switch" && (
         <Switch
@@ -106,7 +121,7 @@ export function SettingsRow({
     </>
   );
   const className = cn(
-    "min-h-14 flex-row items-center gap-3 px-4 py-3",
+    "min-h-14 flex-row items-center gap-4 px-4 py-3",
     disabled && "opacity-50",
   );
 

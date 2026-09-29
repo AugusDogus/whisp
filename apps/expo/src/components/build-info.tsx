@@ -65,7 +65,8 @@ export function BuildInfo() {
   return (
     <>
       <SettingsRow
-        label="Version"
+        icon="information-circle"
+        label="App version"
         end={{ kind: "value", value: `${buildNumber} (${nativeBuildVersion})` }}
         onPress={handleTap}
       />

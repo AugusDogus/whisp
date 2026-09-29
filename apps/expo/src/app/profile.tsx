@@ -5,11 +5,19 @@ import { Linking, ScrollView, View } from "react-native";
 
 import { useIsFocused, useNavigation } from "@react-navigation/native";
 
+import { BuildInfo } from "~/components/build-info";
 import { DiscordProfileCard } from "~/components/discord-profile-card";
+import { SendToMyselfRow } from "~/components/preview-settings";
 import { SettingsGroup, SettingsRow } from "~/components/settings-group";
+import { SignOutRow } from "~/components/sign-out-row";
 import { SafeAreaView } from "~/components/styled";
+import { TermsAcceptance } from "~/components/terms-acceptance";
+import { isPreviewApp } from "~/hooks/usePreviewSettings";
 import type { RootStackParamList } from "~/navigation/types";
 import { authClient } from "~/utils/auth";
+
+const isBackgroundUploadTestEnabled =
+  process.env.EXPO_PUBLIC_ENABLE_BACKGROUND_UPLOAD_TEST_PAGE === "true";
 
 export default function ProfileScreen() {
   const isFocused = useIsFocused();
@@ -47,19 +55,88 @@ export default function ProfileScreen() {
           )}
         </View>
 
-        <SettingsGroup>
+        <TermsAcceptance />
+
+        <SettingsGroup title="Account settings">
           <SettingsRow
-            label="Settings"
+            icon="person-circle"
+            label="Account"
             end={{ kind: "navigate" }}
-            onPress={() => navigation.navigate("Settings")}
+            onPress={() => navigation.navigate("Account")}
           />
           <SettingsRow
+            icon="ban"
+            label="Blocked accounts"
+            end={{ kind: "navigate" }}
+            onPress={() => navigation.navigate("BlockedAccounts")}
+          />
+          <SettingsRow
+            icon="phone-portrait"
+            label="Devices"
+            end={{ kind: "navigate" }}
+            onPress={() => navigation.navigate("Devices")}
+          />
+          <SettingsRow
+            icon="key"
+            label="Encryption recovery"
+            end={{ kind: "navigate" }}
+            onPress={() => navigation.navigate("EncryptionRecovery")}
+          />
+        </SettingsGroup>
+
+        <SettingsGroup title="App settings">
+          <SettingsRow
+            icon="notifications"
+            label="Notifications"
+            end={{ kind: "navigate" }}
+            onPress={() => navigation.navigate("Notifications")}
+          />
+        </SettingsGroup>
+
+        <SettingsGroup title="Support">
+          <SettingsRow
+            icon="logo-discord"
             label="Join our Discord"
             end={{ kind: "external" }}
             onPress={() =>
               void Linking.openURL("https://discord.gg/DkFmaDDqgW")
             }
           />
+          <SettingsRow
+            icon="document-text"
+            label="Terms of Service"
+            end={{ kind: "external" }}
+            onPress={() => void Linking.openURL("https://whisp.chat/terms")}
+          />
+          <SettingsRow
+            icon="shield-checkmark"
+            label="Privacy Policy"
+            end={{ kind: "external" }}
+            onPress={() => void Linking.openURL("https://whisp.chat/privacy")}
+          />
+        </SettingsGroup>
+
+        <SignOutRow />
+
+        <SettingsGroup title="Developer settings">
+          <BuildInfo />
+          {isPreviewApp && <SendToMyselfRow />}
+          {__DEV__ && (
+            <SettingsRow
+              icon="flask"
+              label="MLS bridge test"
+              end={{ kind: "navigate" }}
+              onPress={() => navigation.navigate("MlsTest")}
+            />
+          )}
+          {isBackgroundUploadTestEnabled && (
+            <SettingsRow
+              icon="cloud-upload"
+              label="Background upload test"
+              end={{ kind: "navigate" }}
+              onPress={() => navigation.navigate("BackgroundUploadTest")}
+            />
+          )}
         </SettingsGroup>
       </ScrollView>
     </SafeAreaView>

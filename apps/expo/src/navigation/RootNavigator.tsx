@@ -14,6 +14,7 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { usePostHog } from "posthog-react-native";
 import { Toaster } from "sonner-native";
 
+import AccountScreen from "~/app/account";
 import BackgroundUploadTestScreen from "~/app/background-upload-test";
 import BlockedAccountsScreen from "~/app/blocked-accounts";
 import CameraScreen from "~/app/camera";
@@ -28,9 +29,9 @@ import SplashScreen from "~/app/index";
 import LoginScreen from "~/app/login";
 import MediaScreen from "~/app/media";
 import MlsTestScreen from "~/app/mls-test";
+import NotificationsScreen from "~/app/notifications";
 import OnboardingScreen from "~/app/onboarding";
 import ProfileScreen from "~/app/profile";
-import SettingsScreen from "~/app/settings";
 import TermsScreen from "~/app/terms";
 import { RecordingProvider, useRecording } from "~/contexts/RecordingContext";
 
@@ -107,7 +108,8 @@ export function RootNavigator() {
           <Stack.Screen name="Onboarding" component={OnboardingScreen} />
           <Stack.Screen name="Terms" component={TermsScreen} />
           <Stack.Screen name="Main" component={MainTabs} />
-          <Stack.Screen name="Settings" component={SettingsScreen} />
+          <Stack.Screen name="Account" component={AccountScreen} />
+          <Stack.Screen name="Notifications" component={NotificationsScreen} />
           <Stack.Screen name="Devices" component={DevicesScreen} />
           <Stack.Screen
             name="EncryptionRecovery"
