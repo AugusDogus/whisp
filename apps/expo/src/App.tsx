@@ -26,6 +26,7 @@ import {
   subscribeNativeSends,
 } from "~/utils/native-send";
 import { observeNativeSends } from "~/utils/native-send-observer";
+import { observeStartupDiagnostics } from "~/utils/startup-diagnostics";
 import {
   listBackgroundUploadTasks,
   markBackgroundUploadTaskObserved,
@@ -42,25 +43,9 @@ async function removeBackgroundUploadTasks(taskIds: string[]) {
   );
 }
 
-Sentry.init({
-  dsn: "https://5693f19ead65be751194632cbd5fa070@o4510218619322368.ingest.us.sentry.io/4510898735874048",
-
-  // Adds more context data to events (IP address, cookies, user, etc.)
-  // For more information, visit: https://docs.sentry.io/platforms/react-native/data-management/data-collected/
-  sendDefaultPii: true,
-
-  // Enable Logs
-  enableLogs: true,
-  integrations: [Sentry.feedbackIntegration()],
-
-  // uncomment the line below to enable Spotlight (https://spotlightjs.com)
-  // spotlight: __DEV__,
-});
-
 function AppContent() {
   const { data: session } = authClient.useSession();
   const queryClient = useQueryClient();
-  const sessionCookie = authClient.getCookie();
 
   useEffect(() => {
     if (!session?.user.id) return;
@@ -97,7 +82,7 @@ function AppContent() {
 
   useEffect(() => {
     return observeNativeSends({
-      isCurrent: () => sessionCookie === authClient.getCookie(),
+      getSessionCookie: () => authClient.getCookie(),
       isActive: () => AppState.currentState === "active",
       configure: configureNativeSends,
       resume: resumeNativeSends,
@@ -113,7 +98,7 @@ function AppContent() {
         );
       },
     });
-  }, [queryClient, session?.user.id, sessionCookie]);
+  }, [queryClient, session?.user.id, session?.session.id]);
 
   // Reconcile notification ownership whenever the authenticated session changes.
   usePushNotifications(session?.session.id ?? null);
@@ -203,6 +188,8 @@ function AppContent() {
 }
 
 export default Sentry.wrap(function App() {
+  useEffect(observeStartupDiagnostics, []);
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider initialMetrics={initialWindowMetrics}>

@@ -3,7 +3,7 @@ type Subscription = { remove(): void };
 /** Native events are wakeups, never job data. Read durable state after configuring
  * the current account, and drain again if a transition arrives during that read. */
 export function observeNativeSends(input: {
-  isCurrent(): boolean;
+  getSessionCookie(): string;
   isActive(): boolean;
   configure(): Promise<unknown>;
   resume(): Promise<void>;
@@ -17,23 +17,33 @@ export function observeNativeSends(input: {
   let ready = false;
   let pending = false;
   let resumePending = false;
+  let sessionCookie: string | undefined;
+  let activationVersion = 0;
   // Checking the account reads protected keychain storage on iOS.
-  const available = () => !stopped && input.isActive() && input.isCurrent();
+  const available = () => {
+    if (stopped || !input.isActive()) return false;
+    const currentCookie = input.getSessionCookie();
+    sessionCookie ??= currentCookie;
+    return sessionCookie === currentCookie;
+  };
 
   async function drain() {
     if (running || !available()) return;
     running = true;
     try {
       while (pending && available()) {
+        const version = activationVersion;
         pending = false;
         if (!ready) {
           await input.configure();
+          if (version !== activationVersion) continue;
           if (!available()) return;
           ready = true;
         }
         if (resumePending) {
           resumePending = false;
           await input.resume();
+          if (version !== activationVersion) continue;
           if (!available()) return;
         }
         await input.reconcile();
@@ -52,6 +62,9 @@ export function observeNativeSends(input: {
     void drain();
   }
   function activate() {
+    // A new foreground activation reconfigures against the current account.
+    sessionCookie = undefined;
+    activationVersion++;
     ready = false;
     resumePending = true;
     refresh();

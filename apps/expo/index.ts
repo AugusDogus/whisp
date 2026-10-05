@@ -1,5 +1,7 @@
+// Install error handlers before evaluating App and its auth/storage imports.
+import "./src/utils/sentry";
 import { registerRootComponent } from "expo";
 
-import App from "./src/App";
+import { createForegroundApp } from "./src/components/foreground-app";
 
-registerRootComponent(App);
+registerRootComponent(createForegroundApp(() => import("./src/App")));

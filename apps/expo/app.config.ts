@@ -148,6 +148,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
           url: "https://sentry.io/",
           project: "whisp",
           organization: "whisplabs",
+          useNativeInit: true,
         },
       ],
     ],

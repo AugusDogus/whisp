@@ -9,7 +9,9 @@ function harness(events = true) {
   let statusListener: (() => void) | undefined;
   let activateListener: (() => void) | undefined;
   const state = { active: true, current: true };
-  const isCurrent = mock(() => state.current);
+  const getSessionCookie = mock(() =>
+    state.current ? "original-session" : "replacement-session",
+  );
   const statusRemoved = mock(() => {});
   const activationRemoved = mock(() => {});
   const configure = mock(async () => {});
@@ -18,7 +20,7 @@ function harness(events = true) {
   const onError = mock(() => {});
   return {
     state,
-    isCurrent,
+    getSessionCookie,
     configure,
     resume,
     reconcile,
@@ -30,7 +32,7 @@ function harness(events = true) {
     start: () =>
       observeNativeSends({
         isActive: () => state.active,
-        isCurrent,
+        getSessionCookie,
         configure,
         resume,
         reconcile,
@@ -55,18 +57,18 @@ describe("native send observation", () => {
     try {
       h.changed();
       await tick();
-      expect(h.isCurrent).not.toHaveBeenCalled();
+      expect(h.getSessionCookie).not.toHaveBeenCalled();
       expect(h.configure).not.toHaveBeenCalled();
       h.state.active = true;
       h.activate();
       await tick();
-      expect(h.isCurrent).toHaveBeenCalled();
+      expect(h.getSessionCookie).toHaveBeenCalled();
       expect(h.reconcile).toHaveBeenCalledTimes(1);
-      h.isCurrent.mockClear();
+      h.getSessionCookie.mockClear();
       h.state.active = false;
       h.changed();
       await tick();
-      expect(h.isCurrent).not.toHaveBeenCalled();
+      expect(h.getSessionCookie).not.toHaveBeenCalled();
       expect(h.reconcile).toHaveBeenCalledTimes(1);
     } finally {
       stop();
@@ -146,6 +148,24 @@ describe("native send observation", () => {
       await tick();
       expect(h.resume).not.toHaveBeenCalled();
       expect(h.reconcile).not.toHaveBeenCalled();
+    } finally {
+      stop();
+    }
+  });
+
+  test("reconfigures the new foreground session before resuming an old pending pass", async () => {
+    const h = harness();
+    const configured = Promise.withResolvers<void>();
+    h.configure.mockImplementationOnce(() => configured.promise);
+    const stop = h.start();
+    try {
+      h.state.current = false;
+      h.activate();
+      configured.resolve();
+      await tick();
+      expect(h.configure).toHaveBeenCalledTimes(2);
+      expect(h.resume).toHaveBeenCalledTimes(1);
+      expect(h.reconcile).toHaveBeenCalledTimes(1);
     } finally {
       stop();
     }
