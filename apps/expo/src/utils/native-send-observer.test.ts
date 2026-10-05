@@ -9,6 +9,7 @@ function harness(events = true) {
   let statusListener: (() => void) | undefined;
   let activateListener: (() => void) | undefined;
   const state = { active: true, current: true };
+  const isCurrent = mock(() => state.current);
   const statusRemoved = mock(() => {});
   const activationRemoved = mock(() => {});
   const configure = mock(async () => {});
@@ -17,6 +18,7 @@ function harness(events = true) {
   const onError = mock(() => {});
   return {
     state,
+    isCurrent,
     configure,
     resume,
     reconcile,
@@ -28,7 +30,7 @@ function harness(events = true) {
     start: () =>
       observeNativeSends({
         isActive: () => state.active,
-        isCurrent: () => state.current,
+        isCurrent,
         configure,
         resume,
         reconcile,
@@ -46,6 +48,31 @@ function harness(events = true) {
 }
 
 describe("native send observation", () => {
+  test("does not read protected session storage on background startup or wakeups", async () => {
+    const h = harness();
+    h.state.active = false;
+    const stop = h.start();
+    try {
+      h.changed();
+      await tick();
+      expect(h.isCurrent).not.toHaveBeenCalled();
+      expect(h.configure).not.toHaveBeenCalled();
+      h.state.active = true;
+      h.activate();
+      await tick();
+      expect(h.isCurrent).toHaveBeenCalled();
+      expect(h.reconcile).toHaveBeenCalledTimes(1);
+      h.isCurrent.mockClear();
+      h.state.active = false;
+      h.changed();
+      await tick();
+      expect(h.isCurrent).not.toHaveBeenCalled();
+      expect(h.reconcile).toHaveBeenCalledTimes(1);
+    } finally {
+      stop();
+    }
+  });
+
   test("subscribes before startup, waits for account configuration, then reads immediately", async () => {
     const h = harness();
     const configured = Promise.withResolvers<void>();

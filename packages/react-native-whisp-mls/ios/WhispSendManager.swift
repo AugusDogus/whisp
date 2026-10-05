@@ -24,11 +24,19 @@ final class WhispSendManager: NSObject, URLSessionTaskDelegate {
   func register() {
     BGTaskScheduler.shared.register(forTaskWithIdentifier: Self.processingIdentifier, using: nil) { task in
       let cancellation = SendCancellation()
-      task.expirationHandler = { cancellation.cancel() }
+      let completion = SendTaskCompletion { success in
+        task.expirationHandler = nil
+        // Completion may suspend the app before the worker returns from I/O.
+        if !success { self.schedule() }
+        task.setTaskCompleted(success: success)
+      }
+      task.expirationHandler = {
+        cancellation.cancel()
+        completion.finish(success: false)
+      }
       self.queue.async {
         let success = self.run(cancellation)
-        task.setTaskCompleted(success: success)
-        if !success { self.schedule() }
+        completion.finish(success: success)
       }
     }
   }
@@ -41,10 +49,20 @@ final class WhispSendManager: NSObject, URLSessionTaskDelegate {
     schedule()
     DispatchQueue.main.async {
       let cancellation = SendCancellation()
-      let token = UIApplication.shared.beginBackgroundTask(withName: "Prepare encrypted whisp") { cancellation.cancel() }
+      // Both expiration and normal completion run on the main queue. Release
+      // the assertion immediately on expiration, even if native I/O is blocked.
+      var token = UIBackgroundTaskIdentifier.invalid
+      let completion = SendTaskCompletion { _ in
+        if token != .invalid { UIApplication.shared.endBackgroundTask(token) }
+        token = .invalid
+      }
+      token = UIApplication.shared.beginBackgroundTask(withName: "Prepare encrypted whisp") {
+        cancellation.cancel()
+        completion.finish(success: false)
+      }
       self.queue.async {
         _ = self.run(cancellation, retryBlocked: retryBlocked)
-        DispatchQueue.main.async { if token != .invalid { UIApplication.shared.endBackgroundTask(token) } }
+        DispatchQueue.main.async { completion.finish(success: true) }
       }
     }
   }
@@ -72,6 +90,8 @@ final class WhispSendManager: NSObject, URLSessionTaskDelegate {
     catch { NSLog("whisp send scheduling deferred until the next app activation.") }
   }
   private func run(_ cancellation: SendCancellation, retryBlocked: Bool = false) -> Bool {
+    // A run may expire while waiting behind another worker on the serial queue.
+    guard !cancellation.isCancelled else { return false }
     lock.lock(); activeCancellation = cancellation; lock.unlock()
     defer { lock.lock(); activeCancellation = nil; lock.unlock() }
     do {
@@ -148,7 +168,10 @@ final class WhispSendManager: NSObject, URLSessionTaskDelegate {
     let existing = DispatchSemaphore(value: 0)
     let tasks = TransferTasks()
     session.getAllTasks { values in tasks.set(values); existing.signal() }
-    existing.wait()
+    while existing.wait(timeout: .now() + 0.25) == .timedOut {
+      if cancellation.isCancelled { throw SendError.stopped }
+    }
+    if cancellation.isCancelled { throw SendError.stopped }
     if tasks.get().contains(where: { $0.taskDescription == description }) { return }
     // Delegate writes a receipt before removing a task. Recheck after getAllTasks.
     if FileManager.default.fileExists(atPath: try receiptDirectory().appendingPathComponent(description).path) { return }

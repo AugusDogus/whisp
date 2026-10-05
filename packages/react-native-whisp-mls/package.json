@@ -15,6 +15,7 @@
   },
   "scripts": {
     "test": "cargo test --manifest-path rust/Cargo.toml --locked",
+    "test:ios-lifecycle": "bash scripts/test-ios-lifecycle.sh",
     "bindings": "node scripts/generate-bindings.mjs",
     "build:android": "ubrn build android --config ubrn.config.yaml --release --and-generate && node scripts/native-bindings.mjs --android",
     "build:ios": "ubrn build ios --config ubrn.config.yaml --release --and-generate && node scripts/native-bindings.mjs",

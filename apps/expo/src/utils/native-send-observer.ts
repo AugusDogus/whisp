@@ -17,7 +17,8 @@ export function observeNativeSends(input: {
   let ready = false;
   let pending = false;
   let resumePending = false;
-  const available = () => !stopped && input.isCurrent() && input.isActive();
+  // Checking the account reads protected keychain storage on iOS.
+  const available = () => !stopped && input.isActive() && input.isCurrent();
 
   async function drain() {
     if (running || !available()) return;
