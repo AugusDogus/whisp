@@ -5,6 +5,46 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+test("Bun patch markers do not change native fingerprints across installer versions", async () => {
+  const root = await mkdtemp(join(tmpdir(), "whisp-bun-fingerprint-"));
+  try {
+    const app = join(root, "apps/expo");
+    const dependency = join(root, "node_modules/expo-dev-launcher");
+    await mkdir(app, { recursive: true });
+    await mkdir(dependency, { recursive: true });
+    await writeFile(join(app, "package.json"), "{}");
+    await writeFile(
+      join(app, ".fingerprintignore"),
+      await readFile(
+        new URL("../../apps/expo/.fingerprintignore", import.meta.url),
+      ),
+    );
+    const source = join(dependency, "native.swift");
+    await writeFile(source, "// Patched native implementation");
+    const fingerprint = async () =>
+      createFingerprintFromSourcesAsync(
+        [
+          {
+            type: "dir",
+            filePath: "../../node_modules/expo-dev-launcher",
+            reasons: ["expoAutolinkingIos"],
+          },
+        ],
+        app,
+        await normalizeOptionsAsync(app, { platforms: ["ios"], silent: true }),
+      );
+    await writeFile(join(dependency, ".bun-tag-local"), "");
+    const before = await fingerprint();
+    await rm(join(dependency, ".bun-tag-local"));
+    await writeFile(join(dependency, ".bun-tag-eas"), "");
+    expect((await fingerprint()).hash).toBe(before.hash);
+    await writeFile(source, "// Different native implementation");
+    expect((await fingerprint()).hash).not.toBe(before.hash);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("pod install preserves the fingerprint while native source changes invalidate it", async () => {
   const root = await mkdtemp(join(tmpdir(), "whisp-fingerprint-"));
   try {
@@ -100,6 +140,10 @@ test("MLS and generator build outputs preserve the fingerprint while Rust change
     }
     await mkdir(join(generator, "target/debug"), { recursive: true });
     await writeFile(join(generator, "target/debug/bindgen"), "Host binary");
+    await writeFile(
+      join(generator, "Cargo.lock"),
+      "Generated CLI dependency lock",
+    );
     expect((await fingerprint()).hash).toBe(before.hash);
     await writeFile(join(mls, "rust/src/lib.rs"), "// Changed implementation");
     expect((await fingerprint()).hash).not.toBe(before.hash);

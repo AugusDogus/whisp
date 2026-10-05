@@ -2,6 +2,10 @@
 # native sources, setup script, and app.config.ts permission choices remain hashed.
 **/node_modules/react-native-permissions/RNPermissions.podspec
 
+# Bun versions use different patch-cache marker names for identical sources.
+# The patched native files themselves remain hashed.
+**/node_modules/**/.bun-tag-*
+
 # MLS outputs differ between host-only fingerprint/update jobs and platform
 # builds. Hash their Rust/native sources, Cargo.lock, and build scripts instead.
 **/react-native-whisp-mls/rust/target/**/*
@@ -15,3 +19,6 @@
 **/react-native-whisp-mls/*.xcframework/**/*
 # The binding generator compiles itself inside node_modules on first use.
 **/node_modules/uniffi-bindgen-react-native/target/**/*
+# Cargo creates this lockfile for the generator CLI; it is absent from npm.
+# The app's own Rust Cargo.lock and the generator's sources remain hashed.
+**/node_modules/uniffi-bindgen-react-native/Cargo.lock
